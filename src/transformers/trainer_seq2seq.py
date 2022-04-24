@@ -166,6 +166,11 @@ class Seq2SeqTrainer(Trainer):
         if "global_attention_mask" in inputs:
             gen_kwargs["global_attention_mask"] = inputs.get("global_attention_mask", None)
 
+        if "extra_embeddings" in inputs:
+            gen_kwargs["extra_embeddings"] = inputs.get("extra_embeddings", None)
+        if "extra_embeddings_positions" in inputs:
+            gen_kwargs["extra_embeddings_positions"] = inputs.get("extra_embeddings_positions", None)
+
         # prepare generation inputs
         # some encoder-decoder models can have varying encoder's and thus
         # varying model input names
