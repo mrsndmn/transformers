@@ -1746,6 +1746,12 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
 
 class T5EncoderWithExtraEmbeddings(T5Stack):
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.extra_embeddings_projection = nn.Linear(self.config.extra_embeddings_dim, self.config.d_model)
+
+
     def forward(self, **kwargs):
 
         extra_embeddings = kwargs.pop('extra_embeddings') # [ bs, seq_len, embedding_dim ]
@@ -1757,8 +1763,11 @@ class T5EncoderWithExtraEmbeddings(T5Stack):
         model_out = super().forward(**kwargs)
 
         if extra_embeddings is not None and extra_embeddings_positions is not None:
-            for i in range(extra_embeddings.shape[0]):
-                extra_embedding_seq = extra_embeddings[i, :, :]
+            extra_embeddings_proj = self.extra_embeddings_projection(extra_embeddings)
+
+            # todo optmize
+            for i in range(extra_embeddings_proj.shape[0]):
+                extra_embedding_seq = extra_embeddings_proj[i, :, :]
                 extra_embedding_start_pos = extra_embeddings_positions[i]
 
                 model_out.last_hidden_state[i, extra_embedding_start_pos:, :] = extra_embedding_seq
@@ -1780,6 +1789,8 @@ class T5ForConditionalGenerationExtraEmbeddings(T5ForConditionalGeneration):
         encoder_config.use_cache = False
         encoder_config.is_encoder_decoder = False
 
+        assert config.extra_embeddings_dim is not None, "config.extra_embeddings_dim is required"
+
         # DIFF
         self.encoder = T5EncoderWithExtraEmbeddings(encoder_config, self.shared)
 
@@ -1797,6 +1808,7 @@ class T5ForConditionalGenerationExtraEmbeddings(T5ForConditionalGeneration):
         # Model parallel
         self.model_parallel = False
         self.device_map = None
+
 
     def forward(
         self,
@@ -1830,6 +1842,14 @@ class T5ForConditionalGenerationExtraEmbeddings(T5ForConditionalGeneration):
             if self.config.num_layers == self.config.num_decoder_layers:
                 warnings.warn(__HEAD_MASK_WARNING_MSG, FutureWarning)
                 decoder_head_mask = head_mask
+
+        # if extra_embeddings is not None and extra_embeddings_positions is not None:
+        #     # todo move to tokenizer
+        #     batch_size = extra_embeddings.shape[0]
+        #     embeddings_3d_length = extra_embeddings.shape[1]
+        #     torch_device = extra_embeddings.device
+        #     input_ids = torch.cat( (input_ids, torch.full([ batch_size, embeddings_3d_length ], 0, dtype=torch.long, device=torch_device)), dim=-1 )
+        #     attention_mask = torch.cat( (attention_mask, torch.zeros([ batch_size, embeddings_3d_length ], device=torch_device)), dim=-1 )
 
         # Encode if needed (training, first prediction pass)
         if encoder_outputs is None:
