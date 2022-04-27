@@ -98,7 +98,7 @@ class T5Config(PretrainedConfig):
         use_cache=True,
         pad_token_id=0,
         eos_token_id=1,
-        extra_embeddings_dim=1024, # todo override
+        extra_embeddings_dim=640, # todo override
         **kwargs
     ):
         self.vocab_size = vocab_size

@@ -1754,8 +1754,8 @@ class T5EncoderWithExtraEmbeddings(T5Stack):
 
     def forward(self, **kwargs):
 
-        extra_embeddings = kwargs.pop('extra_embeddings') # [ bs, seq_len, embedding_dim ]
-        extra_embeddings_positions = kwargs.pop('extra_embeddings_positions') # [ bs, seq_len ]
+        extra_embeddings = kwargs.pop('extra_embeddings', None) # [ bs, seq_len, embedding_dim ]
+        extra_embeddings_positions = kwargs.pop('extra_embeddings_positions', None) # [ bs, seq_len ]
 
         if (extra_embeddings is None) ^ (extra_embeddings_positions is None):
             raise Exception('T5EncoderWithExtraEmbeddings expects both extra_embeddings_positions and extra_embeddings to be passed to')
