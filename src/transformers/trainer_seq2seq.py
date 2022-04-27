@@ -118,6 +118,26 @@ class Seq2SeqTrainer(Trainer):
         self._num_beams = num_beams if num_beams is not None else self.args.generation_num_beams
         return super().predict(test_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
 
+    def _prepare_inputs(self, inputs):
+        inputs = super()._prepare_inputs(inputs)
+
+        return inputs
+
+        if "extra_embeddings_positions" in inputs or "extra_embeddings" in inputs:
+            batch_size = inputs['extra_embeddings'].shape[0]
+
+            print("inputs['extra_embeddings'].shape", inputs['extra_embeddings'].shape)
+            print("inputs['input_ids']", inputs['input_ids'].shape)
+            print("inputs['attention_mask']", inputs['attention_mask'].shape)
+            embeddings_3d_length = inputs['extra_embeddings'].shape[1]
+            torch_device = inputs['input_ids'].device
+            inputs['input_ids'] = torch.cat( (inputs['input_ids'], torch.full([ batch_size, embeddings_3d_length ], self.tokenizer.pad_token_id, dtype=torch.long, device=torch_device)), dim=-1 )
+            inputs['attention_mask'] = torch.cat( (inputs['attention_mask'], torch.zeros([ batch_size, embeddings_3d_length ], device=torch_device)), dim=-1 )
+
+            print("inputs extended", list(inputs.keys()), 'inputs["input_ids"].shape', inputs['input_ids'].shape, "inputs['attention_mask']", inputs['attention_mask'].shape)
+
+        return inputs
+
     def prediction_step(
         self,
         model: nn.Module,
@@ -165,6 +185,15 @@ class Seq2SeqTrainer(Trainer):
             gen_kwargs["attention_mask"] = inputs.get("attention_mask", None)
         if "global_attention_mask" in inputs:
             gen_kwargs["global_attention_mask"] = inputs.get("global_attention_mask", None)
+
+        if "extra_embeddings" in inputs:
+            gen_kwargs["extra_embeddings"] = inputs.get("extra_embeddings", None)
+        if "extra_embeddings_positions" in inputs:
+            gen_kwargs["extra_embeddings_positions"] = inputs.get("extra_embeddings_positions", None)
+
+
+        # print("inputs raw:", inputs)
+        # print("inputs keyss:", inputs.keys())
 
         # prepare generation inputs
         # some encoder-decoder models can have varying encoder's and thus
