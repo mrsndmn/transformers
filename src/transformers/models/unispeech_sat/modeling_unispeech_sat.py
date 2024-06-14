@@ -237,7 +237,7 @@ def _compute_mask_indices(
     )
 
     # SpecAugment mask to fill
-    spec_aug_mask = np.zeros((batch_size, sequence_length), dtype=np.bool)
+    spec_aug_mask = np.zeros((batch_size, sequence_length), dtype=bool)
     spec_aug_mask_idxs = []
 
     max_num_masked_span = compute_num_masked_span(sequence_length)
@@ -1819,6 +1819,8 @@ class UniSpeechSatForXVector(UniSpeechSatPreTrainedModel):
         self.classifier = nn.Linear(config.xvector_output_dim, config.xvector_output_dim)
 
         self.objective = AMSoftmaxLoss(config.xvector_output_dim, config.num_labels)
+
+        self.logit_scale = nn.Parameter(torch.ones([]) * 2.6592)
 
         self.init_weights()
 
