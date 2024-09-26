@@ -31,6 +31,9 @@ if is_torch_available():
     import torch
 
     from transformers import ByT5Tokenizer, T5EncoderModel, T5ForConditionalGeneration, T5Model, T5Tokenizer
+
+    from transformers.models.t5.modeling_t5 import T5ForConditionalGenerationExtraEmbeddings, T5EncoderWithExtraEmbeddings
+
     from transformers.models.t5.modeling_t5 import T5_PRETRAINED_MODEL_ARCHIVE_LIST
 
 
@@ -824,6 +827,60 @@ class T5ModelIntegrationTests(unittest.TestCase):
         input_ids = tokenizer("summarize: Hello there", return_tensors="pt").input_ids.to(torch_device)
 
         sequences = model.generate(input_ids)
+
+        output_str = tokenizer.batch_decode(sequences, skip_special_tokens=True)[0]
+        self.assertTrue(output_str == "Hello there!")
+
+    # @slow
+    def test_small_extra_embeddings_forward(self):
+        model = T5ForConditionalGenerationExtraEmbeddings.from_pretrained("t5-small").to(torch_device)
+        model.config.max_length = 24
+        model.config.num_beams = 1
+        model.config.do_sample = False
+        tokenizer = T5Tokenizer.from_pretrained("t5-small")
+
+        batch_size = 3
+        embeddings_3d_length = 16
+
+        tokenizer_out = tokenizer(["what is it?"] * batch_size, return_tensors="pt")
+
+        print('tokenizer_out.input_ids', tokenizer_out.input_ids.shape)
+        print('tokenizer_out.attention_mask', tokenizer_out.attention_mask.shape)
+
+        orig_seq_len = tokenizer_out.input_ids.shape[1]
+        tokenizer_out.input_ids = torch.cat( (tokenizer_out.input_ids, torch.full([ batch_size, embeddings_3d_length ], tokenizer.pad_token_id, dtype=torch.long, device=torch_device)), dim=-1 )
+        tokenizer_out.attention_mask = torch.cat( (tokenizer_out.attention_mask, torch.zeros([ batch_size, embeddings_3d_length ], device=torch_device)), dim=-1 )
+
+        print('tokenizer_out.input_ids', tokenizer_out.input_ids.shape)
+        print('tokenizer_out.attention_mask', tokenizer_out.attention_mask.shape)
+
+        extra_embeddings = torch.rand([batch_size, embeddings_3d_length, model.config.d_model])
+
+        print("tokenizer_out.input_ids", tokenizer.batch_decode(tokenizer_out.input_ids))
+
+        sequences = model.generate(
+            input_ids=tokenizer_out.input_ids.to(torch_device),
+            attention_mask=tokenizer_out.attention_mask.to(torch_device),
+            extra_embeddings=extra_embeddings,
+            extra_embeddings_positions=torch.LongTensor([ orig_seq_len ] * batch_size, device=torch_device)
+        )
+
+        # print("sequences", sequences)
+
+        print("tokenizer.batch_decode", tokenizer.batch_decode(sequences))
+
+    @slow
+    def test_small_extra_embeddings_generation(self):
+        model = T5ForConditionalGenerationExtraEmbeddings.from_pretrained("t5-small").to(torch_device)
+        model.config.max_length = 24
+        model.config.num_beams = 1
+        model.config.do_sample = False
+        tokenizer = T5Tokenizer.from_pretrained("t5-small")
+
+        input_ids = tokenizer("what is it?", return_tensors="pt").input_ids.to(torch_device)
+        extra_embeddings = torch.rand([16, model.config.d_model])
+
+        sequences = model.generate(input_ids, extra_embeddings=extra_embeddings)
 
         output_str = tokenizer.batch_decode(sequences, skip_special_tokens=True)[0]
         self.assertTrue(output_str == "Hello there!")
