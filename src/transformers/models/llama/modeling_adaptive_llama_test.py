@@ -5,11 +5,10 @@ import torch
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInGumbel, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel
 
-@pytest.mark.parametrize("fan_in_class", [AdaptiveFanInGumbel])
-def test_adaptive_fan_in_no_merge(fan_in_class):
+def test_adaptive_fan_in_no_merge():
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2)
 
-    afin = fan_in_class(config)
+    afin = AdaptiveFanInGumbel(config)
 
     batch_size, seq_len = 3, 6
     hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ])
@@ -30,12 +29,10 @@ def test_adaptive_fan_in_no_merge(fan_in_class):
     assert afin_output.merged_embeddings_counts.shape[1] == seq_len
 
 
-
-@pytest.mark.parametrize("fan_in_class", [AdaptiveFanInGumbel])
-def test_adaptive_fan_in_all_merge(fan_in_class):
+def test_adaptive_fan_in_all_merge():
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2)
 
-    afin = fan_in_class(config)
+    afin = AdaptiveFanInGumbel(config)
 
     batch_size, seq_len = 3, 6
     hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ])
@@ -58,11 +55,10 @@ def test_adaptive_fan_in_all_merge(fan_in_class):
 
     return
 
-@pytest.mark.parametrize("fan_in_class", [AdaptiveFanInGumbel])
-def test_adaptive_fan_in_all_but_first_merge(fan_in_class):
+def test_adaptive_fan_in_all_but_first_merge():
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2)
 
-    afin = fan_in_class(config)
+    afin = AdaptiveFanInGumbel(config)
 
     batch_size, seq_len = 3, 6
     hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ])
@@ -129,11 +125,10 @@ def test_adaptive_fan_out():
     restored_hidden_states
 
 
-@pytest.mark.parametrize("fan_in_class", [AdaptiveFanInGumbel])
-def test_adaptive_fan_in_fan_out(fan_in_class):
+def test_adaptive_fan_in_fan_out():
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2)
 
-    afin = fan_in_class(config)
+    afin = AdaptiveFanInGumbel(config)
     afout = AdaptiveFanOut(config)
 
     batch_size, seq_len = 3, 6
