@@ -899,7 +899,7 @@ class AdaptiveLlamaModel(LlamaPreTrainedModel):
 
             hidden_states = layer_outputs[0]
 
-            adaptive_down_layer: AdaptiveFanIn
+            adaptive_down_layer: AdaptiveFanInGumbel
             adaptive_down_output: AdaptiveFanInOutput = adaptive_down_layer.forward(
                 hidden_state=hidden_states,
                 attention_mask=loop_down_attention_mask,

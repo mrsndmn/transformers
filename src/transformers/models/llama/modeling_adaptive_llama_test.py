@@ -3,9 +3,9 @@ import pytest
 import torch
 
 from transformers.models.llama.configuration_llama import LlamaConfig
-from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanIn, AdaptiveFanInGumbel, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInGumbel, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel
 
-@pytest.mark.parametrize("fan_in_class", [AdaptiveFanIn, AdaptiveFanInGumbel])
+@pytest.mark.parametrize("fan_in_class", [AdaptiveFanInGumbel])
 def test_adaptive_fan_in_no_merge(fan_in_class):
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2)
 
@@ -31,7 +31,7 @@ def test_adaptive_fan_in_no_merge(fan_in_class):
 
 
 
-@pytest.mark.parametrize("fan_in_class", [AdaptiveFanIn, AdaptiveFanInGumbel])
+@pytest.mark.parametrize("fan_in_class", [AdaptiveFanInGumbel])
 def test_adaptive_fan_in_all_merge(fan_in_class):
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2)
 
@@ -58,7 +58,7 @@ def test_adaptive_fan_in_all_merge(fan_in_class):
 
     return
 
-@pytest.mark.parametrize("fan_in_class", [AdaptiveFanIn, AdaptiveFanInGumbel])
+@pytest.mark.parametrize("fan_in_class", [AdaptiveFanInGumbel])
 def test_adaptive_fan_in_all_but_first_merge(fan_in_class):
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2)
 
@@ -129,7 +129,7 @@ def test_adaptive_fan_out():
     restored_hidden_states
 
 
-@pytest.mark.parametrize("fan_in_class", [AdaptiveFanIn, AdaptiveFanInGumbel])
+@pytest.mark.parametrize("fan_in_class", [AdaptiveFanInGumbel])
 def test_adaptive_fan_in_fan_out(fan_in_class):
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2)
 

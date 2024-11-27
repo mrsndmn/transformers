@@ -4,13 +4,13 @@ from dataclasses import dataclass, field
 import torch
 
 from transformers.models.llama.configuration_llama import LlamaConfig
-from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanIn, AdaptiveFanInGumbel, AdaptiveFanInGumbel, AdaptiveLlamaForCausalLM, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInGumbel, AdaptiveFanInGumbel, AdaptiveLlamaForCausalLM, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel
 
 
 from transformers import GenerationConfig
 
 VOCAB_SIZE = 1000
-MAX_SEQ_LEN = 100
+MAX_SEQ_LEN = 50
 
 import random
 import torch
@@ -146,7 +146,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
         # loss = outputs.loss + outputs_inverted.loss # + 0.01 * sum([x.fan_in_mlp.weight.norm(2) for x in model.model.adaptive_down])
         # loss = outputs.loss
-        loss = outputs.loss + ce_merging_loss_sum * 0.1
+        loss = outputs.loss + ce_merging_loss_sum * 10
 
         assert ~ loss.isnan().any(), 'loss cant be none'
 
@@ -173,7 +173,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
         extra_log = dict()
         for i, adown in enumerate(model.model.adaptive_down):
-            if isinstance(adown, (AdaptiveFanIn, AdaptiveFanInGumbel)):
+            if isinstance(adown, (AdaptiveFanInGumbel)):
                 merger_mpl_grad = adown.fan_in_mlp.weight.grad.norm(2).item()
                 assert merger_mpl_grad is not None, "merger_mpl_grad is expected to be not none"
                 extra_log[f"merger_mpl_grad_norm_{i}"] = merger_mpl_grad
@@ -522,7 +522,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     learning_rate: float = field(default=1e-4)
     warmup_steps: int = field(default=100)
     per_device_train_batch_size: int = field(default=32)
-    per_device_eval_batch_size: int = field(default=64)
+    per_device_eval_batch_size: int = field(default=16)
     num_train_epochs: int = field(default=50)
     weight_decay: float = field(default=0.01)
     eval_strategy: str = field(default="epoch")
@@ -535,8 +535,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
 
 if __name__ == "__main__":
-    snd = SequentialNumbersDataset(length=1000, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
-    snd_eval = SequentialNumbersDataset(length=100, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
+    snd = SequentialNumbersDataset(length=2000, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
+    snd_eval = SequentialNumbersDataset(length=64, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
 
     num_layers = 2
     num_layers_half = num_layers // 2
