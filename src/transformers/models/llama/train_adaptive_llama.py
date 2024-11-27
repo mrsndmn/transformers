@@ -20,8 +20,6 @@ from transformers import LlamaConfig
 from transformers import Trainer
 from transformers import TrainingArguments
 
-from accelerate.tracking import LOGGER_TYPE_TO_CLASS, GeneralTracker, filter_trackers
-
 import os
 import torch
 import torch.nn as nn
@@ -37,32 +35,21 @@ from typing import List, Optional, Union, Any, Union, Dict, Tuple
 
 import numpy as np
 
-from transformers.modeling_outputs import BaseModelOutputWithPast
-
 from dataclasses import dataclass, field
 import transformers
 from transformers import GenerationConfig
 from transformers.trainer import nested_detach
 from transformers.trainer_pt_utils import EvalLoopContainer, find_batch_size, IterableDatasetShard
-from transformers.trainer_utils import has_length, denumpify_detensorize, EvalLoopOutput, EvalPrediction
+from transformers.trainer_utils import has_length, denumpify_detensorize, EvalLoopOutput
 
 from torch.utils.data import DataLoader
 
 import time
 
-from enum import Enum
-
 import torch
 from typing import Any, Dict
-from transformers import EvalPrediction
-import evaluate
-from evaluate import Metric
-import re
 from typing import List, Optional
 
-from transformers import logging
-
-from functools import cached_property
 
 class ComputeMetrics():
 
@@ -501,8 +488,6 @@ class AdaptiveLlamaTrainer(Trainer):
 
         return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=num_samples)
 
-
-
 @dataclass
 class AdaptiveTrainingArguments(TrainingArguments):
     output_dir: str = field(default="llama_for_sequential_numbers",)
@@ -520,13 +505,17 @@ class AdaptiveTrainingArguments(TrainingArguments):
     logging_steps: int = field(default=5)
     dataloader_drop_last: bool = field(default=True)
 
-
+# WANDB_MODE=online PYTHONPATH=/Users/d.tarasov/workspace/transformers/src:./src ~/miniconda3/envs/audio/bin/python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --per_device_train_batch_size 32 --num_train_epochs 10 --seed 1001
 if __name__ == "__main__":
     snd = SequentialNumbersDataset(length=2000, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
     snd_eval = SequentialNumbersDataset(length=64, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
 
     num_layers = 2
     num_layers_half = num_layers // 2
+
+    # Маска, с помощью которой можно управлять,
+    # для каких слоев нужно использовать обучаемый FanIn,
+    # а для каких слоев будет использоваться просто Identity (DummyFanIn)
     dummy_adaptive_fan_in = [ False ] * num_layers_half
     # dummy_adaptive_fan_in = [ False, False, False, False ]
     # dummy_adaptive_fan_in = [ True, True, True, False ]
