@@ -135,17 +135,7 @@ class AdaptiveLlamaTrainer(Trainer):
             fan_in_merging_logits = fan_in_merging_logits.flatten(0, 1)
             ce_merging_loss_sum += torch.nn.functional.cross_entropy(fan_in_merging_logits, ce_targets)
 
-        outputs_inverted = None
-        # outputs_inverted = model.forward(
-        #     input_ids=inputs['input_ids'],
-        #     labels=inputs['labels'],
-        #     special_embeddings_mask=inputs['special_embeddings_mask'],
-        #     attention_mask=inputs['attention_mask'],
-        #     inverted_merging_map=[ True ]
-        # )
 
-        # loss = outputs.loss + outputs_inverted.loss # + 0.01 * sum([x.fan_in_mlp.weight.norm(2) for x in model.model.adaptive_down])
-        # loss = outputs.loss
         loss = outputs.loss + ce_merging_loss_sum * 10
 
         assert ~ loss.isnan().any(), 'loss cant be none'
@@ -157,9 +147,6 @@ class AdaptiveLlamaTrainer(Trainer):
                 "debug/total_tokens": inputs['attention_mask'].sum().item(),
                 "debug/ce_merging_loss_sum": ce_merging_loss_sum.item(),
             }
-            if outputs_inverted is not None:
-                log_info["debug/inverted_loss"] = outputs_inverted.loss.detach().item()
-                log_info["debug/inverted_mean_merged_tokens"] = outputs_inverted.mean_merged_tokens
 
             self.log(log_info)
 

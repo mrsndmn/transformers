@@ -51,6 +51,7 @@ from ...utils import (
 )
 from .configuration_llama import LlamaConfig
 from .modeling_llama import (
+    LlamaDecoderLayer,
     LlamaRMSNorm,
     LlamaRotaryEmbedding,
     LlamaLinearScalingRotaryEmbedding,
@@ -91,13 +92,19 @@ class AdaptiveMode(Enum):
 @dataclass
 class AdaptiveFanInOutput:
     # new_seq_len is less then input seq_len
+
+    # Схлопнутые эмбэддинги
     hidden_state: torch.Tensor # [ bs, new_seq_len, hidden_size ]
+    # Схлопнутая маска внимания
     attention_mask: torch.Tensor # [ bs, new_seq_len ]
 
-    # mask for bos and eos embeddings that should be never merged
+    # Схлопнутая маска спец токенов
+    # Mask for bos and eos embeddings that should be never merged
     # should be used in subsequent adaptive fan in modules
     special_embeddings_mask: torch.Tensor # [ bs, new_seq_len ]
 
+    # Счетчик схлопнутых токенов
+    # Используется во время разворачивания токенов в AdaptiveFanOut
     # merged_tokens_counts represents how many embeddings
     # has been merged in the corresponding output embedding
     # Eg: merged_tokens_counts = [ 1, 5, 2 ]
@@ -112,13 +119,14 @@ class AdaptiveFanInOutput:
 
 @dataclass
 class AdaptiveFanOutOutput:
+    # Развернутые скрытые состояния
     hidden_state: torch.Tensor # [ bs, restored_seq_len, hidden_size ]
 
 class NoOpFanIn(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
 
-    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, inverted_merging_map = None) -> AdaptiveFanInOutput:
+    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None) -> AdaptiveFanInOutput:
         res = AdaptiveFanInOutput(
             hidden_state=hidden_state,
             attention_mask=attention_mask,
@@ -133,7 +141,6 @@ def scaled_gumbel_softmax(
         logits,
         tau: float = 1,
         scale = 1.0,
-        invert = False,
         hard = True,
         dim: int = -1,
     ):
@@ -154,8 +161,6 @@ def scaled_gumbel_softmax(
 
     # Straight through.
     index = y_soft.max(dim, keepdim=True)[1]
-    if invert:
-        index = 1 - index
 
     y_hard = torch.zeros_like(
         logits, memory_format=torch.legacy_contiguous_format
@@ -171,10 +176,23 @@ class AdaptiveFanInGumbel(nn.Module):
         self.fan_in_mlp = nn.Linear(self.hidden_size * 2, 2)
 
     def generate_merges_transform(self, merging_map, attention_mask):
+        """Generates differentiable merges transform matrix
+
+        Args:
+            merging_map (torch.Tensor ~ [ bs, seq_len, 2 ]): One-Hot-Encoded logits of probabilities either token should be merged
+            attention_mask (torch.Tensor ~ [ bs, seq_len ]): Attention mask
+
+        Returns:
+            aggregated_embeddings_transform (torch.Tensor ~ [ bs, new_seq_len, seq_len ]): Matrix for merging tokens
+            merged_embeddings_counts (torch.Tensor ~ [batch_size, new_seq_len]): Count of merged tokens for corresponding new tokens
+            merged_attention_mask (torch.Tensor ~ [batch_size, new_seq_len]: Attention mask for new sequence length embeddings
+        """
+
         # merging_map ~ [ bs, seq_len, 2 ]
         batch_size, seq_len = merging_map.shape[:2]
         device = merging_map.device
 
+        # Example:
         # [
         #   [ 1, 2, 2, 3, 1, 0 ],
         #   [ 1, 2, 2, 1, 0, 0 ],
@@ -182,6 +200,7 @@ class AdaptiveFanInGumbel(nn.Module):
         merged_embeddings_counts = torch.zeros([batch_size, seq_len], device=device)
         merged_embeddings_counts[:, 0] = 1
 
+        # Example
         # [
         #   [ 1, 1, 1, 1, 1, 0 ],
         #   [ 1, 1, 1, 1, 0, 0 ],
@@ -230,9 +249,19 @@ class AdaptiveFanInGumbel(nn.Module):
         return aggregated_embeddings_transform, merged_embeddings_counts, merged_attention_mask
 
 
-    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, inverted_merging_map = None) -> AdaptiveFanInOutput:
-        # TODO attention mask transforms
-        # TODO return mirroring layer merging informarion to restore
+    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None) -> AdaptiveFanInOutput:
+        """_summary_
+
+        Args:
+            hidden_state (torch.Tensor ~ [ bs, seq_len, hidden_size ]): Transformer hidden states
+            attention_mask (torch.Tensor ~ [ bs, seq_len ]): Hidden states padding attention mask
+            special_embeddings_mask (torch.Tensor ~ [ bs, seq_len ]): Mask for BOS / EOS tokens that could not be merged
+
+            merging_log_probas (torch.Tensor, optional): Force probabilities of merging. Should be used only for tests. Defaults to None.
+
+        Returns:
+            AdaptiveFanInOutput: outputs of the module
+        """
 
         # hidden_state ~ [ bs, seq_len, hidden_size ]
         assert hidden_state.shape[-1] == self.hidden_size
@@ -254,7 +283,9 @@ class AdaptiveFanInGumbel(nn.Module):
         attn_output_pairs = torch.cat([ attn_output_pairs, merging_mask_stub ], dim=1)
         # [ bs, seq_len, 2 ] # should be merged or not (probas)?
 
-        merging_log_probas = self.fan_in_mlp(attn_output_pairs)
+        if merging_log_probas is None:
+            merging_log_probas = self.fan_in_mlp(attn_output_pairs)
+
         if merging_log_probas.isnan().any() or not merging_log_probas.isfinite().all():
             print("found nan merging_log_probas!")
             breakpoint()
@@ -272,7 +303,7 @@ class AdaptiveFanInGumbel(nn.Module):
 
         # OHE: [ bs, seq_len, 2 ]
         if self.training:
-            merging_map = scaled_gumbel_softmax(merging_log_probas, hard=True, dim=-1, invert=inverted_merging_map)
+            merging_map = scaled_gumbel_softmax(merging_log_probas, hard=True, dim=-1)
         else:
             merging_map = torch.zeros_like(merging_log_probas)
             merging_map[:, :, 0] = (merging_log_probas[:, :, 0] > merging_log_probas[:, :, 1]).to(torch.float32)
@@ -335,13 +366,19 @@ class AdaptiveFanOut(nn.Module):
         # self.fan_out_mlp = nn.Linear(self.hidden_size * 2, self.hidden_size)
 
     def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
-        # merged_embeddings_counts from corresponding mirroring
-        # AdaptiveFanIn output
-        #
-        # residual_hidden_states - hidden_states from corresponding mirroring
-        # residual_attention_mask - attention_mask from corresponding mirroring
+        """Unfolds hidden_states based on merged_embeddings_counts
 
-        # hidden_states ~ [ batch_size, new_seq_len, hidden_size ]
+        Args:
+            hidden_states (torch.Tensor ~ [ bs, new_seq_len, hidden_size ]): transformer hidden states with previously reduced sequence length
+            attention_mask (torch.Tensor ~ [ bs, new_seq_len, hidden_size ]): padding attention mask for hidden states
+            merged_embeddings_counts (torch.Tensor ~ [ bs, new_seq_len ]): merged_embeddings_counts from corresponding AdaptiveFanInOutput
+            residual_hidden_states (torch.Tensor ~ [ bs, seq_len, hidden_size ]): hidden states from corresponding AdaptiveFanInOutput
+            residual_attention_mask (torch.Tensor ~ [ bs, seq_len ]): padding attention mask from corresponding AdaptiveFanInOutput
+
+        Returns:
+            AdaptiveFanOutOutput: unfolded hidden states
+        """
+
         # attention_mask ~ [ batch_size, new_seq_len ]
         # merged_embeddings_counts ~ [ batch_size, new_seq_len ]
         assert hidden_states.shape[1] == attention_mask.shape[1], 'seq len mismatch'
@@ -371,225 +408,12 @@ class AdaptiveFanOut(nn.Module):
                 restored_hidden_states[batch_i, restored_idx] += current_hidden_state
                 restored_seq_len += num_repeats
 
-        # DONE restore hidden states with no data leackage
-        #       Будем сохранять резидуал только для последнего токена
-
-        # TODO Но как тогда сделать мерджинг произвольного количества эмб на разных слоях?
         # TODO посмотреть RWKW и RetNet - https://datasecrets.ru/articles/19
 
         assert restored_hidden_states.shape == residual_hidden_states.shape
 
         return AdaptiveFanOutOutput(hidden_state=restored_hidden_states)
 
-
-class AdaptiveLlamaAttention(nn.Module):
-    """Multi-headed attention from 'Attention Is All You Need' paper"""
-
-    def __init__(self, config: LlamaConfig, layer_idx: Optional[int] = None):
-        super().__init__()
-        self.config = config
-        self.layer_idx = layer_idx
-
-        if layer_idx is None:
-            logger.warning_once(
-                f"Instantiating {self.__class__.__name__} without passing a `layer_idx` is not recommended and will "
-                "lead to errors during the forward call if caching is used. Please make sure to provide a `layer_idx` "
-                "when creating this class."
-            )
-
-        self.attention_dropout = config.attention_dropout
-        self.hidden_size = config.hidden_size
-        self.num_heads = config.num_attention_heads
-        self.head_dim = getattr(config, "head_dim", self.hidden_size // self.num_heads)
-        self.num_key_value_heads = config.num_key_value_heads
-        self.num_key_value_groups = self.num_heads // self.num_key_value_heads
-        self.max_position_embeddings = config.max_position_embeddings
-        self.rope_theta = config.rope_theta
-        self.is_causal = True
-
-        self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.attention_bias)
-        self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
-        self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias)
-        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=config.attention_bias)
-
-        # TODO (joao): remove in v4.46 (RoPE is computed in the model, not in the decoder layers)
-        self.rotary_emb = LlamaRotaryEmbedding(config=self.config)
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Cache] = None,
-        output_attentions: bool = False,
-        use_cache: bool = False,
-        cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
-        **kwargs,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        bsz, q_len, _ = hidden_states.size()
-
-        if self.config.pretraining_tp > 1:
-            key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
-            query_slices = self.q_proj.weight.split(
-                (self.num_heads * self.head_dim) // self.config.pretraining_tp, dim=0
-            )
-            key_slices = self.k_proj.weight.split(key_value_slicing, dim=0)
-            value_slices = self.v_proj.weight.split(key_value_slicing, dim=0)
-
-            query_states = [F.linear(hidden_states, query_slices[i]) for i in range(self.config.pretraining_tp)]
-            query_states = torch.cat(query_states, dim=-1)
-
-            key_states = [F.linear(hidden_states, key_slices[i]) for i in range(self.config.pretraining_tp)]
-            key_states = torch.cat(key_states, dim=-1)
-
-            value_states = [F.linear(hidden_states, value_slices[i]) for i in range(self.config.pretraining_tp)]
-            value_states = torch.cat(value_states, dim=-1)
-
-        else:
-            query_states = self.q_proj(hidden_states)
-            key_states = self.k_proj(hidden_states)
-            value_states = self.v_proj(hidden_states)
-
-        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-
-        if position_embeddings is None:
-            logger.warning_once(
-                "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
-                "through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed "
-                "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.46 `position_ids` will be "
-                "removed and `position_embeddings` will be mandatory."
-            )
-            cos, sin = self.rotary_emb(value_states, position_ids)
-        else:
-            cos, sin = position_embeddings
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
-
-        if past_key_value is not None:
-            # sin and cos are specific to RoPE models; cache_position needed for the static cache
-            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
-            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
-
-        key_states = repeat_kv(key_states, self.num_key_value_groups)
-        value_states = repeat_kv(value_states, self.num_key_value_groups)
-        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
-
-        if attention_mask is not None:  # no matter the length, we just slice it
-            causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
-            attn_weights = attn_weights + causal_mask
-
-        # upcast attention to fp32
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-        attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-        attn_output = torch.matmul(attn_weights, value_states)
-
-        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-            raise ValueError(
-                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-                f" {attn_output.size()}"
-            )
-
-        attn_output = attn_output.transpose(1, 2).contiguous()
-
-        attn_output = attn_output.reshape(bsz, q_len, -1)
-
-        if self.config.pretraining_tp > 1:
-            attn_output = attn_output.split(self.hidden_size // self.config.pretraining_tp, dim=2)
-            o_proj_slices = self.o_proj.weight.split(self.hidden_size // self.config.pretraining_tp, dim=1)
-            attn_output = sum([F.linear(attn_output[i], o_proj_slices[i]) for i in range(self.config.pretraining_tp)])
-        else:
-            attn_output = self.o_proj(attn_output)
-
-
-        if not output_attentions:
-            attn_weights = None
-
-        return attn_output, attn_weights, past_key_value
-
-
-
-class AdaptiveLlamaDecoderLayer(nn.Module):
-    def __init__(self, config: LlamaConfig, layer_idx: int):
-        super().__init__()
-        self.hidden_size = config.hidden_size
-
-        assert config._attn_implementation == 'eager'
-
-        self.self_attn = AdaptiveLlamaAttention(config=config, layer_idx=layer_idx)
-
-        self.mlp = LlamaMLP(config)
-        self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Cache] = None,
-        output_attentions: Optional[bool] = False,
-        use_cache: Optional[bool] = False,
-        cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
-        **kwargs,
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-        """
-        Args:
-            hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
-            attention_mask (`torch.FloatTensor`, *optional*):
-                attention mask of size `(batch_size, sequence_length)` if flash attention is used or `(batch_size, 1,
-                query_sequence_length, key_sequence_length)` if default attention is used.
-            output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more detail.
-            use_cache (`bool`, *optional*):
-                If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
-                (see `past_key_values`).
-            past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
-            cache_position (`torch.LongTensor` of shape `(sequence_length)`, *optional*):
-                Indices depicting the position of the input sequence tokens in the sequence
-            position_embeddings (`Tuple[torch.FloatTensor, torch.FloatTensor]`, *optional*):
-                Tuple containing the cosine and sine positional embeddings of shape `(batch_size, seq_len, head_dim)`,
-                with `head_dim` being the embedding dimension of each attention head.
-            kwargs (`dict`, *optional*):
-                Arbitrary kwargs to be ignored, used for FSDP and other methods that injects code
-                into the model
-        """
-        residual = hidden_states
-
-        hidden_states = self.input_layernorm(hidden_states)
-
-        # Self Attention
-        hidden_states, self_attn_weights, present_key_value = self.self_attn(
-            hidden_states=hidden_states,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_value=past_key_value,
-            output_attentions=output_attentions,
-            use_cache=use_cache,
-            cache_position=cache_position,
-            position_embeddings=position_embeddings,
-            **kwargs,
-        )
-        hidden_states = residual + hidden_states
-
-        # Fully Connected
-        residual = hidden_states
-        hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
-
-        outputs = (hidden_states,)
-
-        if output_attentions:
-            outputs += (self_attn_weights,)
-
-        if use_cache:
-            outputs += (present_key_value,)
-
-        return outputs
 
 
 LLAMA_START_DOCSTRING = r"""
@@ -613,11 +437,11 @@ LLAMA_START_DOCSTRING = r"""
     "The bare LLaMA Model outputting raw hidden-states without any specific head on top.",
     LLAMA_START_DOCSTRING,
 )
-class LlamaPreTrainedModel(PreTrainedModel):
+class AdaptiveLlamaPreTrainedModel(PreTrainedModel):
     config_class = LlamaConfig
     base_model_prefix = "model"
     supports_gradient_checkpointing = True
-    _no_split_modules = ["AdaptiveLlamaDecoderLayer"]
+    _no_split_modules = ["LlamaDecoderLayer"]
     _skip_keys_device_placement = ["past_key_values"]
     _supports_flash_attn_2 = True
     _supports_sdpa = True
@@ -716,9 +540,9 @@ LLAMA_INPUTS_DOCSTRING = r"""
     "The bare LLaMA Model outputting raw hidden-states without any specific head on top.",
     LLAMA_START_DOCSTRING,
 )
-class AdaptiveLlamaModel(LlamaPreTrainedModel):
+class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
     """
-    Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`AdaptiveLlamaDecoderLayer`]
+    Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`LlamaDecoderLayer`]
 
     Args:
         config: LlamaConfig
@@ -748,10 +572,10 @@ class AdaptiveLlamaModel(LlamaPreTrainedModel):
             [get_fan_in_module(is_dummy_fan_in[i]) for i in range(num_hidden_layers_half)]
         )
         self.layers_down = nn.ModuleList(
-            [AdaptiveLlamaDecoderLayer(config, layer_idx) for layer_idx in range(num_hidden_layers_half)]
+            [LlamaDecoderLayer(config, layer_idx) for layer_idx in range(num_hidden_layers_half)]
         )
         self.layers_up = nn.ModuleList(
-            [AdaptiveLlamaDecoderLayer(config, layer_idx) for layer_idx in range(num_hidden_layers_half)]
+            [LlamaDecoderLayer(config, layer_idx) for layer_idx in range(num_hidden_layers_half)]
         )
         self.adaptive_up = nn.ModuleList(
             [AdaptiveFanOut(config) for _ in range(num_hidden_layers_half)]
@@ -775,7 +599,6 @@ class AdaptiveLlamaModel(LlamaPreTrainedModel):
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         special_embeddings_mask: Optional[torch.Tensor] = None,
-        inverted_merging_map=None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
@@ -859,10 +682,6 @@ class AdaptiveLlamaModel(LlamaPreTrainedModel):
         fan_in_merging_logits = []
 
         for i, (decoder_layer, adaptive_down_layer) in enumerate(zip(self.layers_down, self.adaptive_down)):
-            current_inverted_merging_map = None
-            if inverted_merging_map is not None:
-                current_inverted_merging_map = inverted_merging_map[i]
-
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
@@ -904,7 +723,6 @@ class AdaptiveLlamaModel(LlamaPreTrainedModel):
                 hidden_state=hidden_states,
                 attention_mask=loop_down_attention_mask,
                 special_embeddings_mask=loop_down_special_embeddings_mask,
-                inverted_merging_map=current_inverted_merging_map,
             )
 
             fan_in_merging_maps.append(adaptive_down_output.merging_map)
@@ -1151,7 +969,8 @@ class AdaptiveLlamaModel(LlamaPreTrainedModel):
         return causal_mask
 
 
-class AdaptiveLlamaForCausalLM(LlamaPreTrainedModel, GenerationMixin):
+# Mostly Copy paste of LlamaForCausalLM
+class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
     _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config):
@@ -1188,7 +1007,6 @@ class AdaptiveLlamaForCausalLM(LlamaPreTrainedModel, GenerationMixin):
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         special_embeddings_mask: Optional[torch.Tensor] = None,
-        inverted_merging_map=None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
@@ -1244,7 +1062,6 @@ class AdaptiveLlamaForCausalLM(LlamaPreTrainedModel, GenerationMixin):
             input_ids=input_ids,
             attention_mask=attention_mask,
             special_embeddings_mask=special_embeddings_mask,
-            inverted_merging_map=inverted_merging_map,
             position_ids=position_ids,
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
