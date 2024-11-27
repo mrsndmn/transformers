@@ -9,8 +9,8 @@ from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInGumbe
 
 from transformers import GenerationConfig
 
-VOCAB_SIZE = 1000
-MAX_SEQ_LEN = 50
+VOCAB_SIZE = 200
+MAX_SEQ_LEN = 20
 
 import random
 import torch
@@ -118,12 +118,12 @@ class AdaptiveLlamaTrainer(Trainer):
 
         ce_merging_loss_sum = 0
         for i, fan_in_merging_logits in enumerate(outputs.fan_in_merging_logits):
-            ce_targets = 1 - outputs.fan_in_merging_maps[i][:, :, 1].flatten()
+            ce_targets = outputs.fan_in_merging_maps[i][:, :, 1].flatten()
             fan_in_merging_logits = fan_in_merging_logits.flatten(0, 1)
             ce_merging_loss_sum += torch.nn.functional.cross_entropy(fan_in_merging_logits, ce_targets)
 
 
-        loss = outputs.loss + ce_merging_loss_sum * 10
+        loss = outputs.loss + ce_merging_loss_sum * 0.1
 
         assert ~ loss.isnan().any(), 'loss cant be none'
 
