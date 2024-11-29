@@ -118,12 +118,20 @@ class AdaptiveLlamaTrainer(Trainer):
 
         ce_merging_loss_sum = 0
         for i, fan_in_merging_logits in enumerate(outputs.fan_in_merging_logits):
-            ce_targets = outputs.fan_in_merging_maps[i][:, :, 1].flatten()
+            # ce_targets = outputs.fan_in_merging_maps[i][:, :, 1].flatten()
             fan_in_merging_logits = fan_in_merging_logits.flatten(0, 1)
+            ce_targets = torch.ones([ fan_in_merging_logits.shape[0] ], device=fan_in_merging_logits.device, dtype=torch.long)
             ce_merging_loss_sum += torch.nn.functional.cross_entropy(fan_in_merging_logits, ce_targets)
+            # breakpoint()
+            # print("fan_in_merging_logits", fan_in_merging_logits[:2])
+            # print("ce_merging_loss_sum", i, ce_merging_loss_sum)
+                # print(fan_in_merging_logits[:10])
 
 
-        loss = outputs.loss + ce_merging_loss_sum * 0.1
+
+        # loss = outputs.loss
+        loss = outputs.loss + ce_merging_loss_sum * 0.5
+        outputs.loss = loss
 
         assert ~ loss.isnan().any(), 'loss cant be none'
 
