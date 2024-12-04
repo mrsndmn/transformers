@@ -175,6 +175,9 @@ class LlamaConfig(PretrainedConfig):
         self.intermediate_size = intermediate_size
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
+
+        if dummy_adaptive_fan_in is None:
+            dummy_adaptive_fan_in = [ True ] * (num_hidden_layers // 2)
         self.dummy_adaptive_fan_in = dummy_adaptive_fan_in
 
         # for backward compatibility

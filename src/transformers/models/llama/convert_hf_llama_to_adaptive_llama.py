@@ -1,0 +1,96 @@
+# Copyright 2022 EleutherAI and The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import argparse
+import gc
+import json
+import os
+import shutil
+import warnings
+from typing import List
+
+import torch
+
+from transformers import AutoModelForCausalLM, GenerationConfig, LlamaConfig, LlamaForCausalLM, LlamaTokenizer, PreTrainedTokenizerFast
+
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
+
+def build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, output_dir, dummy_adaptive_fan_in=None):
+
+    llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint)
+    llama_model_state_dict = llama_model.state_dict()
+
+    config: LlamaConfig = llama_model.config
+    config.dummy_adaptive_fan_in = dummy_adaptive_fan_in
+    num_hidden_layers = config.num_hidden_layers
+    assert num_hidden_layers % 2 == 0
+    half_num_hidden_layers = num_hidden_layers // 2
+
+    adaptive_llama_model = AdaptiveLlamaForCausalLM(config)
+    adaptive_llama_model_state_dict = adaptive_llama_model.state_dict()
+
+    for param_name, param_value in llama_model_state_dict.items():
+        param_name: str
+        if param_name.startswith('model.layers.'):
+            layer_num = int(param_name.split(".")[2])
+
+            if layer_num < half_num_hidden_layers:
+                adaptive_layer_num = layer_num
+                param_name = param_name.replace(f"model.layers.{layer_num}", f"model.layers_down.{layer_num}")
+            else:
+                adaptive_layer_num = layer_num - half_num_hidden_layers
+                param_name = param_name.replace(f"model.layers.{layer_num}", f"model.layers_up.{adaptive_layer_num}")
+            print("new param name:", param_name)
+
+        adaptive_llama_model_state_dict[param_name] = param_value
+
+    adaptive_llama_model.load_state_dict(adaptive_llama_model_state_dict)
+
+    return adaptive_llama_model
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--from_llama",
+        help="HF Llama checkpoint for weights conversion",
+        default="HuggingFaceTB/SmolLM-135M"
+    )
+    parser.add_argument(
+        "--output_dir",
+        help="Location to write HF model and tokenizer",
+    )
+    parser.add_argument(
+        "--safe_serialization", default=True, type=bool, help="Whether or not to save using `safetensors`."
+    )
+
+    args = parser.parse_args()
+
+    llama_config = LlamaConfig.from_pretrained(args.from_llama)
+    num_layers = llama_config.num_hidden_layers
+    assert num_layers % 2 == 0
+
+    dummy_adaptive_fan_in = [ True ] * (num_layers // 2)
+    dummy_adaptive_fan_in[-1] = False
+    print("dummy_adaptive_fan_in", dummy_adaptive_fan_in)
+    model = build_adaptive_llama_from_llama_checkpoint(args.from_llama, args.output_dir, dummy_adaptive_fan_in=dummy_adaptive_fan_in)
+
+    llama_model = AutoModelForCausalLM.from_pretrained( args.from_llama )
+
+    assert (llama_model.model.layers[0].mlp.gate_proj.weight == model.model.layers_down[0].mlp.gate_proj.weight).all()
+
+    print(model)
+    breakpoint()
+
+if __name__ == "__main__":
+    main()
