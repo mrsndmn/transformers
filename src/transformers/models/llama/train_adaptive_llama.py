@@ -141,7 +141,7 @@ class AdaptiveLlamaTrainer(Trainer):
         count_merging_losses = 0
         sum_merged_tokens = 0
 
-        if isinstance(model, AdaptiveLlamaForCausalLM):
+        if isinstance(model, AdaptiveLlamaForCausalLM) and self.args.ce_merging_loss_weight > 0.0:
             sum_merged_tokens = outputs.mean_merged_tokens
             for i, (fan_in_merging_logits, fan_in_merging_logits_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                 # ce_targets = outputs.fan_in_merging_maps[i][:, :, 1].flatten()
@@ -569,6 +569,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
     ce_merging_loss_weight: float = 0.1
     dummy_adaptive_fan_in_layers: int = 14
     reverse_dummy_adaptive_fan_in_layers: bool = False
+    
+    select_train_dataset_items: int = 2500
 
 def build_model(training_args: AdaptiveTrainingArguments):
     tokeniezer = None
@@ -684,7 +686,7 @@ if __name__ == "__main__":
                 
                 return tokenized_inputs
 
-            smollm_corpus = smollm_corpus.select(range(2500)).map(tokenize_function, batched=True)
+            smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items)).map(tokenize_function, batched=True)
             # smollm_corpus = smollm_corpus.rename_column('special_tokens_mask', 'special_embeddings_mask')
             # print(smollm_corpus[0]['input_ids'])
             # breakpoint()
