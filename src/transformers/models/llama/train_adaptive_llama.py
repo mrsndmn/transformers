@@ -153,7 +153,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
 
         # loss = outputs.loss
-        loss = outputs.loss + ce_merging_loss_sum * 0.1
+        loss = outputs.loss + ce_merging_loss_sum * self.args.ce_merging_loss_weight
         outputs.loss = loss
 
         assert ~ loss.isnan().any(), 'loss cant be none'
@@ -550,6 +550,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
     training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
     model_type: str = "dummy" # dummy | pretrained
+    
+    ce_merging_loss_weight: float = 0.1
 
 def build_model(training_args: AdaptiveTrainingArguments):
     tokeniezer = None
@@ -593,7 +595,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
         tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
     elif training_args.model_type == 'SmolLM-135M':
         llama_checkpoint = "HuggingFaceTB/SmolLM-135M"
-        model = LlamaForCausalLM.from_pretrained(llama_checkpoint)
+        model = LlamaForCausalLM.from_pretrained(llama_checkpoint, )
         tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
     else:
         raise ValueError(f"{training_args.training_dataset} is not supported")
@@ -603,8 +605,10 @@ def build_model(training_args: AdaptiveTrainingArguments):
     return model, tokeniezer
 
 
+# pretrained
 # WANDB_MODE=online PYTHONPATH=/Users/d.tarasov/workspace/transformers/src:./src ~/miniconda3/envs/audio/bin/python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --per_device_train_batch_size 32 --num_train_epochs 10 --seed 1001 --training_dataset smollm-corpus --model_type pretrained
 
+# dummy
 # WANDB_MODE=online PYTHONPATH=/Users/d.tarasov/workspace/transformers/src:./src ~/miniconda3/envs/audio/bin/python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --per_device_train_batch_size 32 --num_train_epochs 10 --seed 1001
 if __name__ == "__main__":
 
@@ -671,6 +675,8 @@ if __name__ == "__main__":
     )
 
     # with torch.autograd.set_detect_anomaly(True):
+    
+    # with torch.autocast("cuda"):
     trainer.train(
         resume_from_checkpoint=None,
         # resume_from_checkpoint="llama_for_sequential_numbers/checkpoint-1170"
