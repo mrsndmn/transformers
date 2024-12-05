@@ -568,6 +568,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     
     ce_merging_loss_weight: float = 0.1
     dummy_adaptive_fan_in_layers: int = 14
+    reverse_dummy_adaptive_fan_in_layers: bool = False
 
 def build_model(training_args: AdaptiveTrainingArguments):
     tokeniezer = None
@@ -607,6 +608,8 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
         smart_layers_count = num_layers_half - training_args.dummy_adaptive_fan_in_layers
         dummy_adaptive_fan_in = [ True ] * training_args.dummy_adaptive_fan_in_layers + [ False ] * smart_layers_count
+        if training_args.reverse_dummy_adaptive_fan_in_layers:
+            dummy_adaptive_fan_in = list(reversed(dummy_adaptive_fan_in))
         
         assert len(dummy_adaptive_fan_in) == num_layers_half
         model = build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=dummy_adaptive_fan_in)
@@ -681,7 +684,7 @@ if __name__ == "__main__":
                 
                 return tokenized_inputs
 
-            smollm_corpus = smollm_corpus.select(range(10000)).map(tokenize_function, batched=True)
+            smollm_corpus = smollm_corpus.select(range(2500)).map(tokenize_function, batched=True)
             # smollm_corpus = smollm_corpus.rename_column('special_tokens_mask', 'special_embeddings_mask')
             # print(smollm_corpus[0]['input_ids'])
             # breakpoint()
