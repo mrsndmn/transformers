@@ -133,6 +133,7 @@ class NoOpFanIn(nn.Module):
             merged_embeddings_counts=attention_mask,
             special_embeddings_mask=special_embeddings_mask,
             merging_map=None,
+            merging_map_logits=None,
         )
 
         return res
@@ -415,6 +416,29 @@ class AdaptiveFanOut(nn.Module):
         return AdaptiveFanOutOutput(hidden_state=restored_hidden_states)
 
 
+class NoopAdaptiveFanOut(nn.Module):
+    def __init__(self, config: LlamaConfig):
+        super().__init__()
+        self.hidden_size = config.hidden_size
+        # self.fan_out_mlp = nn.Linear(self.hidden_size * 2, self.hidden_size)
+
+    def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
+        """Returns base hidden states
+
+        Args:
+            hidden_states (torch.Tensor ~ [ bs, new_seq_len, hidden_size ]): transformer hidden states with previously reduced sequence length
+            attention_mask (torch.Tensor ~ [ bs, new_seq_len, hidden_size ]): padding attention mask for hidden states
+            merged_embeddings_counts (torch.Tensor ~ [ bs, new_seq_len ]): merged_embeddings_counts from corresponding AdaptiveFanInOutput
+            residual_hidden_states (torch.Tensor ~ [ bs, seq_len, hidden_size ]): hidden states from corresponding AdaptiveFanInOutput
+            residual_attention_mask (torch.Tensor ~ [ bs, seq_len ]): padding attention mask from corresponding AdaptiveFanInOutput
+
+        Returns:
+            AdaptiveFanOutOutput: input hidden states
+        """
+
+        return AdaptiveFanOutOutput(hidden_state=hidden_states)
+
+
 
 LLAMA_START_DOCSTRING = r"""
     This model inherits from [`PreTrainedModel`]. Check the superclass documentation for the generic methods the
@@ -577,9 +601,17 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         self.layers_up = nn.ModuleList(
             [LlamaDecoderLayer(config, layer_idx) for layer_idx in range(num_hidden_layers_half)]
         )
+
+        def get_fan_out_module(is_dummy):
+            if is_dummy:
+                return NoopAdaptiveFanOut(config)
+            return AdaptiveFanOut(config)
+
+        is_dummy_fan_out = list(reversed(is_dummy_fan_in))
         self.adaptive_up = nn.ModuleList(
-            [AdaptiveFanOut(config) for _ in range(num_hidden_layers_half)]
+            [get_fan_out_module(is_dummy_fan_out[i]) for i in range(num_hidden_layers_half)]
         )
+
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.rotary_emb = LlamaRotaryEmbedding(config=config)
         self.gradient_checkpointing = False

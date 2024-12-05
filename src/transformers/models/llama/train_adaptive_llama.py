@@ -4,8 +4,11 @@ from dataclasses import dataclass, field
 import torch
 
 from transformers.models.llama.configuration_llama import LlamaConfig
-from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInGumbel, AdaptiveFanInGumbel, AdaptiveLlamaForCausalLM, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInGumbel, AdaptiveFanInGumbel, AdaptiveLlamaForCausalLM, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel, AdaptiveCausalLMOutputWithPast
+from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
+from datasets import load_dataset
+import datasets
 
 from transformers import GenerationConfig
 
@@ -15,7 +18,7 @@ MAX_SEQ_LEN = 20
 import random
 import torch
 import transformers
-from transformers import LlamaConfig
+from transformers import LlamaConfig, AutoTokenizer, DataCollatorForLanguageModeling
 
 from transformers import Trainer
 from transformers import TrainingArguments
@@ -107,31 +110,50 @@ class AdaptiveLlamaTrainer(Trainer):
         Subclass and override for custom behavior.
         """
 
-        outputs = model.forward(
-            input_ids=inputs['input_ids'],
-            labels=inputs['labels'],
-            special_embeddings_mask=inputs['special_embeddings_mask'],
-            attention_mask=inputs['attention_mask'],
-        )
+        labels = inputs.get('labels', None)
+        if labels is None:
+            labels = inputs['input_ids']
+
+        special_embeddings_mask = inputs.get('special_embeddings_mask', None)
+        if special_embeddings_mask is None:
+            special_embeddings_mask = torch.zeros_like(labels)
+
+        model_kwargs = {
+            "input_ids": inputs['input_ids'],
+            "labels": labels,
+            "attention_mask": inputs['attention_mask'],
+        }
+
+        if isinstance(model, AdaptiveLlamaForCausalLM):
+            model_kwargs["special_embeddings_mask"] = special_embeddings_mask
+
+        outputs = model.forward(**model_kwargs)
         # [ bs, seq_len, 2 ]
 
         # fan_in_merging_logits_sum = sum(x.sum(dim=[0, 1]) for x in fan_in_merging_logits)
 
-        ce_merging_loss_sum = 0
-        for i, fan_in_merging_logits in enumerate(outputs.fan_in_merging_logits):
-            # ce_targets = outputs.fan_in_merging_maps[i][:, :, 1].flatten()
-            fan_in_merging_logits = fan_in_merging_logits.flatten(0, 1)
-            ce_targets = torch.ones([ fan_in_merging_logits.shape[0] ], device=fan_in_merging_logits.device, dtype=torch.long)
-            ce_merging_loss_sum += torch.nn.functional.cross_entropy(fan_in_merging_logits, ce_targets)
-            # breakpoint()
-            # print("fan_in_merging_logits", fan_in_merging_logits[:2])
-            # print("ce_merging_loss_sum", i, ce_merging_loss_sum)
-                # print(fan_in_merging_logits[:10])
+        ce_merging_loss_sum = torch.tensor(0.0, device=outputs.loss.device)
+        mean_merged_tokens = 0
+
+        if isinstance(model, AdaptiveLlamaForCausalLM):
+            mean_merged_tokens = outputs.mean_merged_tokens
+            for i, fan_in_merging_logits in enumerate(outputs.fan_in_merging_logits):
+                # ce_targets = outputs.fan_in_merging_maps[i][:, :, 1].flatten()
+                if fan_in_merging_logits is None:
+                    continue
+
+                fan_in_merging_logits = fan_in_merging_logits.flatten(0, 1)
+                ce_targets = torch.ones([ fan_in_merging_logits.shape[0] ], device=fan_in_merging_logits.device, dtype=torch.long)
+                ce_merging_loss_sum += torch.nn.functional.cross_entropy(fan_in_merging_logits, ce_targets)
+                # breakpoint()
+                # print("fan_in_merging_logits", fan_in_merging_logits[:2])
+                # print("ce_merging_loss_sum", i, ce_merging_loss_sum)
+                    # print(fan_in_merging_logits[:10])
 
 
 
         # loss = outputs.loss
-        loss = outputs.loss + ce_merging_loss_sum * 0.5
+        loss = outputs.loss + ce_merging_loss_sum * 0.1
         outputs.loss = loss
 
         assert ~ loss.isnan().any(), 'loss cant be none'
@@ -139,7 +161,7 @@ class AdaptiveLlamaTrainer(Trainer):
         if log_metrics:
             log_info = {
                 "debug/straight_loss": outputs.loss.detach().item(),
-                "debug/mean_merged_tokens": outputs.mean_merged_tokens,
+                "debug/mean_merged_tokens": mean_merged_tokens,
                 "debug/total_tokens": inputs['attention_mask'].sum().item(),
                 "debug/ce_merging_loss_sum": ce_merging_loss_sum.item(),
             }
@@ -155,11 +177,12 @@ class AdaptiveLlamaTrainer(Trainer):
         #     breakpoint()
 
         extra_log = dict()
-        for i, adown in enumerate(model.model.adaptive_down):
-            if isinstance(adown, (AdaptiveFanInGumbel)):
-                merger_mpl_grad = adown.fan_in_mlp.weight.grad.norm(2).item()
-                assert merger_mpl_grad is not None, "merger_mpl_grad is expected to be not none"
-                extra_log[f"merger_mpl_grad_norm_{i}"] = merger_mpl_grad
+        if hasattr(model.model, "adaptive_down"):
+            for i, adown in enumerate(model.model.adaptive_down):
+                if isinstance(adown, (AdaptiveFanInGumbel)):
+                    merger_mpl_grad = adown.fan_in_mlp.weight.grad.norm(2).item()
+                    assert merger_mpl_grad is not None, "merger_mpl_grad is expected to be not none"
+                    extra_log[f"merger_mpl_grad_norm_{i}"] = merger_mpl_grad
 
         self.log(extra_log)
 
@@ -168,16 +191,27 @@ class AdaptiveLlamaTrainer(Trainer):
 
     def update_eval_set_kwargs_containers(self, model, inputs):
 
+        bos_token_id = 1
+        eos_token_id = 2
+        pad_token_id = 0
+        forced_eos_token_id = eos_token_id
+
+        if self.processing_class is not None:
+            bos_token_id = self.processing_class.bos_token_id
+            eos_token_id = self.processing_class.eos_token_id
+            pad_token_id = self.processing_class.pad_token_id
+            forced_eos_token_id = eos_token_id
+
         gen_params = {
             "do_sample": False,
             "early_stopping": False,
             "num_beams": 1,
             "repetition_penalty": 2.5,
             "remove_invalid_values": True,
-            "bos_token_id": 1,
-            "eos_token_id": 2,
-            "pad_token_id": 0,
-            "forced_eos_token_id": 2,
+            "bos_token_id": bos_token_id,
+            "eos_token_id": eos_token_id,
+            "pad_token_id": pad_token_id,
+            "forced_eos_token_id": forced_eos_token_id,
             "use_cache": False,
             "no_repeat_ngram_size": 4,
             "num_return_sequences": 1,
@@ -514,47 +548,115 @@ class AdaptiveTrainingArguments(TrainingArguments):
     logging_steps: int = field(default=5)
     dataloader_drop_last: bool = field(default=True)
 
-# WANDB_MODE=online PYTHONPATH=/Users/d.tarasov/workspace/transformers/src:./src ~/miniconda3/envs/audio/bin/python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --per_device_train_batch_size 32 --num_train_epochs 10 --seed 1001
-if __name__ == "__main__":
-    snd = SequentialNumbersDataset(length=2000, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
-    snd_eval = SequentialNumbersDataset(length=64, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
+    training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
+    model_type: str = "dummy" # dummy | pretrained
 
-    num_layers = 2
-    num_layers_half = num_layers // 2
+def build_model(training_args: AdaptiveTrainingArguments):
+    tokeniezer = None
 
-    # Маска, с помощью которой можно управлять,
-    # для каких слоев нужно использовать обучаемый FanIn,
-    # а для каких слоев будет использоваться просто Identity (DummyFanIn)
-    dummy_adaptive_fan_in = [ False ] * num_layers_half
-    # dummy_adaptive_fan_in = [ False, False, False, False ]
-    # dummy_adaptive_fan_in = [ True, True, True, False ]
-    # dummy_adaptive_fan_in = [ False, True, True, True ]
-    assert len(dummy_adaptive_fan_in) == num_layers_half
-    llama_config = LlamaConfig(
-        hidden_size=128,
-        vocab_size=VOCAB_SIZE,
-        intermediate_size=256,
-        num_hidden_layers=num_layers,
-        num_attention_heads=8,
-        max_position_embeddings=MAX_SEQ_LEN,
-        use_cache=False,
-        attn_implementation = 'eager',
-        dummy_adaptive_fan_in = dummy_adaptive_fan_in,
-    )
+    if training_args.model_type == 'dummy':
+        num_layers = 2
+        num_layers_half = num_layers // 2
 
-    model = AdaptiveLlamaForCausalLM(llama_config)
-    model.train()
+        # Маска, с помощью которой можно управлять,
+        # для каких слоев нужно использовать обучаемый FanIn,
+        # а для каких слоев будет использоваться просто Identity (DummyFanIn)
+        dummy_adaptive_fan_in = [ False ] * num_layers_half
+        # dummy_adaptive_fan_in = [ False, False, False, False ]
+        # dummy_adaptive_fan_in = [ True, True, True, False ]
+        # dummy_adaptive_fan_in = [ False, True, True, True ]
+        assert len(dummy_adaptive_fan_in) == num_layers_half
+        llama_config = LlamaConfig(
+            hidden_size=128,
+            vocab_size=VOCAB_SIZE,
+            intermediate_size=256,
+            num_hidden_layers=num_layers,
+            num_attention_heads=8,
+            max_position_embeddings=MAX_SEQ_LEN,
+            use_cache=False,
+            attn_implementation = 'eager',
+            dummy_adaptive_fan_in = dummy_adaptive_fan_in,
+        )
+
+        model = AdaptiveLlamaForCausalLM(llama_config)
+    elif training_args.model_type == 'pretrained':
+        from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
+
+        llama_checkpoint = "HuggingFaceTB/SmolLM-135M"
+        llama_config = LlamaConfig.from_pretrained(llama_checkpoint)
+        num_layers = llama_config.num_hidden_layers
+
+        dummy_adaptive_fan_in = [ True ] * (num_layers // 2)
+        dummy_adaptive_fan_in[-1] = False
+        model = build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=dummy_adaptive_fan_in)
+
+        tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
+    elif training_args.model_type == 'SmolLM-135M':
+        llama_checkpoint = "HuggingFaceTB/SmolLM-135M"
+        model = LlamaForCausalLM.from_pretrained(llama_checkpoint)
+        tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
+    else:
+        raise ValueError(f"{training_args.training_dataset} is not supported")
 
     print("num model parameters:", sum(p.numel() for p in model.parameters()))
+
+    return model, tokeniezer
+
+
+# WANDB_MODE=online PYTHONPATH=/Users/d.tarasov/workspace/transformers/src:./src ~/miniconda3/envs/audio/bin/python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --per_device_train_batch_size 32 --num_train_epochs 10 --seed 1001 --training_dataset smollm-corpus --model_type pretrained
+
+# WANDB_MODE=online PYTHONPATH=/Users/d.tarasov/workspace/transformers/src:./src ~/miniconda3/envs/audio/bin/python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --per_device_train_batch_size 32 --num_train_epochs 10 --seed 1001
+if __name__ == "__main__":
+
 
     hf_parser = transformers.HfArgumentParser(AdaptiveTrainingArguments)
     (training_args,) = hf_parser.parse_args_into_dataclasses()
 
+    model, tokenizer = build_model(training_args)
+
+    data_collator = None
+    if training_args.training_dataset == "sequential-numbers":
+        train_dataset = SequentialNumbersDataset(length=2000, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
+        eval_dataset = SequentialNumbersDataset(length=64, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
+    elif training_args.training_dataset == "smollm-corpus":
+
+        tokenizer.pad_token = tokenizer.eos_token
+        from tokenizers.processors import TemplateProcessing
+        tokenizer.post_processor = TemplateProcessing(
+            single=f"{tokenizer.bos_token} $A {tokenizer.eos_token}",
+            special_tokens=[(tokenizer.bos_token, tokenizer.bos_token_id), (tokenizer.eos_token, tokenizer.eos_token_id)],
+        )
+
+        disk_dataset_path = "data/tokenized-smollm-corpus-1-shard.dataset"
+
+        if os.path.exists(disk_dataset_path):
+            smollm_corpus = datasets.Dataset.load_from_disk(disk_dataset_path)
+        else:
+            # load and tokenize
+            smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=[ "cosmopedia-v2/train-00000-of-00104.parquet" ])
+
+            def tokenize_function(examples):
+                return tokenizer(examples["text"], truncation=True, max_length=2048)
+
+            smollm_corpus = smollm_corpus.select(range(1000)).map(tokenize_function, batched=True)
+            # print(smollm_corpus[0]['input_ids'])
+            # breakpoint()
+            smollm_corpus.save_to_disk("data/tokenized-smollm-corpus-1-shard.dataset")
+
+        smollm_corpus = smollm_corpus.train_test_split(test_size=0.1, seed=1)
+        train_dataset = smollm_corpus['train']
+        eval_dataset = smollm_corpus['test']
+        data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+    else:
+        raise ValueError(f"{training_args.training_dataset} is not supported")
+
+
     trainer = AdaptiveLlamaTrainer(
         model,
+        processing_class=tokenizer,
         args=training_args,
-        train_dataset=snd,
-        eval_dataset=snd_eval,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
         compute_metrics=ComputeMetrics(),
     )
 
