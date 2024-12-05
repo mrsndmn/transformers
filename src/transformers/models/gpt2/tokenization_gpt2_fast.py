@@ -82,7 +82,7 @@ class GPT2TokenizerFast(PreTrainedTokenizerFast):
     """
 
     vocab_files_names = VOCAB_FILES_NAMES
-    model_input_names = ["input_ids", "attention_mask"]
+    model_input_names = ["input_ids", "attention_mask", 'special_embeddings_mask']
     slow_tokenizer_class = GPT2Tokenizer
 
     def __init__(

@@ -114,9 +114,9 @@ class AdaptiveLlamaTrainer(Trainer):
         if labels is None:
             labels = inputs['input_ids']
 
-        special_embeddings_mask = inputs.get('special_embeddings_mask', None)
+        special_embeddings_mask = inputs.get('special_embeddings_mask')
         if special_embeddings_mask is None:
-            special_embeddings_mask = torch.zeros_like(labels)
+            special_embeddings_mask = inputs.get('special_tokens_mask') > 0
 
         model_kwargs = {
             "input_ids": inputs['input_ids'],
@@ -125,7 +125,12 @@ class AdaptiveLlamaTrainer(Trainer):
         }
 
         if isinstance(model, AdaptiveLlamaForCausalLM):
+            assert special_embeddings_mask is not None
+            assert special_embeddings_mask.sum() > 1
+
             model_kwargs["special_embeddings_mask"] = special_embeddings_mask
+            
+            assert special_embeddings_mask.shape == inputs['attention_mask'].shape
 
         outputs = model.forward(**model_kwargs)
         # [ bs, seq_len, 2 ]
@@ -133,22 +138,28 @@ class AdaptiveLlamaTrainer(Trainer):
         # fan_in_merging_logits_sum = sum(x.sum(dim=[0, 1]) for x in fan_in_merging_logits)
 
         ce_merging_loss_sum = torch.tensor(0.0, device=outputs.loss.device)
-        mean_merged_tokens = 0
+        count_merging_losses = 0
+        sum_merged_tokens = 0
 
         if isinstance(model, AdaptiveLlamaForCausalLM):
-            mean_merged_tokens = outputs.mean_merged_tokens
-            for i, fan_in_merging_logits in enumerate(outputs.fan_in_merging_logits):
+            sum_merged_tokens = outputs.mean_merged_tokens
+            for i, (fan_in_merging_logits, fan_in_merging_logits_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                 # ce_targets = outputs.fan_in_merging_maps[i][:, :, 1].flatten()
                 if fan_in_merging_logits is None:
                     continue
 
                 fan_in_merging_logits = fan_in_merging_logits.flatten(0, 1)
                 ce_targets = torch.ones([ fan_in_merging_logits.shape[0] ], device=fan_in_merging_logits.device, dtype=torch.long)
+                ce_targets[fan_in_merging_logits_attention_mask.flatten().bool() == False] = -100
                 ce_merging_loss_sum += torch.nn.functional.cross_entropy(fan_in_merging_logits, ce_targets)
+                count_merging_losses+=1
                 # breakpoint()
                 # print("fan_in_merging_logits", fan_in_merging_logits[:2])
                 # print("ce_merging_loss_sum", i, ce_merging_loss_sum)
                     # print(fan_in_merging_logits[:10])
+            
+            if count_merging_losses > 0:
+                ce_merging_loss_sum /= count_merging_losses
 
 
 
@@ -157,12 +168,16 @@ class AdaptiveLlamaTrainer(Trainer):
         outputs.loss = loss
 
         assert ~ loss.isnan().any(), 'loss cant be none'
+        
+        total_tokens = inputs['attention_mask'].sum().item()
 
         if log_metrics:
             log_info = {
                 "debug/straight_loss": outputs.loss.detach().item(),
-                "debug/mean_merged_tokens": mean_merged_tokens,
-                "debug/total_tokens": inputs['attention_mask'].sum().item(),
+                "debug/not_merged_tokens": (total_tokens - sum_merged_tokens),
+                "debug/mean_merged_tokens": sum_merged_tokens,
+                "debug/total_tokens": total_tokens,
+                "debug/merged_tokens_percent": (sum_merged_tokens / (total_tokens + 1e-4)),
                 "debug/ce_merging_loss_sum": ce_merging_loss_sum.item(),
             }
 
@@ -236,10 +251,10 @@ class AdaptiveLlamaTrainer(Trainer):
             **gen_params,
         }
 
-        model_generation = model.generate(**all_generation_params)
+        # model_generation = model.generate(**all_generation_params)
 
         return {
-            "generated_ids": model_generation,
+            # "generated_ids": model_generation,
             "prefix_ids": prefix_ids,
             "input_ids": inputs['input_ids'],
         }
@@ -552,6 +567,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     model_type: str = "dummy" # dummy | pretrained
     
     ce_merging_loss_weight: float = 0.1
+    dummy_adaptive_fan_in_layers: int = 14
 
 def build_model(training_args: AdaptiveTrainingArguments):
     tokeniezer = None
@@ -587,9 +603,12 @@ def build_model(training_args: AdaptiveTrainingArguments):
         llama_checkpoint = "HuggingFaceTB/SmolLM-135M"
         llama_config = LlamaConfig.from_pretrained(llama_checkpoint)
         num_layers = llama_config.num_hidden_layers
+        num_layers_half = num_layers // 2
 
-        dummy_adaptive_fan_in = [ True ] * (num_layers // 2)
-        dummy_adaptive_fan_in[-1] = False
+        smart_layers_count = num_layers_half - training_args.dummy_adaptive_fan_in_layers
+        dummy_adaptive_fan_in = [ True ] * training_args.dummy_adaptive_fan_in_layers + [ False ] * smart_layers_count
+        
+        assert len(dummy_adaptive_fan_in) == num_layers_half
         model = build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=dummy_adaptive_fan_in)
 
         tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
@@ -617,40 +636,79 @@ if __name__ == "__main__":
     (training_args,) = hf_parser.parse_args_into_dataclasses()
 
     model, tokenizer = build_model(training_args)
-
+    
+    compute_metrics = None
     data_collator = None
+
     if training_args.training_dataset == "sequential-numbers":
+        compute_metrics = ComputeMetrics()
         train_dataset = SequentialNumbersDataset(length=2000, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
         eval_dataset = SequentialNumbersDataset(length=64, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
     elif training_args.training_dataset == "smollm-corpus":
 
         tokenizer.pad_token = tokenizer.eos_token
-        from tokenizers.processors import TemplateProcessing
-        tokenizer.post_processor = TemplateProcessing(
-            single=f"{tokenizer.bos_token} $A {tokenizer.eos_token}",
-            special_tokens=[(tokenizer.bos_token, tokenizer.bos_token_id), (tokenizer.eos_token, tokenizer.eos_token_id)],
-        )
+        # from tokenizers.processors import TemplateProcessing
+        # tokenizer.post_processor = TemplateProcessing(
+        #     single=f"{tokenizer.bos_token} $A {tokenizer.eos_token}",
+        #     special_tokens=[(tokenizer.bos_token, tokenizer.bos_token_id), (tokenizer.eos_token, tokenizer.eos_token_id)],
+        # )
+        
+        im_start_token_id = 1
+        im_end_token_id = 2
 
         disk_dataset_path = "data/tokenized-smollm-corpus-1-shard.dataset"
 
-        if os.path.exists(disk_dataset_path):
+        # if os.path.exists(disk_dataset_path):
+        if False:
             smollm_corpus = datasets.Dataset.load_from_disk(disk_dataset_path)
         else:
             # load and tokenize
             smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=[ "cosmopedia-v2/train-00000-of-00104.parquet" ])
 
             def tokenize_function(examples):
-                return tokenizer(examples["text"], truncation=True, max_length=2048)
+                tokenized_inputs = tokenizer(examples['text'], return_special_tokens_mask=True, truncation=True, max_length=2048)
+                for x in tokenized_inputs['input_ids']:
+                    x.insert(0, im_start_token_id)
+                    x.append(im_end_token_id)
 
-            smollm_corpus = smollm_corpus.select(range(1000)).map(tokenize_function, batched=True)
+                for x in tokenized_inputs['attention_mask']:
+                    x.insert(0, 1)
+                    x.append(1)
+
+                for x in tokenized_inputs['special_tokens_mask']:
+                    x.insert(0, 1)
+                    x.append(1)
+                
+                return tokenized_inputs
+
+            smollm_corpus = smollm_corpus.select(range(10000)).map(tokenize_function, batched=True)
+            # smollm_corpus = smollm_corpus.rename_column('special_tokens_mask', 'special_embeddings_mask')
             # print(smollm_corpus[0]['input_ids'])
             # breakpoint()
             smollm_corpus.save_to_disk("data/tokenized-smollm-corpus-1-shard.dataset")
 
-        smollm_corpus = smollm_corpus.train_test_split(test_size=0.1, seed=1)
+        assert sum(smollm_corpus[0]['special_tokens_mask']) > 0
+        
+        smollm_corpus = smollm_corpus.train_test_split(test_size=100, seed=1)
         train_dataset = smollm_corpus['train']
         eval_dataset = smollm_corpus['test']
-        data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+        
+        nested_data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+        
+        def crutch_collator(examples):
+            collate_dummy = nested_data_collator(examples)
+            
+            collate_dummy['special_tokens_mask'] = torch.zeros_like(collate_dummy['attention_mask'])
+
+            for i, ex in enumerate(examples):
+                currrent_special_tokens_mask = ex['special_tokens_mask']
+                collate_dummy['special_tokens_mask'][i, :len(currrent_special_tokens_mask)] = torch.tensor(currrent_special_tokens_mask, dtype=torch.long)
+
+            assert (collate_dummy['special_tokens_mask'].sum(dim=-1) == 2).all()
+
+            return collate_dummy
+
+        data_collator = crutch_collator
     else:
         raise ValueError(f"{training_args.training_dataset} is not supported")
 
@@ -661,7 +719,8 @@ if __name__ == "__main__":
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        compute_metrics=ComputeMetrics(),
+        data_collator=data_collator,
+        compute_metrics=compute_metrics,
     )
 
     # trainer.accelerator.log_with = filter_trackers("wandb", training_args.output_dir)

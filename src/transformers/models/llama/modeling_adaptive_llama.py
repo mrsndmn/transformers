@@ -78,12 +78,14 @@ class AdaptiveBaseModelOutputWithPast(BaseModelOutputWithPast):
     mean_merged_tokens: Optional[int] = None
     fan_in_merging_maps: Optional[torch.Tensor] = None
     fan_in_merging_logits: Optional[torch.Tensor] = None
+    fan_in_merging_logits_attention_mask: Optional[torch.Tensor] = None
 
 @dataclass
 class AdaptiveCausalLMOutputWithPast(CausalLMOutputWithPast):
     mean_merged_tokens: Optional[int] = None
     fan_in_merging_maps: Optional[torch.Tensor] = None
     fan_in_merging_logits: Optional[torch.Tensor] = None
+    fan_in_merging_logits_attention_mask: Optional[torch.Tensor] = None
 
 class AdaptiveMode(Enum):
     FAN_IN = "fan_in"
@@ -712,6 +714,8 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
         fan_in_merging_maps = []
         fan_in_merging_logits = []
+        fan_in_merging_logits_attention_mask = []
+        
 
         for i, (decoder_layer, adaptive_down_layer) in enumerate(zip(self.layers_down, self.adaptive_down)):
             if output_hidden_states:
@@ -759,6 +763,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
             fan_in_merging_maps.append(adaptive_down_output.merging_map)
             fan_in_merging_logits.append(adaptive_down_output.merging_map_logits)
+            fan_in_merging_logits_attention_mask.append(loop_down_attention_mask)
 
             hidden_states = adaptive_down_output.hidden_state
             loop_down_attention_mask = adaptive_down_output.attention_mask
@@ -878,6 +883,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             mean_merged_tokens=mean_merged_tokens,
             fan_in_merging_maps=fan_in_merging_maps,
             fan_in_merging_logits=fan_in_merging_logits,
+            fan_in_merging_logits_attention_mask=fan_in_merging_logits_attention_mask,
         )
 
     def _update_causal_mask(
@@ -1144,5 +1150,6 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
             mean_merged_tokens=outputs.mean_merged_tokens,
             fan_in_merging_maps=outputs.fan_in_merging_maps,
             fan_in_merging_logits=outputs.fan_in_merging_logits,
+            fan_in_merging_logits_attention_mask=outputs.fan_in_merging_logits_attention_mask,
         )
 

@@ -50,7 +50,7 @@ def build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_
             else:
                 adaptive_layer_num = layer_num - half_num_hidden_layers
                 param_name = param_name.replace(f"model.layers.{layer_num}", f"model.layers_up.{adaptive_layer_num}")
-            print("new param name:", param_name)
+            # print("new param name:", param_name)
 
         adaptive_llama_model_state_dict[param_name] = param_value
 
