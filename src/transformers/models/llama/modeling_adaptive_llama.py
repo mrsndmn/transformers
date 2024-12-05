@@ -1045,6 +1045,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         special_embeddings_mask: Optional[torch.Tensor] = None,
+        special_tokens_mask: Optional[torch.Tensor] = None, # сrutch for remove unsued columns from dataset
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
