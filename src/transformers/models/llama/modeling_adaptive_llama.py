@@ -62,6 +62,8 @@ from .modeling_llama import (
     LlamaSdpaAttention,
 )
 
+from transformers.models.llama.merges_transform.generate_merges import generate_merges_transform
+
 
 logger = logging.get_logger(__name__)
 
@@ -173,12 +175,22 @@ def scaled_gumbel_softmax(
     return ret
 
 class AdaptiveFanInGumbel(nn.Module):
-    def __init__(self, config: LlamaConfig):
+    def __init__(self, config: LlamaConfig, generate_merges_transform_impl='python'):
         super().__init__()
         self.hidden_size = config.hidden_size
         self.fan_in_mlp = nn.Linear(self.hidden_size * 2, 2)
 
+        self.generate_merges_transform_impl = generate_merges_transform_impl
+
     def generate_merges_transform(self, merging_map, attention_mask):
+        if self.generate_merges_transform_impl == 'python':
+            return self._generate_merges_transform(merging_map, attention_mask)
+        else:
+            # call cuda implementation
+            return generate_merges_transform(merging_map, attention_mask)
+
+    @classmethod
+    def _generate_merges_transform(klass, merging_map, attention_mask):
         """Generates differentiable merges transform matrix
 
         Args:

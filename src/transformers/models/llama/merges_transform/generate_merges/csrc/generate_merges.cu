@@ -3,37 +3,40 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-namespace cpp_merges_transform {
+void check_cuda_errors() {
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA Error: " << cudaGetErrorString(err) << std::endl;
+        exit(-1);
+    }
+}
 
 __global__ void generate_merges_transform_kernel(
-    const torch::PackedTensorAccessor64<int64_t, 3, torch::RestrictPtrTraits> merging_map,
-    const torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> attention_mask,
-    torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> merged_embeddings_counts,
-    torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> merged_attention_mask,
-    torch::PackedTensorAccessor64<float, 3, torch::RestrictPtrTraits> aggregated_embeddings_transform,
-    int batch_size, int seq_len, int max_seq_len
+    const torch::PackedTensorAccessor64<int64_t, 3> merging_map,
+    const torch::PackedTensorAccessor64<bool, 2> attention_mask,
+    torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
+    torch::PackedTensorAccessor64<bool, 2> merged_attention_mask,
+    torch::PackedTensorAccessor64<float, 3> aggregated_embeddings_transform,
+    int batch_size, int seq_len
 ) {
     int batch_i = blockIdx.x; // Batch index
-    int new_seq_len_i = threadIdx.x; // Index for the new sequence length
+    // int seq_len_i = threadIdx.x; // Index for the new sequence length
 
-    if (batch_i >= batch_size || new_seq_len_i >= max_seq_len) {
+    if (batch_i >= batch_size) {
         return; // Out of bounds check
     }
 
     int buffer_length = 0;
     int start_want_merge = 0;
-    int total_tokens_count = 0;
+    int new_seq_len_i = 0;
 
-    // Calculate the number of tokens in the current sequence (based on attention_mask)
     for (int seq_len_i = 0; seq_len_i < seq_len; ++seq_len_i) {
-        if (attention_mask[batch_i][seq_len_i]) {
-            total_tokens_count++;
+        if (!attention_mask[batch_i][seq_len_i]) {
+            break;
         }
-    }
 
-    for (int seq_len_i = 1; seq_len_i < total_tokens_count; ++seq_len_i) {
         bool want_merge = merging_map[batch_i][seq_len_i][1] > 0L; // Check if merge is requested
-        if (want_merge && seq_len_i < total_tokens_count - 1) {
+        if (want_merge && seq_len_i < seq_len - 1) {
             if (buffer_length == 0) {
                 start_want_merge = seq_len_i;
             }
@@ -41,16 +44,16 @@ __global__ void generate_merges_transform_kernel(
         } else {
             if (buffer_length > 0) {
                 // Handle the merging
-                merged_embeddings_counts[batch_i][new_seq_len_i] = seq_len_i - start_want_merge;
+                merged_embeddings_counts[batch_i][seq_len_i] = seq_len_i - start_want_merge;
                 for (int i = start_want_merge; i < seq_len_i; ++i) {
-                    aggregated_embeddings_transform[batch_i][new_seq_len_i][i] = merging_map[batch_i][i][1];
+                    aggregated_embeddings_transform[batch_i][new_seq_len_i][i] = 1.0;
                 }
                 new_seq_len_i++;
                 buffer_length = 0;
             }
 
             // Handle individual token (no merge)
-            aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = merging_map[batch_i][seq_len_i][0];
+            aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = 1.0;
             merged_embeddings_counts[batch_i][new_seq_len_i] = 1;
             new_seq_len_i++;
         }
@@ -71,10 +74,9 @@ void generate_merges_transform_cuda(
 ) {
     const int batch_size = merging_map.size(0);
     const int seq_len = merging_map.size(1);
-    const int max_seq_len = seq_len; // This is for simplicity, adjust based on logic for max_new_seq_len
 
     // Launch the kernel
-    const dim3 block_size(max_seq_len, 1, 1);  // One thread per new sequence element
+    const dim3 block_size(1, 1, 1);  // One thread per sequence element
     const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
 
     generate_merges_transform_kernel<<<grid_size, block_size>>>(
@@ -83,7 +85,7 @@ void generate_merges_transform_cuda(
         merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
         merged_attention_mask.packed_accessor64<bool, 2>(),
         aggregated_embeddings_transform.packed_accessor64<float, 3>(),
-        batch_size, seq_len, max_seq_len
+        batch_size, seq_len
     );
 
     // Error checking
@@ -91,9 +93,8 @@ void generate_merges_transform_cuda(
     check_cuda_errors();
 }
 
-// Registers CUDA implementations for generate_merges_transform
-TORCH_LIBRARY_IMPL(cpp_merges_transform, CUDA, m) {
-  m.impl("generate_merges_transform", &generate_merges_transform_cuda);
-}
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {}
 
+TORCH_LIBRARY(generate_merges, m) {
+    m.def("generate_merges_transform", &generate_merges_transform_cuda);
 }
