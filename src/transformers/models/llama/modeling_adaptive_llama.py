@@ -142,7 +142,7 @@ class NoOpFanIn(nn.Module):
 
 def scaled_gumbel_softmax(
         logits,
-        tau: float = 1,
+        tau: float = 10.,
         scale = 1.0,
         hard = True,
         dim: int = -1,
@@ -182,8 +182,8 @@ class AdaptiveFanInGumbel(nn.Module):
         """Generates differentiable merges transform matrix
 
         Args:
-            merging_map (torch.Tensor ~ [ bs, seq_len, 2 ]): One-Hot-Encoded logits of probabilities either token should be merged
-            attention_mask (torch.Tensor ~ [ bs, seq_len ]): Attention mask
+            merging_map (torch.LongTensor ~ [ bs, seq_len, 2 ]): One-Hot-Encoded logits of probabilities either token should be merged
+            attention_mask (torch.BoolTensor ~ [ bs, seq_len ]): Attention mask
 
         Returns:
             aggregated_embeddings_transform (torch.Tensor ~ [ bs, new_seq_len, seq_len ]): Matrix for merging tokens
