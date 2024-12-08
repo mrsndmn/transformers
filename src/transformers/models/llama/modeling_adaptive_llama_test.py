@@ -185,14 +185,69 @@ def test_cuda_kernel_merges_transform():
     batch_size = 3
     seq_len = 5
     
-    merging_map_1 = torch.zeros([batch_size, seq_len, 2], dtype=torch.long)
-    merging_map_1[:, :, 0] = 1
+    merging_map_1 = torch.zeros([batch_size, seq_len, 2])
+    merging_map_1[:, :, 0] = 1.
+    
+    merging_map_2 = torch.zeros([batch_size, seq_len, 2])
+    merging_map_2[:, 1:seq_len-1, 1] = 1
+    merging_map_2[:, 0, 0] = 1
+    merging_map_2[:, -1, 0] = 1
+    
+    merging_map_3 = torch.zeros([batch_size, seq_len, 2])
+    merging_map_3[:, 1:seq_len-2, 1] = 1
+    merging_map_3[:, 0, 0] = 1
+    merging_map_3[:, -2, 0] = 1
+    attention_mask_3 = torch.ones([batch_size, seq_len], dtype=torch.bool)
+    attention_mask_3[:, seq_len-1] = False
+
+    merging_map_4 = torch.tensor([
+        [
+            [ 1., 0. ],
+            [ 0., 1. ],
+            [ 0., 1. ],
+            [ 0., 1. ],
+            [ 1., 0. ],
+        ],
+        [
+            [ 1., 0. ],
+            [ 0., 1. ],
+            [ 0., 1. ],
+            [ 1., 0. ],
+            [ 0., 0. ],
+        ],
+        [
+            [ 1., 0. ],
+            [ 0., 1. ],
+            [ 1., 0. ],
+            [ 0., 0. ],
+            [ 0., 0. ],
+        ],
+    ])
+    attention_mask_4 = torch.ones([batch_size, seq_len], dtype=torch.bool)
+    attention_mask_4[1, -1] = False
+    attention_mask_4[2, -2:] = False
+
     test_cases = [
         {
             "name": "dummy no merging",
             "merging_map": merging_map_1,
             "attention_mask": torch.ones([batch_size, seq_len], dtype=torch.bool),
-        }
+        },
+        {
+            "name": "all except bos/eos merged",
+            "merging_map": merging_map_2,
+            "attention_mask": torch.ones([batch_size, seq_len], dtype=torch.bool),
+        },
+        {
+            "name": "all except bos/eos merged with padding",
+            "merging_map": merging_map_3,
+            "attention_mask": attention_mask_3,
+        },
+        {
+            "name": "custom merging with custom padding",
+            "merging_map": merging_map_4,
+            "attention_mask": attention_mask_4,
+        },
     ]
 
     # todo make fixtures not golang-style tests
@@ -201,8 +256,8 @@ def test_cuda_kernel_merges_transform():
         merging_map = test_case['merging_map']
         attention_mask = test_case['attention_mask']
         
-        cuda_merging_map = merging_map.to('cuda')
-        cuda_attention_mask = attention_mask.to('cuda')
+        cuda_merging_map = merging_map.to('cuda').to(dtype=torch.float32)
+        cuda_attention_mask = attention_mask.to('cuda').to(dtype=torch.bool)
         
         py_aggregated_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(merging_map, attention_mask)
         cuda_aggregated_embeddings_transform, cuda_merged_embeddings_counts, cuda_merged_attention_mask = cuda_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask)

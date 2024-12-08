@@ -35,8 +35,6 @@ def generate_merges_transform(
     
     max_new_seq_len = merged_attention_mask.sum(dim=-1).max()
     if max_new_seq_len < merged_attention_mask.shape[1]:
-        print("max_new_seq_len", max_new_seq_len)
-        breakpoint()
         aggregated_embeddings_transform = aggregated_embeddings_transform[:, :max_new_seq_len]
         merged_embeddings_counts = merged_embeddings_counts[:, :max_new_seq_len]
         merged_attention_mask = merged_attention_mask[:, :max_new_seq_len]
