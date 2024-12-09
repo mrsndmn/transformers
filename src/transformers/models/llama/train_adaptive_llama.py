@@ -551,7 +551,7 @@ class AdaptiveLlamaTrainer(Trainer):
 @dataclass
 class AdaptiveTrainingArguments(TrainingArguments):
     output_dir: str = field(default="llama_for_sequential_numbers",)
-    learning_rate: float = field(default=1e-4)
+    learning_rate: float = field(default=2e-4)
     warmup_steps: int = field(default=100)
     per_device_train_batch_size: int = field(default=32)
     per_device_eval_batch_size: int = field(default=16)

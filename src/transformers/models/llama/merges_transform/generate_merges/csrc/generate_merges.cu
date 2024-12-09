@@ -99,8 +99,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> generate_merges_transfor
     );
 
     // Error checking
-    // cudaDeviceSynchronize();
-    // check_cuda_errors();
+    cudaDeviceSynchronize();
+    check_cuda_errors();
 
     return std::make_tuple(aggregated_embeddings_transform, merged_embeddings_counts, merged_attention_mask);
 }
@@ -127,7 +127,8 @@ __global__ void batch_repeat_interleave_for_merges_count_kernel(
         }
 
         for (int repeats_i = 0; repeats_i < current_repeats_num; ++repeats_i) {
-            merging_map_output[batch_i][output_seq_len_i] = merging_map[batch_i][seq_len_i];
+            merging_map_output[batch_i][output_seq_len_i][0] = merging_map[batch_i][seq_len_i][0];
+            merging_map_output[batch_i][output_seq_len_i][1] = merging_map[batch_i][seq_len_i][1];
             ++output_seq_len_i;
         }
     }
@@ -154,8 +155,8 @@ torch::Tensor batch_repeat_interleave_for_merges_count(
     );
 
     // Error checking
-    // cudaDeviceSynchronize();
-    // check_cuda_errors();
+    cudaDeviceSynchronize();
+    check_cuda_errors();
 
     return grad_merging_map_output;
 }
@@ -213,8 +214,8 @@ torch::Tensor fan_out_restore_residuals(
     );
 
     // Error checking
-    // cudaDeviceSynchronize();
-    // check_cuda_errors();
+    cudaDeviceSynchronize();
+    check_cuda_errors();
 
     return restored_hidden_states;
 }
@@ -240,10 +241,11 @@ __global__ void backward_fan_out_restore_residuals_kernel(
             break;
         }
 
+        output_seq_len_i = output_seq_len_i + num_repeats - 1;
         for (int hi = 0; hi < hidden_dim; ++hi) {
             hidden_states_grad[batch_i][seq_len_i][hi] += restored_hidden_states_grad[batch_i][output_seq_len_i][hi];
         }
-        output_seq_len_i += num_repeats;
+        output_seq_len_i += 1;
     }
 }
 

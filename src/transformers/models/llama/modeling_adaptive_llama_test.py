@@ -335,8 +335,8 @@ def test_cuda_kernel_merges_transform_benchmark():
     return
 
 def test_cuda_kernel_merges_transform_backward():
-    batch_size = 3
-    seq_len = 5
+    batch_size = 7
+    seq_len = 13
     hidden_size = 16
 
     config_py = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
@@ -394,8 +394,8 @@ def test_cuda_kernel_merges_transform_backward():
 
 
 def test_cuda_kernel_fan_out_backward():
-    batch_size = 3
-    seq_len = 5
+    batch_size = 7
+    seq_len = 13
     hidden_size = 16
     
     device = 'cuda'
@@ -416,6 +416,7 @@ def test_cuda_kernel_fan_out_backward():
 
     adaptive_fan_in_output = adaptive_fan_in.forward(hidden_states, attention_mask, special_embeddings_mask)
     assert adaptive_fan_in_output.hidden_state.grad_fn is not None
+    assert (adaptive_fan_in_output.merged_embeddings_counts > 1).any(), 'at least one token should be merged to be shure gradients calculation is correct'
 
     py_residual_hidden_states = hidden_states.detach()
     py_residual_hidden_states.requires_grad = True
@@ -456,6 +457,8 @@ def test_cuda_kernel_fan_out_backward():
 
     assert (py_adaptive_fan_in_output_hidden_state_gradients == cuda_kernel_adaptive_fan_in_output_hidden_state_gradients).all()
     assert (py_residual_hidden_states_gradients == cuda_kernel_residual_hidden_states_gradients).all()
+    
+    breakpoint()
 
     return
 
