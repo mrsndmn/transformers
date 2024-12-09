@@ -1,6 +1,9 @@
 import pytest
 from dataclasses import dataclass, field
 
+
+import wandb
+
 import torch
 
 from transformers.models.llama.configuration_llama import LlamaConfig
@@ -741,10 +744,11 @@ if __name__ == "__main__":
     # self.log_with = trackers
 
     trainer.accelerator.init_trackers(
-        project_name="llama_for_sequential_numbers",
+        project_name=training_args.output_dir,
     )
 
     # with torch.autograd.set_detect_anomaly(True):
+    
     
     # with torch.autocast("cuda"):
     trainer.train(
