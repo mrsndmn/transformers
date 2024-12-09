@@ -3,6 +3,8 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+#include <vector>
+
 void check_cuda_errors() {
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -65,12 +67,9 @@ __global__ void generate_merges_transform_kernel(
     }
 }
 
-void generate_merges_transform_cuda(
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> generate_merges_transform_cuda(
     const torch::Tensor& merging_map,
-    const torch::Tensor& attention_mask,
-    torch::Tensor& aggregated_embeddings_transform,
-    torch::Tensor& merged_embeddings_counts,
-    torch::Tensor& merged_attention_mask
+    const torch::Tensor& attention_mask
 ) {
     const int batch_size = merging_map.size(0);
     const int seq_len = merging_map.size(1);
@@ -78,6 +77,17 @@ void generate_merges_transform_cuda(
     // Launch the kernel
     const dim3 block_size(1, 1, 1);  // One thread per sequence element
     const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
+
+    auto options = merging_map.options();
+    auto device = options.device();
+
+    auto aggregated_embeddings_transform_options = torch::TensorOptions().dtype(torch::kFloat32).device(device);
+    auto merged_embeddings_counts_options = torch::TensorOptions().dtype(torch::kInt64).device(device);
+    auto mask_options = torch::TensorOptions().dtype(torch::kBool).device(device);
+
+    torch::Tensor aggregated_embeddings_transform = torch::zeros({batch_size, seq_len, seq_len}, aggregated_embeddings_transform_options);
+    torch::Tensor merged_embeddings_counts = torch::zeros({batch_size, seq_len}, merged_embeddings_counts_options);
+    torch::Tensor merged_attention_mask = torch::zeros({batch_size, seq_len}, mask_options);
 
     generate_merges_transform_kernel<<<grid_size, block_size>>>(
         merging_map.packed_accessor64<float, 3>(),
@@ -91,10 +101,16 @@ void generate_merges_transform_cuda(
     // Error checking
     cudaDeviceSynchronize();
     check_cuda_errors();
+
+    return std::make_tuple(aggregated_embeddings_transform, merged_embeddings_counts, merged_attention_mask);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {}
 
 TORCH_LIBRARY(generate_merges, m) {
-    m.def("generate_merges_transform", &generate_merges_transform_cuda);
+    m.def("generate_merges_transform(Tensor a, Tensor b) -> (Tensor, Tensor, Tensor)");
+}
+
+TORCH_LIBRARY_IMPL(generate_merges, CUDA, m) {
+    m.impl("generate_merges_transform", &generate_merges_transform_cuda);
 }
