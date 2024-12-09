@@ -392,3 +392,71 @@ def test_cuda_kernel_merges_transform_backward():
 
     return
 
+
+def test_cuda_kernel_fan_out_backward():
+    batch_size = 3
+    seq_len = 5
+    hidden_size = 16
+    
+    device = 'cuda'
+
+    config_py = LlamaConfig(hidden_size=hidden_size, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
+    config_cuda_kernel = LlamaConfig(hidden_size=hidden_size, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="cuda_kernel")
+    
+    adaptive_fan_in = AdaptiveFanInGumbel(config_py).to(device)
+
+    py_adaptive_fan_out = AdaptiveFanOut(config_py)
+    cuda_adaptive_fan_out = AdaptiveFanOut(config_cuda_kernel)
+    
+    hidden_states = torch.rand([ batch_size, seq_len, hidden_size ], requires_grad=True, device=device)
+    attention_mask = torch.ones([batch_size, seq_len], device=device)
+    special_embeddings_mask = torch.zeros([batch_size, seq_len], device=device)
+    special_embeddings_mask[:, 0] = 1
+    special_embeddings_mask[:, -1] = 1
+
+    adaptive_fan_in_output = adaptive_fan_in.forward(hidden_states, attention_mask, special_embeddings_mask)
+    assert adaptive_fan_in_output.hidden_state.grad_fn is not None
+
+    py_residual_hidden_states = hidden_states.detach()
+    py_residual_hidden_states.requires_grad = True
+    cuda_kernel_residual_hidden_states = hidden_states.detach()
+    cuda_kernel_residual_hidden_states.requires_grad = True
+    residual_attention_mask = attention_mask
+    
+    py_adaptive_fan_in_output_hidden_state = adaptive_fan_in_output.hidden_state.detach()
+    py_adaptive_fan_in_output_hidden_state.requires_grad = True
+
+    cuda_kernel_adaptive_fan_in_output_hidden_state = adaptive_fan_in_output.hidden_state.detach()
+    cuda_kernel_adaptive_fan_in_output_hidden_state.requires_grad = True
+
+
+    py_adaptive_fan_out_output = py_adaptive_fan_out.forward(
+        hidden_states=py_adaptive_fan_in_output_hidden_state,
+        attention_mask=adaptive_fan_in_output.attention_mask,
+        merged_embeddings_counts=adaptive_fan_in_output.merged_embeddings_counts,
+        residual_hidden_states=py_residual_hidden_states,
+        residual_attention_mask=residual_attention_mask,
+    )
+    py_restored_hidden_states = py_adaptive_fan_out_output.hidden_state
+
+    cuda_kernel_adaptive_fan_out_output = cuda_adaptive_fan_out.forward(
+        hidden_states=cuda_kernel_adaptive_fan_in_output_hidden_state,
+        attention_mask=adaptive_fan_in_output.attention_mask,
+        merged_embeddings_counts=adaptive_fan_in_output.merged_embeddings_counts,
+        residual_hidden_states=cuda_kernel_residual_hidden_states,
+        residual_attention_mask=residual_attention_mask,
+    )
+    cuda_kernel__restored_hidden_states = cuda_kernel_adaptive_fan_out_output.hidden_state
+    
+    output_gradients_py = torch.rand_like(cuda_kernel__restored_hidden_states)
+    output_gradients_cuda = output_gradients_py.detach()
+
+    (py_adaptive_fan_in_output_hidden_state_gradients, py_residual_hidden_states_gradients) = torch.autograd.grad(py_restored_hidden_states, (py_adaptive_fan_in_output_hidden_state, py_residual_hidden_states), grad_outputs=output_gradients_py)
+    (cuda_kernel_adaptive_fan_in_output_hidden_state_gradients, cuda_kernel_residual_hidden_states_gradients) = torch.autograd.grad(cuda_kernel__restored_hidden_states, (cuda_kernel_adaptive_fan_in_output_hidden_state, cuda_kernel_residual_hidden_states), grad_outputs=output_gradients_cuda)
+
+    assert (py_adaptive_fan_in_output_hidden_state_gradients == cuda_kernel_adaptive_fan_in_output_hidden_state_gradients).all()
+    assert (py_residual_hidden_states_gradients == cuda_kernel_residual_hidden_states_gradients).all()
+
+    return
+
+

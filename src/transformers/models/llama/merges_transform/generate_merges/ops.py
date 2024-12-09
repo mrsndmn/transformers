@@ -113,10 +113,9 @@ def fan_out_restore_residuals(
 
     torch._check(len(merged_embeddings_counts.shape) == 2)
     torch._check(merged_embeddings_counts.shape[:2] == hidden_states.shape[:2])
-    torch._check(merged_embeddings_counts.shape[:2] == residual_hidden_states.shape[:2])
     torch._check(merged_embeddings_counts.dtype == torch.long)
     torch._check(hidden_states.dtype == torch.float)
-    torch._check(residual_hidden_states.dtype == residual_hidden_states.float)
+    torch._check(residual_hidden_states.dtype == torch.float)
     torch._check(residual_hidden_states.device == residual_hidden_states.device)
     torch._check(merged_embeddings_counts.device == residual_hidden_states.device)
 
@@ -127,4 +126,37 @@ def fan_out_restore_residuals(
     )
 
     return restored_hidden_states
+
+
+def _backward_fan_out_restore_residuals(ctx, restored_hidden_states_grad):
+    # [bs, seq_len, 2] [bs, new_seq_len, seq_len]
+    (merged_embeddings_counts,) = ctx.saved_tensors
+    
+    hidden_states_grad = None
+    residual_hidden_states_grad = None
+    if ctx.needs_input_grad[1]:
+        hidden_states_grad = torch.ops.generate_merges.backward_fan_out_restore_residuals.default(
+            merged_embeddings_counts,
+            restored_hidden_states_grad,
+        )
+    
+    if ctx.needs_input_grad[2]:
+        residual_hidden_states_grad = restored_hidden_states_grad
+    
+    return None, hidden_states_grad, residual_hidden_states_grad
+
+
+def _setup_context_fan_out_restore_residuals(ctx, inputs, output):
+    merged_embeddings_counts, hidden_states, residual_hidden_states = inputs
+
+    # if ctx.needs_input_grad[1]:
+    #     saved_merging_map = merging_map
+    # if ctx.needs_input_grad[2]:
+    #     saved_merging_map = merging_map
+
+    ctx.save_for_backward(merged_embeddings_counts)
+
+
+torch.library.register_autograd(
+    "generate_merges::fan_out_restore_residuals", _backward_fan_out_restore_residuals, setup_context=_setup_context_fan_out_restore_residuals)
 

@@ -216,7 +216,7 @@ class AdaptiveFanInGumbel(nn.Module):
         #   [ 1, 2, 2, 3, 1, 0 ],
         #   [ 1, 2, 2, 1, 0, 0 ],
         # ]
-        merged_embeddings_counts = torch.zeros([batch_size, seq_len], device=device)
+        merged_embeddings_counts = torch.zeros([batch_size, seq_len], dtype=torch.long, device=device)
         merged_embeddings_counts[:, 0] = 1
 
         # Example
@@ -429,7 +429,7 @@ class AdaptiveFanOut(nn.Module):
         assert seq_len >= new_seq_len, 'residual seq len cant be less then input_embeddings seq_len'
 
         # 84 sec for 10 iterations
-        restored_hidden_states = residual_hidden_states
+        restored_hidden_states = torch.zeros_like(residual_hidden_states) + residual_hidden_states
         
         # 22 seconds for 10 iterations
         # restored_hidden_states[:, :hidden_states.shape[1]] += hidden_states

@@ -220,16 +220,74 @@ torch::Tensor fan_out_restore_residuals(
 }
 
 
+__global__ void backward_fan_out_restore_residuals_kernel(
+    const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
+    const torch::PackedTensorAccessor64<float, 3> restored_hidden_states_grad,
+    torch::PackedTensorAccessor64<float, 3> hidden_states_grad,
+    int batch_size, int seq_len, int hidden_dim
+) {
+    int batch_i = blockIdx.x; // Batch index
+
+    // TODO could be also parallelized by sequence dim!
+    if (batch_i >= batch_size) {
+        return; // Out of bounds check
+    }
+
+    int output_seq_len_i = 0;
+    for (int seq_len_i = 0; seq_len_i < seq_len; ++seq_len_i) {
+        auto num_repeats = merged_embeddings_counts[batch_i][seq_len_i];
+        if (num_repeats == 0) {
+            break;
+        }
+
+        for (int hi = 0; hi < hidden_dim; ++hi) {
+            hidden_states_grad[batch_i][seq_len_i][hi] += restored_hidden_states_grad[batch_i][output_seq_len_i][hi];
+        }
+        output_seq_len_i += num_repeats;
+    }
+}
+
+torch::Tensor backward_fan_out_restore_residuals(
+    const torch::Tensor& merged_embeddings_counts,
+    const torch::Tensor& restored_hidden_states_grad
+) {
+    const int batch_size = merged_embeddings_counts.size(0);
+    const int seq_len = merged_embeddings_counts.size(1);
+    const int hidden_dim = restored_hidden_states_grad.size(2);
+
+    // Launch the kernel
+    const dim3 block_size(1, 1, 1);  // One thread per sequence element
+    const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
+
+    torch::Tensor hidden_states_grad = torch::zeros({batch_size, seq_len, hidden_dim}, restored_hidden_states_grad.options());
+
+    backward_fan_out_restore_residuals_kernel<<<grid_size, block_size>>>(
+        merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
+        restored_hidden_states_grad.packed_accessor64<float, 3>(),
+        hidden_states_grad.packed_accessor64<float, 3>(),
+        batch_size, seq_len, hidden_dim
+    );
+
+    // Error checking
+    // cudaDeviceSynchronize();
+    // check_cuda_errors();
+
+    return hidden_states_grad;
+}
+
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {}
 
 TORCH_LIBRARY(generate_merges, m) {
     m.def("generate_merges_transform(Tensor a, Tensor b) -> (Tensor, Tensor, Tensor)");
     m.def("batch_repeat_interleave_for_merges_count(Tensor a, Tensor b) -> Tensor");
     m.def("fan_out_restore_residuals(Tensor a, Tensor b, Tensor c) -> Tensor");
+    m.def("backward_fan_out_restore_residuals(Tensor a, Tensor b) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(generate_merges, CUDA, m) {
     m.impl("generate_merges_transform", &generate_merges_transform_cuda);
     m.impl("batch_repeat_interleave_for_merges_count", &batch_repeat_interleave_for_merges_count);
     m.impl("fan_out_restore_residuals", &fan_out_restore_residuals);
+    m.impl("backward_fan_out_restore_residuals", &backward_fan_out_restore_residuals);
 }
