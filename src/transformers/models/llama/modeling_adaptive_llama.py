@@ -223,18 +223,18 @@ class AdaptiveFanInGumbel(nn.Module):
         merged_attention_mask = torch.zeros([batch_size, seq_len], device=device)
 
         aggregated_embeddings_transform = torch.zeros([batch_size, seq_len, seq_len], device=device)
-        aggregated_embeddings_transform[:, 0, 0] = 1
+        # aggregated_embeddings_transform[:, 0, 0] = 1
 
         total_initial_num_embeddings = attention_mask.sum(dim=-1).to(torch.long)
 
         max_new_seq_len = 0
         for batch_i in range(batch_size):
-            new_seq_len_i = 1
+            new_seq_len_i = 0
             buffer_length = 0
             start_want_merge = 0
             total_tokens_count = total_initial_num_embeddings[batch_i].item()
 
-            for seq_len_i in range(1, total_tokens_count):
+            for seq_len_i in range(0, total_tokens_count):
                 want_merge = merging_map[batch_i, seq_len_i, 1].item() > 0.5
                 if want_merge and seq_len_i < total_tokens_count - 1:
                     if buffer_length == 0:

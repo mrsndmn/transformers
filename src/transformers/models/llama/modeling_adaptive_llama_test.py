@@ -354,28 +354,31 @@ def test_cuda_kernel_merges_transform_backward():
 
     cuda_attention_mask = torch.ones([batch_size, seq_len], device='cuda', dtype=torch.bool)
 
-    input_embeddings = torch.rand([batch_size, seq_len, hidden_size], device='cuda', requires_grad=True)
-    input_embeddings_cuda = input_embeddings.clone()
-    input_embeddings_py = input_embeddings.clone()
-    special_embeddings_mask = torch.zeros_like(cuda_attention_mask)
-    special_embeddings_mask[:, 0] = 1
-    special_embeddings_mask[:, -1] = 1
+    # special_embeddings_mask = torch.zeros_like(cuda_attention_mask)
+    # special_embeddings_mask[:, 0] = 1
+    # special_embeddings_mask[:, -1] = 1
+    
+    merging_map = torch.zeros([batch_size, seq_len, 2], device='cuda')
+    merging_map[:, :, 0] = 1.
+    merging_map.requires_grad = True
+    
+    cuda_merging_map = merging_map.clone()
+    py_merging_map = merging_map.clone()
+    
 
     # cuda kernel forward
-    cuda_fan_in_output = cuda_adaptive_fan_in_gumbel.forward(input_embeddings_cuda, cuda_attention_mask, special_embeddings_mask)
+    cuda_merged_embeddings_transform, cuda_merged_embeddings_counts, cuda_merged_attention_mask = cuda_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask)
 
-    cuda_aggregated_embeddings_transform = cuda_fan_in_output.hidden_state
-    output_gradients = torch.rand_like(cuda_aggregated_embeddings_transform)
-    output_gradients[~cuda_fan_in_output.attention_mask.bool()] = 0
+    output_gradients = torch.rand_like(cuda_merged_embeddings_transform)
+    output_gradients[~cuda_merged_embeddings_transform.bool()] = 0
     output_gradients_py = output_gradients.clone()
     output_gradients_cuda = output_gradients.clone()
-    (input_gradients_cuda_kernel,) = torch.autograd.grad(cuda_aggregated_embeddings_transform, input_embeddings_cuda, grad_outputs=output_gradients_cuda)
+    (input_gradients_cuda_kernel,) = torch.autograd.grad(cuda_merged_embeddings_transform, cuda_merging_map, grad_outputs=output_gradients_cuda)
     
     # py forward
-    py_fan_in_output = py_adaptive_fan_in_gumbel.forward(input_embeddings_py, cuda_attention_mask, special_embeddings_mask)
-    py_cuda_aggregated_embeddings_transform = py_fan_in_output.hidden_state
+    py_merged_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(py_merging_map, cuda_attention_mask)
 
-    (input_gradients_python,) = torch.autograd.grad(py_cuda_aggregated_embeddings_transform, input_embeddings_py, grad_outputs=output_gradients_py)
+    (input_gradients_python,) = torch.autograd.grad(py_merged_embeddings_transform, py_merging_map, grad_outputs=output_gradients_py)
 
     assert (input_gradients_python == input_gradients_cuda_kernel).all()
     breakpoint()
