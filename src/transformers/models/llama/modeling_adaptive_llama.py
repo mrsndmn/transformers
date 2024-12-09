@@ -62,7 +62,7 @@ from .modeling_llama import (
     LlamaSdpaAttention,
 )
 
-from transformers.models.llama.merges_transform.generate_merges import generate_merges_transform
+from transformers.models.llama.merges_transform.generate_merges import generate_merges_transform, fan_out_restore_residuals
 
 
 logger = logging.get_logger(__name__)
@@ -390,6 +390,8 @@ class AdaptiveFanOut(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
+        
+        self.fan_out_implementation = config.generate_merges_transform_impl
         # self.fan_out_mlp = nn.Linear(self.hidden_size * 2, self.hidden_size)
 
     def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
@@ -414,32 +416,42 @@ class AdaptiveFanOut(nn.Module):
         assert hidden_states.shape[1] == attention_mask.shape[1], 'seq len mismatch'
         assert hidden_states.shape[1] == merged_embeddings_counts.shape[1], 'seq len mismatch'
 
-        assert (merged_embeddings_counts.sum(dim=-1) == residual_attention_mask.sum(dim=-1)).all(), 'merged_embeddings_counts and residual_attention_mask mismatch'
+        # assert (merged_embeddings_counts.sum(dim=-1) == residual_attention_mask.sum(dim=-1)).all(), 'merged_embeddings_counts and residual_attention_mask mismatch'
 
         # residual_hidden_states ~ [ batch_size, seq_len, hidden_size ]
         # residual_hidden_states ~ [ batch_size, seq_len ]
         assert residual_hidden_states.shape[1] == residual_attention_mask.shape[1], 'seq len mismatch'
 
+        batch_size = attention_mask.shape[0]
         new_seq_len = attention_mask.shape[1]
         seq_len = residual_attention_mask.shape[1]
 
         assert seq_len >= new_seq_len, 'residual seq len cant be less then input_embeddings seq_len'
 
-        restored_hidden_states = torch.zeros_like(residual_hidden_states) + residual_hidden_states
-        for batch_i in range(attention_mask.shape[0]):
-            restored_seq_len = 0
-            for seq_len_i in range(new_seq_len):
-                num_repeats = merged_embeddings_counts[batch_i, seq_len_i].item()
-                if num_repeats == 0:
-                    break
+        # 84 sec for 10 iterations
+        restored_hidden_states = residual_hidden_states
+        
+        # 22 seconds for 10 iterations
+        # restored_hidden_states[:, :hidden_states.shape[1]] += hidden_states
+        
+        if self.fan_out_implementation == 'python':
+            for batch_i in range(batch_size):
+                restored_seq_len = 0
+                for seq_len_i in range(new_seq_len):
+                    num_repeats = merged_embeddings_counts[batch_i, seq_len_i].item()
+                    if num_repeats == 0:
+                        break
 
-                current_hidden_state = hidden_states[batch_i, seq_len_i]
+                    current_hidden_state = hidden_states[batch_i, seq_len_i]
 
-                restored_idx = int(restored_seq_len + num_repeats - 1)
-                restored_hidden_states[batch_i, restored_idx] += current_hidden_state
-                restored_seq_len += num_repeats
+                    restored_idx = int(restored_seq_len + num_repeats - 1)
+                    restored_hidden_states[batch_i, restored_idx] += current_hidden_state
+                    restored_seq_len += num_repeats
+        elif self.fan_out_implementation == 'cuda_kernel':
+            restored_hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states)
+        else:
+            raise ValueError(f"unknown self.fan_out_implementation={self.fan_out_implementation}")
 
-        assert restored_hidden_states.shape == residual_hidden_states.shape
 
         return AdaptiveFanOutOutput(hidden_state=restored_hidden_states)
 

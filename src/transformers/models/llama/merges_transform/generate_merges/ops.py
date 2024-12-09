@@ -3,7 +3,7 @@ from torch import Tensor
 
 import time
 
-__all__ = ["generate_merges_transform"]
+__all__ = ["generate_merges_transform", "fan_out_restore_residuals"]
 
 
 def generate_merges_transform(
@@ -45,7 +45,8 @@ def generate_merges_transform(
     
     return aggregated_embeddings_transform_output, merged_embeddings_counts, merged_attention_mask
 
-def _backward(ctx, output_merging_map_grad, merged_embeddings_counts, merged_attention_mask):
+
+def _backward_generate_merges_transform(ctx, output_merging_map_grad, merged_embeddings_counts, merged_attention_mask):
     # [bs, seq_len, 2] [bs, new_seq_len, seq_len]
     saved_merging_map, output_transform_matrix, merged_embeddings_counts = ctx.saved_tensors
     
@@ -101,18 +102,29 @@ def _setup_context(ctx, inputs, output):
 # the backward formula for the operator and a `setup_context` function
 # to save values to be used in the backward.
 torch.library.register_autograd(
-    "generate_merges::generate_merges_transform", _backward, setup_context=_setup_context)
+    "generate_merges::generate_merges_transform", _backward_generate_merges_transform, setup_context=_setup_context)
 
 
-# @torch.library.register_fake("generate_merges::generate_merges_transform")
-# def _(merging_map, attention_mask):
-    
-#     batch_size = merging_map.shape[0]
-#     seq_len = merging_map.shape[1]
-#     device = merging_map.device
-    
-#     output_merging_map = torch.empty([batch_size, seq_len, seq_len], device=device)
-#     merged_embeddings_counts = torch.zeros([batch_size, seq_len], dtype=torch.long, device=device)
-#     merged_attention_mask = torch.zeros([batch_size, seq_len], dtype=torch.bool, device=device)
+def fan_out_restore_residuals(
+        merged_embeddings_counts: Tensor, # [ bs, seq_len ]
+        hidden_states: Tensor, # [ bs, new_seq_len, hidden_dim ]
+        residual_hidden_states: Tensor, # [ bs, seq_len, hidden_dim ]
+        ) -> Tensor:
 
-#     return output_merging_map, merged_embeddings_counts, merged_attention_mask
+    torch._check(len(merged_embeddings_counts.shape) == 2)
+    torch._check(merged_embeddings_counts.shape[:2] == hidden_states.shape[:2])
+    torch._check(merged_embeddings_counts.shape[:2] == residual_hidden_states.shape[:2])
+    torch._check(merged_embeddings_counts.dtype == torch.long)
+    torch._check(hidden_states.dtype == torch.float)
+    torch._check(residual_hidden_states.dtype == residual_hidden_states.float)
+    torch._check(residual_hidden_states.device == residual_hidden_states.device)
+    torch._check(merged_embeddings_counts.device == residual_hidden_states.device)
+
+    restored_hidden_states = torch.ops.generate_merges.fan_out_restore_residuals.default(
+        merged_embeddings_counts,
+        hidden_states,
+        residual_hidden_states,
+    )
+
+    return restored_hidden_states
+

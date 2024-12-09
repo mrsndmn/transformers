@@ -561,12 +561,12 @@ class AdaptiveTrainingArguments(TrainingArguments):
     push_to_hub: bool = field(default=False)
     optim: str = field(default="adamw_torch")
     report_to: str = field(default="wandb")
-    logging_steps: int = field(default=5)
+    logging_steps: int = field(default=500)
     dataloader_drop_last: bool = field(default=True)
     dataloader_num_workers: int = field(default=0)
 
     training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
-    model_type: str = "dummy" # dummy | pretrained
+    model_type: str = "dummy" # dummy | pretrained | SmolLM-135M
     
     ce_merging_loss_weight: float = 0.1
     dummy_adaptive_fan_in_layers: int = 14
