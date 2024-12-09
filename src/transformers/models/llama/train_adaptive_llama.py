@@ -552,12 +552,13 @@ class AdaptiveLlamaTrainer(Trainer):
 class AdaptiveTrainingArguments(TrainingArguments):
     output_dir: str = field(default="llama_for_sequential_numbers",)
     learning_rate: float = field(default=2e-4)
-    warmup_steps: int = field(default=100)
+    warmup_steps: int = field(default=500)
     per_device_train_batch_size: int = field(default=32)
     per_device_eval_batch_size: int = field(default=16)
-    num_train_epochs: int = field(default=50)
+    num_train_epochs: int = field(default=1)
     weight_decay: float = field(default=0.01)
-    eval_strategy: str = field(default="epoch")
+    eval_strategy: str = field(default="steps")
+    eval_steps: int = field(default=500)
     save_strategy: str = field(default="epoch")
     push_to_hub: bool = field(default=False)
     optim: str = field(default="adamw_torch")
@@ -569,13 +570,13 @@ class AdaptiveTrainingArguments(TrainingArguments):
     training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
     model_type: str = "dummy" # dummy | pretrained | SmolLM-135M
     
-    ce_merging_loss_weight: float = 0.1
+    ce_merging_loss_weight: float = 0.0
     dummy_adaptive_fan_in_layers: int = 14
-    generate_merges_transform_impl: str = 'python'
+    generate_merges_transform_impl: str = 'cuda_kernel'
 
     reverse_dummy_adaptive_fan_in_layers: bool = False
     
-    select_train_dataset_items: int = 2500
+    select_train_dataset_items: int = 20000
 
 def build_model(training_args: AdaptiveTrainingArguments):
     tokeniezer = None

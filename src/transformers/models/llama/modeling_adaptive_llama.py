@@ -189,7 +189,15 @@ class AdaptiveFanInGumbel(nn.Module):
             return self._generate_merges_transform(merging_map, attention_mask)
         elif self.generate_merges_transform_impl == 'cuda_kernel':
             # call cuda implementation
-            return generate_merges_transform(merging_map, attention_mask.bool())
+            merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = generate_merges_transform(merging_map, attention_mask.bool())
+        
+            # py_merged_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = self._generate_merges_transform(merging_map, attention_mask)
+            
+            # assert (merged_embeddings_transform == py_merged_embeddings_transform).all()
+            # assert (merged_embeddings_counts == py_merged_embeddings_counts).all()
+            # assert (merged_attention_mask == py_merged_attention_mask).all()
+            
+            return merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask
         else:
             raise ValueError(f"invalid value for self.generate_merges_transform_impl={self.generate_merges_transform_impl}")
 
@@ -394,6 +402,23 @@ class AdaptiveFanOut(nn.Module):
         self.fan_out_implementation = config.generate_merges_transform_impl
         # self.fan_out_mlp = nn.Linear(self.hidden_size * 2, self.hidden_size)
 
+    def _python_fan_out(self, batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states) -> torch.Tensor:
+        restored_hidden_states = torch.zeros_like(residual_hidden_states) + residual_hidden_states
+        for batch_i in range(batch_size):
+            restored_seq_len = 0
+            for seq_len_i in range(new_seq_len):
+                num_repeats = merged_embeddings_counts[batch_i, seq_len_i].item()
+                if num_repeats == 0:
+                    break
+
+                current_hidden_state = hidden_states[batch_i, seq_len_i]
+
+                restored_idx = int(restored_seq_len + num_repeats - 1)
+                restored_hidden_states[batch_i, restored_idx] += current_hidden_state
+                restored_seq_len += num_repeats
+
+        return restored_hidden_states
+
     def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
         """Unfolds hidden_states based on merged_embeddings_counts
 
@@ -429,26 +454,21 @@ class AdaptiveFanOut(nn.Module):
         assert seq_len >= new_seq_len, 'residual seq len cant be less then input_embeddings seq_len'
 
         # 84 sec for 10 iterations
-        restored_hidden_states = torch.zeros_like(residual_hidden_states) + residual_hidden_states
+        restored_hidden_states = None
         
         # 22 seconds for 10 iterations
         # restored_hidden_states[:, :hidden_states.shape[1]] += hidden_states
         
         if self.fan_out_implementation == 'python':
-            for batch_i in range(batch_size):
-                restored_seq_len = 0
-                for seq_len_i in range(new_seq_len):
-                    num_repeats = merged_embeddings_counts[batch_i, seq_len_i].item()
-                    if num_repeats == 0:
-                        break
-
-                    current_hidden_state = hidden_states[batch_i, seq_len_i]
-
-                    restored_idx = int(restored_seq_len + num_repeats - 1)
-                    restored_hidden_states[batch_i, restored_idx] += current_hidden_state
-                    restored_seq_len += num_repeats
+            restored_hidden_states = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states)
         elif self.fan_out_implementation == 'cuda_kernel':
             restored_hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states)
+
+            # CHECK_WITH_PYTHON = True
+            # if CHECK_WITH_PYTHON:
+            #     restored_hidden_states_py = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states)
+            #     assert (restored_hidden_states_py == restored_hidden_states).all()
+                
         else:
             raise ValueError(f"unknown self.fan_out_implementation={self.fan_out_implementation}")
 

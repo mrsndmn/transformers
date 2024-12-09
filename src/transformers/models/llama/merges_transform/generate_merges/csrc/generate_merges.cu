@@ -164,7 +164,6 @@ torch::Tensor batch_repeat_interleave_for_merges_count(
 __global__ void fan_out_restore_residuals_kernel(
     const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
     const torch::PackedTensorAccessor64<float, 3> hidden_states,
-    const torch::PackedTensorAccessor64<float, 3> residual_hidden_states,
     torch::PackedTensorAccessor64<float, 3> restored_hidden_states,
     int batch_size, int seq_len, int hidden_dim
 ) {
@@ -203,12 +202,11 @@ torch::Tensor fan_out_restore_residuals(
     const dim3 block_size(1, 1, 1);  // One thread per sequence element
     const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
 
-    torch::Tensor restored_hidden_states = torch::detach(residual_hidden_states);
+    torch::Tensor restored_hidden_states = torch::zeros_like(residual_hidden_states, residual_hidden_states.options()) + residual_hidden_states;
 
     fan_out_restore_residuals_kernel<<<grid_size, block_size>>>(
         merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
         hidden_states.packed_accessor64<float, 3>(),
-        residual_hidden_states.packed_accessor64<float, 3>(),
         restored_hidden_states.packed_accessor64<float, 3>(),
         batch_size, seq_len, hidden_dim
     );

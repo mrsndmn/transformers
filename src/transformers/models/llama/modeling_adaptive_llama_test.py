@@ -366,6 +366,7 @@ def test_cuda_kernel_merges_transform_backward():
     
     merging_map = torch.zeros([batch_size, seq_len, 2], device='cuda')
     merging_map[:, :, 0] = 1.
+    merging_map[:, 1] = torch.tensor([0., 1.], device='cuda')
     merging_map.requires_grad = True
     
     cuda_merging_map = merging_map.clone()
@@ -383,19 +384,21 @@ def test_cuda_kernel_merges_transform_backward():
     
     # py forward
     py_merged_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(py_merging_map, cuda_attention_mask)
+    
+    assert (py_merged_embeddings_transform == cuda_merged_embeddings_transform).all()
+    assert (cuda_merged_embeddings_counts == py_merged_embeddings_counts).all()
+    assert (cuda_merged_attention_mask == py_merged_attention_mask).all()
 
     (input_gradients_python,) = torch.autograd.grad(py_merged_embeddings_transform, py_merging_map, grad_outputs=output_gradients_py)
 
     assert (input_gradients_python == input_gradients_cuda_kernel).all()
-    breakpoint()
-    
 
     return
 
 
 def test_cuda_kernel_fan_out_backward():
     batch_size = 7
-    seq_len = 13
+    seq_len = 100
     hidden_size = 16
     
     device = 'cuda'
@@ -449,6 +452,8 @@ def test_cuda_kernel_fan_out_backward():
     )
     cuda_kernel__restored_hidden_states = cuda_kernel_adaptive_fan_out_output.hidden_state
     
+    assert (py_restored_hidden_states == cuda_kernel__restored_hidden_states).all()
+    
     output_gradients_py = torch.rand_like(cuda_kernel__restored_hidden_states)
     output_gradients_cuda = output_gradients_py.detach()
 
@@ -457,8 +462,6 @@ def test_cuda_kernel_fan_out_backward():
 
     assert (py_adaptive_fan_in_output_hidden_state_gradients == cuda_kernel_adaptive_fan_in_output_hidden_state_gradients).all()
     assert (py_residual_hidden_states_gradients == cuda_kernel_residual_hidden_states_gradients).all()
-    
-    breakpoint()
 
     return
 

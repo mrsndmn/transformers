@@ -26,6 +26,8 @@ def generate_merges_transform(
     torch._check(merging_map.dtype == torch.float)
     torch._check(attention_mask.dtype == torch.bool)
     torch._check(merging_map.device == attention_mask.device)
+    
+    assert (merging_map.sum(dim=-1).bool() == attention_mask).all()
 
     # TODO crop length
     # aggregated_embeddings_transform = torch.zeros([batch_size, seq_len, seq_len], device=device)
@@ -81,6 +83,8 @@ def _backward_generate_merges_transform(ctx, output_merging_map_grad, merged_emb
         # 10 it = 58 sec
         grad_merging_map_output = torch.ops.generate_merges.batch_repeat_interleave_for_merges_count.default(grad_merging_map, merged_embeddings_counts)
         # assert (grad_merging_map_output_cuda == grad_merging_map_output).all()
+        # assert ((grad_merging_map_output == 0).sum(dim=-1) == 1).all()
+        # breakpoint()
         # grad_merging_map_output = grad_merging_map_output_cuda
 
         # print("backward grad compute:", time.time() - start_repeat_interleaved)
@@ -142,6 +146,9 @@ def _backward_fan_out_restore_residuals(ctx, restored_hidden_states_grad):
     
     if ctx.needs_input_grad[2]:
         residual_hidden_states_grad = restored_hidden_states_grad
+        
+    assert hidden_states_grad is not None
+    assert residual_hidden_states_grad is not None
     
     return None, hidden_states_grad, residual_hidden_states_grad
 
