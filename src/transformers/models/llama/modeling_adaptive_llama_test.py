@@ -179,10 +179,11 @@ def test_adaptive_llama_e2e():
     assert llama_output.last_hidden_state.shape == hidden_states.shape
 
 def test_cuda_kernel_merges_transform_generate_merges_transform():
-    config = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager')
+    config_py = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
+    config_cuda_kernel = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="cuda_kernel")
     
-    py_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config, generate_merges_transform_impl="python")
-    cuda_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config, generate_merges_transform_impl="cuda")
+    py_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_py)
+    cuda_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_cuda_kernel)
     
     batch_size = 3
     seq_len = 5
@@ -272,13 +273,14 @@ def test_cuda_kernel_merges_transform_generate_merges_transform():
 
 
 def test_cuda_kernel_merges_transform_benchmark():
-    config = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager')
+    config_py = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
+    config_cuda_kernel = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="cuda_kernel")
+
+    py_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_py)
+    cuda_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_cuda_kernel)
     
-    py_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config, generate_merges_transform_impl="python")
-    cuda_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config, generate_merges_transform_impl="cuda")
-    
-    batch_sizes = [ 10, 50, 100 ]
-    seq_lens = [ 128, 512, 1024 ]
+    batch_sizes = [ 100 ]
+    seq_lens = [ 128, 1024 ]
     
     for batch_size in batch_sizes:
         for seq_len in seq_lens:
@@ -307,16 +309,19 @@ def test_cuda_kernel_merges_transform_benchmark():
                 py_time_start = time.time()
                 for _ in range(n_runs):
                     py_aggregated_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(merging_map, attention_mask)
+                    py_aggregated_embeddings_transform.sum().item()
                 py_duration = (time.time() - py_time_start) / n_runs
 
                 cuda_time_start = time.time()
                 for _ in range(n_runs):
                     cuda_aggregated_embeddings_transform, cuda_merged_embeddings_counts, cuda_merged_attention_mask = cuda_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask)
+                    cuda_aggregated_embeddings_transform.sum().item()
                 cuda_duration = (time.time() - cuda_time_start) / n_runs
 
                 py_cuda_time_start = time.time()
                 for _ in range(n_runs):
                     py_aggregated_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask)
+                    py_aggregated_embeddings_transform.sum().item()
                 py_cuda_duration = (time.time() - py_cuda_time_start) / n_runs
 
                 print(f"bs={batch_size} seq_len={seq_len} cuda_duration", cuda_duration)
@@ -334,10 +339,11 @@ def test_cuda_kernel_merges_transform_backward():
     seq_len = 5
     hidden_size = 16
 
-    config = LlamaConfig(hidden_size=hidden_size, num_hidden_layers=2, attn_implementation='eager')
-    
-    py_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config, generate_merges_transform_impl="python").to('cuda')
-    cuda_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config, generate_merges_transform_impl="cuda").to('cuda')
+    config_py = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
+    config_cuda_kernel = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="cuda_kernel")
+
+    py_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_py)
+    cuda_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_cuda_kernel)
     
     cuda_adaptive_fan_in_gumbel.fan_in_mlp.weight.data.copy_(py_adaptive_fan_in_gumbel.fan_in_mlp.weight.data)
     cuda_adaptive_fan_in_gumbel.fan_in_mlp.bias.data.copy_(py_adaptive_fan_in_gumbel.fan_in_mlp.bias.data)

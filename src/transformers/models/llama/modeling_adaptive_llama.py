@@ -175,19 +175,23 @@ def scaled_gumbel_softmax(
     return ret
 
 class AdaptiveFanInGumbel(nn.Module):
-    def __init__(self, config: LlamaConfig, generate_merges_transform_impl='python'):
+    def __init__(self, config: LlamaConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
         self.fan_in_mlp = nn.Linear(self.hidden_size * 2, 2)
 
-        self.generate_merges_transform_impl = generate_merges_transform_impl
+        assert config.generate_merges_transform_impl in [ 'python', 'cuda_kernel' ]
+        self.generate_merges_transform_impl = config.generate_merges_transform_impl
+        print("AdaptiveFanInGumbel generate_merges_transform_impl:", self.generate_merges_transform_impl)
 
     def generate_merges_transform(self, merging_map, attention_mask):
         if self.generate_merges_transform_impl == 'python':
             return self._generate_merges_transform(merging_map, attention_mask)
-        else:
+        elif self.generate_merges_transform_impl == 'cuda_kernel':
             # call cuda implementation
-            return generate_merges_transform(merging_map, attention_mask)
+            return generate_merges_transform(merging_map, attention_mask.bool())
+        else:
+            raise ValueError(f"invalid value for self.generate_merges_transform_impl={self.generate_merges_transform_impl}")
 
     @classmethod
     def _generate_merges_transform(klass, merging_map, attention_mask):
@@ -301,20 +305,23 @@ class AdaptiveFanInGumbel(nn.Module):
         if merging_log_probas is None:
             merging_log_probas = self.fan_in_mlp(attn_output_pairs)
 
-        if merging_log_probas.isnan().any() or not merging_log_probas.isfinite().all():
-            print("found nan merging_log_probas!")
-            breakpoint()
-            raise Exception("found nan merging_log_probas!")
+        # DEBUG = False
+        
+        # if DEBUG:
+        #     if merging_log_probas.isnan().any() or not merging_log_probas.isfinite().all():
+        #         print("found nan merging_log_probas!")
+        #         breakpoint()
+        #         raise Exception("found nan merging_log_probas!")
 
-        # merge all by default
-        # merging_log_probas_bias = torch.ones_like(merging_log_probas) * 10
-        # merging_log_probas_bias[:, :, 0] = 0
-        # merging_log_probas += merging_log_probas_bias
+        #     # merge all by default
+        #     # merging_log_probas_bias = torch.ones_like(merging_log_probas) * 10
+        #     # merging_log_probas_bias[:, :, 0] = 0
+        #     # merging_log_probas += merging_log_probas_bias
 
-        if merging_log_probas.isnan().any() or not merging_log_probas.isfinite().all():
-            print("found nan merging_log_probas!")
-            breakpoint()
-            raise Exception("found nan merging_log_probas!")
+        #     if merging_log_probas.isnan().any() or not merging_log_probas.isfinite().all():
+        #         print("found nan merging_log_probas!")
+        #         breakpoint()
+        #         raise Exception("found nan merging_log_probas!")
 
         # OHE: [ bs, seq_len, 2 ]
         if self.training:
@@ -330,7 +337,9 @@ class AdaptiveFanInGumbel(nn.Module):
         # merging_map[:, -1, 1] = 0
         merging_map[special_embeddings_mask.bool()] = torch.tensor([1., 0.], device=merging_map.device)
         merging_map[~attention_mask.bool()] = 0
-        assert (merging_map.sum(dim=-1) == 1).sum().item() == attention_mask.sum().item()
+        
+        # if DEBUG:
+        #     assert (merging_map.sum(dim=-1) == 1).sum().item() == attention_mask.sum().item()
         # print("attention_mask", attention_mask.sum())
         # print("merged tokens:", merging_map[:, :, 1].sum())
 
@@ -338,10 +347,12 @@ class AdaptiveFanInGumbel(nn.Module):
 
         # [ bs, new_seq_len, seq_len ]
         merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = self.generate_merges_transform(merging_map, attention_mask)
-        if merged_embeddings_transform.isnan().any() or not merged_embeddings_transform.isfinite().all():
-            print("found nan merged_embeddings_transform!")
-            breakpoint()
-            raise Exception("found nan merged_embeddings_transform!")
+        
+        # if DEBUG:
+        #     if merged_embeddings_transform.isnan().any() or not merged_embeddings_transform.isfinite().all():
+        #         print("found nan merged_embeddings_transform!")
+        #         breakpoint()
+        #         raise Exception("found nan merged_embeddings_transform!")
 
         merged_special_embeddings_mask = torch.zeros([batch_size, merged_embeddings_transform.shape[1]], device=hidden_state.device)
         merged_special_embeddings_mask[:, 0] = 1
@@ -356,10 +367,11 @@ class AdaptiveFanInGumbel(nn.Module):
         # print("sum_merged_tokens", sum_merged_tokens)
         # breakpoint()
 
-        if merged_attention_outputs.isnan().any():
-            print("found nan merged_attention_outputs!")
-            breakpoint()
-            raise Exception("found nan merged_attention_outputs!")
+        # if DEBUG:
+        #     if merged_attention_outputs.isnan().any():
+        #         print("found nan merged_attention_outputs!")
+        #         breakpoint()
+        #         raise Exception("found nan merged_attention_outputs!")
 
         res = AdaptiveFanInOutput(
             hidden_state=merged_attention_outputs,
@@ -396,6 +408,9 @@ class AdaptiveFanOut(nn.Module):
 
         # attention_mask ~ [ batch_size, new_seq_len ]
         # merged_embeddings_counts ~ [ batch_size, new_seq_len ]
+        
+
+        # if DEBUG:
         assert hidden_states.shape[1] == attention_mask.shape[1], 'seq len mismatch'
         assert hidden_states.shape[1] == merged_embeddings_counts.shape[1], 'seq len mismatch'
 
@@ -407,6 +422,7 @@ class AdaptiveFanOut(nn.Module):
 
         new_seq_len = attention_mask.shape[1]
         seq_len = residual_attention_mask.shape[1]
+
         assert seq_len >= new_seq_len, 'residual seq len cant be less then input_embeddings seq_len'
 
         restored_hidden_states = torch.zeros_like(residual_hidden_states) + residual_hidden_states
@@ -422,8 +438,6 @@ class AdaptiveFanOut(nn.Module):
                 restored_idx = int(restored_seq_len + num_repeats - 1)
                 restored_hidden_states[batch_i, restored_idx] += current_hidden_state
                 restored_seq_len += num_repeats
-
-        # TODO посмотреть RWKW и RetNet - https://datasecrets.ru/articles/19
 
         assert restored_hidden_states.shape == residual_hidden_states.shape
 

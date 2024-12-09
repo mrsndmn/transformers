@@ -99,18 +99,77 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> generate_merges_transfor
     );
 
     // Error checking
-    cudaDeviceSynchronize();
-    check_cuda_errors();
+    // cudaDeviceSynchronize();
+    // check_cuda_errors();
 
     return std::make_tuple(aggregated_embeddings_transform, merged_embeddings_counts, merged_attention_mask);
+}
+
+
+__global__ void batch_repeat_interleave_for_merges_count_kernel(
+    const torch::PackedTensorAccessor64<float, 3> merging_map,
+    const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
+    torch::PackedTensorAccessor64<float, 3> merging_map_output,
+    int batch_size, int seq_len
+) {
+    int batch_i = blockIdx.x; // Batch index
+    // int seq_len_i = threadIdx.x; // Index for the new sequence length
+
+    if (batch_i >= batch_size) {
+        return; // Out of bounds check
+    }
+
+    merging_map_output[0][0][0] = 1.0f;
+
+    int output_seq_len_i = 0;
+    for (int seq_len_i = 0; seq_len_i < seq_len; ++seq_len_i) {
+        auto current_repeats_num = merged_embeddings_counts[batch_i][seq_len_i];
+        if (current_repeats_num == 0) {
+            break;
+        }
+
+        for (int repeats_i = 0; repeats_i < current_repeats_num; ++repeats_i) {
+            merging_map_output[batch_i][output_seq_len_i] = merging_map[batch_i][seq_len_i];
+            ++output_seq_len_i;
+        }
+    }
+}
+
+torch::Tensor batch_repeat_interleave_for_merges_count(
+    const torch::Tensor& grad_merging_map,
+    const torch::Tensor& merged_embeddings_counts
+) {
+    const int batch_size = merged_embeddings_counts.size(0);
+    const int seq_len = merged_embeddings_counts.size(1);
+
+    // Launch the kernel
+    const dim3 block_size(1, 1, 1);  // One thread per sequence element
+    const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
+
+    torch::Tensor grad_merging_map_output = torch::zeros_like(grad_merging_map, grad_merging_map.options());
+
+    batch_repeat_interleave_for_merges_count_kernel<<<grid_size, block_size>>>(
+        grad_merging_map.packed_accessor64<float, 3>(),
+        merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
+        grad_merging_map_output.packed_accessor64<float, 3>(),
+        batch_size, seq_len
+    );
+
+    // Error checking
+    // cudaDeviceSynchronize();
+    // check_cuda_errors();
+
+    return grad_merging_map_output;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {}
 
 TORCH_LIBRARY(generate_merges, m) {
     m.def("generate_merges_transform(Tensor a, Tensor b) -> (Tensor, Tensor, Tensor)");
+    m.def("batch_repeat_interleave_for_merges_count(Tensor a, Tensor b) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(generate_merges, CUDA, m) {
     m.impl("generate_merges_transform", &generate_merges_transform_cuda);
+    m.impl("batch_repeat_interleave_for_merges_count", &batch_repeat_interleave_for_merges_count);
 }

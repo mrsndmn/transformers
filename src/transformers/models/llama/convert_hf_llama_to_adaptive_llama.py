@@ -25,13 +25,15 @@ from transformers import AutoModelForCausalLM, GenerationConfig, LlamaConfig, Ll
 
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
 
-def build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=None):
+def build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=None, generate_merges_transform_impl='python'):
 
     llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint)
     llama_model_state_dict = llama_model.state_dict()
 
     config: LlamaConfig = llama_model.config
     config.dummy_adaptive_fan_in = dummy_adaptive_fan_in
+    config.generate_merges_transform_impl = generate_merges_transform_impl
+    
     num_hidden_layers = config.num_hidden_layers
     assert num_hidden_layers % 2 == 0
     half_num_hidden_layers = num_hidden_layers // 2

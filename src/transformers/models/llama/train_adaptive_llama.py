@@ -563,12 +563,15 @@ class AdaptiveTrainingArguments(TrainingArguments):
     report_to: str = field(default="wandb")
     logging_steps: int = field(default=5)
     dataloader_drop_last: bool = field(default=True)
+    dataloader_num_workers: int = field(default=0)
 
     training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
     model_type: str = "dummy" # dummy | pretrained
     
     ce_merging_loss_weight: float = 0.1
     dummy_adaptive_fan_in_layers: int = 14
+    generate_merges_transform_impl: str = 'python'
+
     reverse_dummy_adaptive_fan_in_layers: bool = False
     
     select_train_dataset_items: int = 2500
@@ -615,7 +618,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
             dummy_adaptive_fan_in = list(reversed(dummy_adaptive_fan_in))
         
         assert len(dummy_adaptive_fan_in) == num_layers_half
-        model = build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=dummy_adaptive_fan_in)
+        model = build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=dummy_adaptive_fan_in, generate_merges_transform_impl=training_args.generate_merges_transform_impl)
 
         tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
     elif training_args.model_type == 'SmolLM-135M':
