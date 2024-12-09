@@ -172,7 +172,7 @@ class AdaptiveLlamaTrainer(Trainer):
         
         total_tokens = inputs['attention_mask'].sum().item()
 
-        if log_metrics:
+        if log_metrics and self.state.global_step % self.args.logging_steps == 0:
             log_info = {
                 "debug/straight_loss": outputs.loss.detach().item(),
                 "debug/not_merged_tokens": (total_tokens - sum_merged_tokens),
@@ -192,15 +192,16 @@ class AdaptiveLlamaTrainer(Trainer):
         # if merger_mpl_grad > 5:
         #     breakpoint()
 
-        extra_log = dict()
-        if hasattr(model.model, "adaptive_down"):
-            for i, adown in enumerate(model.model.adaptive_down):
-                if isinstance(adown, (AdaptiveFanInGumbel)):
-                    merger_mpl_grad = adown.fan_in_mlp.weight.grad.norm(2).item()
-                    assert merger_mpl_grad is not None, "merger_mpl_grad is expected to be not none"
-                    extra_log[f"merger_mpl_grad_norm_{i}"] = merger_mpl_grad
+        if self.state.global_step % self.args.logging_steps == 0:
+            extra_log = dict()
+            if hasattr(model.model, "adaptive_down"):
+                for i, adown in enumerate(model.model.adaptive_down):
+                    if isinstance(adown, (AdaptiveFanInGumbel)):
+                        merger_mpl_grad = adown.fan_in_mlp.weight.grad.norm(2).item()
+                        assert merger_mpl_grad is not None, "merger_mpl_grad is expected to be not none"
+                        extra_log[f"merger_mpl_grad_norm_{i}"] = merger_mpl_grad
 
-        self.log(extra_log)
+            self.log(extra_log)
 
         return result
 
@@ -561,7 +562,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     push_to_hub: bool = field(default=False)
     optim: str = field(default="adamw_torch")
     report_to: str = field(default="wandb")
-    logging_steps: int = field(default=500)
+    logging_steps: int = field(default=50)
     dataloader_drop_last: bool = field(default=True)
     dataloader_num_workers: int = field(default=0)
 
