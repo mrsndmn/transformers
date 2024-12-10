@@ -183,7 +183,7 @@ __global__ void fan_out_restore_residuals_kernel(
 
         int restored_idx = int(restored_seq_len + num_repeats - 1);
         for (int hi = 0; hi < hidden_dim; ++hi) {
-            restored_hidden_states[batch_i][restored_idx][hi] += hidden_states[batch_i][seq_len_i][hi];
+            restored_hidden_states[batch_i][restored_idx][hi] = hidden_states[batch_i][seq_len_i][hi];
         }
         restored_seq_len += num_repeats;
     }
@@ -192,17 +192,17 @@ __global__ void fan_out_restore_residuals_kernel(
 torch::Tensor fan_out_restore_residuals(
     const torch::Tensor& merged_embeddings_counts,
     const torch::Tensor& hidden_states,
-    const torch::Tensor& residual_hidden_states
+    const torch::Tensor& residual_hidden_states_projection
 ) {
     const int batch_size = merged_embeddings_counts.size(0);
     const int seq_len = merged_embeddings_counts.size(1);
-    const int hidden_dim = residual_hidden_states.size(2);
+    const int hidden_dim = residual_hidden_states_projection.size(2);
 
     // Launch the kernel
     const dim3 block_size(1, 1, 1);  // One thread per sequence element
     const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
 
-    torch::Tensor restored_hidden_states = torch::zeros_like(residual_hidden_states, residual_hidden_states.options()) + residual_hidden_states;
+    torch::Tensor restored_hidden_states = torch::detach(residual_hidden_states_projection);
 
     fan_out_restore_residuals_kernel<<<grid_size, block_size>>>(
         merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
@@ -219,10 +219,11 @@ torch::Tensor fan_out_restore_residuals(
 }
 
 
-__global__ void backward_fan_out_restore_residuals_kernel(
+__global__ void backward_fan_out_straight_kernel(
     const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
     const torch::PackedTensorAccessor64<float, 3> restored_hidden_states_grad,
     torch::PackedTensorAccessor64<float, 3> hidden_states_grad,
+    torch::PackedTensorAccessor64<float, 3> residual_hidden_states_grad,
     int batch_size, int seq_len, int hidden_dim
 ) {
     int batch_i = blockIdx.x; // Batch index
@@ -239,15 +240,22 @@ __global__ void backward_fan_out_restore_residuals_kernel(
             break;
         }
 
-        output_seq_len_i = output_seq_len_i + num_repeats - 1;
+        int restored_idx = int(output_seq_len_i + num_repeats - 1);
         for (int hi = 0; hi < hidden_dim; ++hi) {
-            hidden_states_grad[batch_i][seq_len_i][hi] += restored_hidden_states_grad[batch_i][output_seq_len_i][hi];
+            hidden_states_grad[batch_i][seq_len_i][hi] = restored_hidden_states_grad[batch_i][restored_idx][hi];
         }
-        output_seq_len_i += 1;
+
+        for (int residuals_grad_i = 0; residuals_grad_i < num_repeats - 1; ++residuals_grad_i) {
+            for (int hi = 0; hi < hidden_dim; ++hi) {
+                residual_hidden_states_grad[batch_i][output_seq_len_i + residuals_grad_i][hi] = restored_hidden_states_grad[batch_i][output_seq_len_i + residuals_grad_i][hi];
+            }
+        }
+
+        output_seq_len_i += num_repeats;
     }
 }
 
-torch::Tensor backward_fan_out_restore_residuals(
+std::tuple<torch::Tensor, torch::Tensor> backward_fan_out_restore_residuals(
     const torch::Tensor& merged_embeddings_counts,
     const torch::Tensor& restored_hidden_states_grad
 ) {
@@ -260,11 +268,13 @@ torch::Tensor backward_fan_out_restore_residuals(
     const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
 
     torch::Tensor hidden_states_grad = torch::zeros({batch_size, seq_len, hidden_dim}, restored_hidden_states_grad.options());
+    torch::Tensor residual_hidden_states_grad = torch::zeros_like(restored_hidden_states_grad, restored_hidden_states_grad.options());
 
-    backward_fan_out_restore_residuals_kernel<<<grid_size, block_size>>>(
+    backward_fan_out_straight_kernel<<<grid_size, block_size>>>(
         merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
         restored_hidden_states_grad.packed_accessor64<float, 3>(),
         hidden_states_grad.packed_accessor64<float, 3>(),
+        residual_hidden_states_grad.packed_accessor64<float, 3>(),
         batch_size, seq_len, hidden_dim
     );
 
@@ -272,7 +282,7 @@ torch::Tensor backward_fan_out_restore_residuals(
     // cudaDeviceSynchronize();
     // check_cuda_errors();
 
-    return hidden_states_grad;
+    return std::make_tuple(hidden_states_grad, residual_hidden_states_grad);
 }
 
 
@@ -282,7 +292,7 @@ TORCH_LIBRARY(generate_merges, m) {
     m.def("generate_merges_transform(Tensor a, Tensor b) -> (Tensor, Tensor, Tensor)");
     m.def("batch_repeat_interleave_for_merges_count(Tensor a, Tensor b) -> Tensor");
     m.def("fan_out_restore_residuals(Tensor a, Tensor b, Tensor c) -> Tensor");
-    m.def("backward_fan_out_restore_residuals(Tensor a, Tensor b) -> Tensor");
+    m.def("backward_fan_out_restore_residuals(Tensor a, Tensor b) -> (Tensor, Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(generate_merges, CUDA, m) {

@@ -20,6 +20,10 @@ WANDB_PROJECT=adaptive_attention WANDB_NAME="adaptive_07-15" WANDB_MODE=online P
 WANDB_PROJECT=adaptive_attention WANDB_NAME="adaptive_01-15" WANDB_MODE=online PYTHONPATH=./src python src/transformers/models/llama/train_adaptive_llama.py --output_dir 'adaptive_01-15' --per_device_train_batch_size 5 --learning_rate 0.0001 --num_train_epochs 1 --seed 1003 --training_dataset smollm-corpus --model_type pretrained --gradient_checkpointing 1 --dummy_adaptive_fan_in_layers 0  --select_train_dataset_items 20000  --generate_merges_transform_impl cuda_kernel
 
 
+# adaptive with residual projection
+WANDB_PROJECT=adaptive_attention WANDB_NAME="adaptive_15-15_fan_out_with_residual_projection" WANDB_MODE=online PYTHONPATH=./src python src/transformers/models/llama/train_adaptive_llama.py --output_dir 'adaptive_15-15_fan_out_with_residual_projection' --per_device_train_batch_size 5 --learning_rate 0.0001 --num_train_epochs 1 --seed 1003 --training_dataset smollm-corpus --model_type pretrained --gradient_checkpointing 1 --dummy_adaptive_fan_in_layers 14 --select_train_dataset_items 5500  --generate_merges_transform_impl python
+
+
 # Исследовательские вопросы:
 # * Как влияет расположение модулей мерджинга - в начале они или в конце?
 # * Можно ли сжимать контекст за счет этого механизма?

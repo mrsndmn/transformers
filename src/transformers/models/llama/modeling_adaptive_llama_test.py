@@ -408,8 +408,9 @@ def test_cuda_kernel_fan_out_backward():
     
     adaptive_fan_in = AdaptiveFanInGumbel(config_py).to(device)
 
-    py_adaptive_fan_out = AdaptiveFanOut(config_py)
-    cuda_adaptive_fan_out = AdaptiveFanOut(config_cuda_kernel)
+    py_adaptive_fan_out = AdaptiveFanOut(config_py).to(device)
+    cuda_adaptive_fan_out = AdaptiveFanOut(config_cuda_kernel).to(device)
+    cuda_adaptive_fan_out.load_state_dict(py_adaptive_fan_out.state_dict())
     
     hidden_states = torch.rand([ batch_size, seq_len, hidden_size ], requires_grad=True, device=device)
     attention_mask = torch.ones([batch_size, seq_len], device=device)

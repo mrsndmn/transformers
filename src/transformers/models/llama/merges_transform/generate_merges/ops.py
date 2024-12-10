@@ -133,22 +133,20 @@ def fan_out_restore_residuals(
 
 
 def _backward_fan_out_restore_residuals(ctx, restored_hidden_states_grad):
-    # [bs, seq_len, 2] [bs, new_seq_len, seq_len]
+    # restored_hidden_states_grad ~ [ bs, seq_len, hidden_dim ]
     (merged_embeddings_counts,) = ctx.saved_tensors
     
     hidden_states_grad = None
     residual_hidden_states_grad = None
-    if ctx.needs_input_grad[1]:
-        hidden_states_grad = torch.ops.generate_merges.backward_fan_out_restore_residuals.default(
+    if ctx.needs_input_grad[1] or ctx.needs_input_grad[2]:
+        hidden_states_grad, residual_hidden_states_grad = torch.ops.generate_merges.backward_fan_out_restore_residuals.default(
             merged_embeddings_counts,
             restored_hidden_states_grad,
         )
-    
-    if ctx.needs_input_grad[2]:
-        residual_hidden_states_grad = restored_hidden_states_grad
-        
+
     assert hidden_states_grad is not None
     assert residual_hidden_states_grad is not None
+    assert residual_hidden_states_grad.shape == restored_hidden_states_grad.shape
     
     return None, hidden_states_grad, residual_hidden_states_grad
 
