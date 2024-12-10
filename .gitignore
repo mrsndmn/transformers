@@ -172,3 +172,5 @@ tags
 .ruff_cache
 
 data
+/adaptive_*
+/vanilla-llama
