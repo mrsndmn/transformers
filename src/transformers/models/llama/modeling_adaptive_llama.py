@@ -400,10 +400,13 @@ class AdaptiveFanOut(nn.Module):
         self.hidden_size = config.hidden_size
         
         self.fan_out_implementation = config.generate_merges_transform_impl
-        # self.fan_out_mlp = nn.Linear(self.hidden_size * 2, self.hidden_size)
+        self.fan_out_mlp = nn.Linear(self.hidden_size, self.hidden_size)
 
     def _python_fan_out(self, batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states) -> torch.Tensor:
-        restored_hidden_states = torch.zeros_like(residual_hidden_states) + residual_hidden_states
+        # [bs, seq_len, hidden_dim]
+        residual_hidden_states_projection = self.fan_out_mlp(residual_hidden_states)
+        
+        restored_hidden_states = torch.zeros_like(residual_hidden_states)
         for batch_i in range(batch_size):
             restored_seq_len = 0
             for seq_len_i in range(new_seq_len):
@@ -415,6 +418,9 @@ class AdaptiveFanOut(nn.Module):
 
                 restored_idx = int(restored_seq_len + num_repeats - 1)
                 restored_hidden_states[batch_i, restored_idx] += current_hidden_state
+                for residual_embedding_i in range(restored_seq_len, restored_idx):
+                    restored_hidden_states[batch_i, residual_embedding_i] += residual_hidden_states_projection[batch_i, residual_embedding_i]
+
                 restored_seq_len += num_repeats
 
         return restored_hidden_states
