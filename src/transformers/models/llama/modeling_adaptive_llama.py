@@ -87,7 +87,7 @@ class AdaptiveBaseModelOutputWithPast(BaseModelOutputWithPast):
 
 @dataclass
 class AdaptiveCausalLMOutputWithPast(CausalLMOutputWithPast):
-    mean_merged_tokens: Optional[int] = None
+    mean_merged_tokens: Optional[torch.Tensor] = None
     fan_in_merging_maps: Optional[torch.Tensor] = None
     fan_in_merging_logits: Optional[torch.Tensor] = None
     fan_in_merging_logits_attention_mask: Optional[torch.Tensor] = None
@@ -180,6 +180,7 @@ def scaled_gumbel_softmax(
 class AdaptiveFanInGumbel(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
+        self.config = config
         self.hidden_size = config.hidden_size
         self.fan_in_mlp = nn.Linear(self.hidden_size * 2, 2)
 
@@ -306,11 +307,14 @@ class AdaptiveFanInGumbel(nn.Module):
 
         # attention_mask ~ [ bs, seq_len ]
         assert hidden_state.shape[:2] == attention_mask.shape
+        assert special_embeddings_mask is not None
+        assert attention_mask is not None
         assert special_embeddings_mask.shape == attention_mask.shape
 
         batch_size = hidden_state.shape[0]
         seq_len = hidden_state.shape[1]
         hidden_dim = hidden_state.shape[2]
+        assert seq_len <= self.config.max_position_embeddings
 
         merging_mask_stub = torch.zeros([batch_size, 1, hidden_dim * 2], device=hidden_state.device)
 
@@ -748,6 +752,8 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         all_loop_down_position_embeddings = [ ]
         all_loop_down_position_ids = [ ]
         all_loop_down_hidden_states = []
+        
+        assert special_embeddings_mask is not None
 
         loop_down_special_embeddings_mask = special_embeddings_mask
         loop_down_merged_embeddings_counts = None
@@ -1189,13 +1195,13 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
 
         return AdaptiveCausalLMOutputWithPast(
             loss=loss,
-            logits=logits,
+            # logits=logits,
             past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
-            mean_merged_tokens=outputs.mean_merged_tokens,
-            fan_in_merging_maps=outputs.fan_in_merging_maps,
-            fan_in_merging_logits=outputs.fan_in_merging_logits,
-            fan_in_merging_logits_attention_mask=outputs.fan_in_merging_logits_attention_mask,
+            mean_merged_tokens=torch.tensor(outputs.mean_merged_tokens, device=logits.device),
+            # fan_in_merging_maps=outputs.fan_in_merging_maps,
+            # fan_in_merging_logits=outputs.fan_in_merging_logits,
+            # fan_in_merging_logits_attention_mask=outputs.fan_in_merging_logits_attention_mask,
         )
 

@@ -43,14 +43,14 @@ WANDB_PROJECT=adaptive_attention WANDB_NAME="adaptive_11-15_fan_out_with_residua
 # learning_rate = 1e-4
 # adam_beta1=0.9
 # adam_beta2=0.95
-# WANDB_PROJECT=adaptive_attention WANDB_NAME="adaptive_13-15_residual_projection_bs20" WANDB_MODE=online PYTHONPATH=./src python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --output_dir 'adaptive_13-15_residual_projection_bs20' --per_device_train_batch_size 20 --learning_rate 0.0001 --num_train_epochs 1 --seed 1003 --training_dataset smollm-corpus --model_type pretrained --gradient_checkpointing 1 --dummy_adaptive_fan_in_layers 13 --select_train_dataset_items 80000  --generate_merges_transform_impl cuda_kernel --adam_beta1 0.9 --adam_beta2 0.95
+# WANDB_PROJECT=adaptive_attention WANDB_NAME="adaptive_14-15_residual_projection_bs20" WANDB_MODE=online PYTHONPATH=./src python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --output_dir 'adaptive_13-15_residual_projection_bs20' --per_device_train_batch_size 20 --learning_rate 0.0001 --num_train_epochs 1 --seed 1003 --training_dataset smollm-corpus --model_type pretrained --gradient_checkpointing 1 --dummy_adaptive_fan_in_layers 13 --select_train_dataset_items 80000 --generate_merges_transform_impl cuda_kernel --adam_beta1 0.9 --adam_beta2 0.95
 
 # warmup_steps=1000
 # batch_size = 40
 # learning_rate = 2e-4
 # adam_beta1=0.9
 # adam_beta2=0.95
-# WANDB_PROJECT=adaptive_attention WANDB_NAME="adaptive_13-15_residual_projection_bs40" WANDB_MODE=online PYTHONPATH=./src python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --output_dir 'adaptive_13-15_residual_projection_bs40' --per_device_train_batch_size 40 --learning_rate 0.0002 --num_train_epochs 1 --seed 1003 --training_dataset smollm-corpus --model_type pretrained --gradient_checkpointing 1 --dummy_adaptive_fan_in_layers 13 --select_train_dataset_items 80000  --generate_merges_transform_impl cuda_kernel --adam_beta1 0.9 --adam_beta2 0.95
+# WANDB_PROJECT=adaptive_attention WANDB_NAME="adaptive_14-15_residual_projection_bs40" WANDB_MODE=online PYTHONPATH=./src python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --output_dir 'adaptive_13-15_residual_projection_bs40' --per_device_train_batch_size 40 --learning_rate 0.0002 --num_train_epochs 1 --seed 1003 --training_dataset smollm-corpus --model_type pretrained --gradient_checkpointing 1 --dummy_adaptive_fan_in_layers 13 --select_train_dataset_items 80000  --generate_merges_transform_impl cuda_kernel --adam_beta1 0.9 --adam_beta2 0.95
 
 # TODO
 # bs 40 + 2 GPU +? freeze all prev layers
@@ -64,6 +64,7 @@ WANDB_PROJECT=adaptive_attention WANDB_NAME="adaptive_11-15_fan_out_with_residua
 
 # Исследовательские вопросы:
 # * Почему процент смердженых токенов не растет?
+# * Как процент смердженых токенов растет на разных слоях?
 # * Перезапустить эксп с лоссом на распределение мерджига?
 # * Как влияет расположение модулей мерджинга - в начале они или в конце?
 # * Исследовать другие способы определения, должны ли токены быть смерджены.
@@ -72,13 +73,16 @@ WANDB_PROJECT=adaptive_attention WANDB_NAME="adaptive_11-15_fan_out_with_residua
 #       - MHAttention Head Similarities Voting
 # * Какие именно токены мерджатся? Попробовать проинтерпретировать это
 # * Почему для гумбеля градиенты текут только на единички - ок ли это?
+# * Нужен ли на последнем промежуточном слое fanin / fan out?
+# * Как адаптивность влияет на бенчмарки?
+
+# * Корится, если запустить DataParallel обучение
 
 # * Как именно мерджить токены?
 #       - Сумма
 #       - Конкатенация + MLP
 #       - Поэлементное умножение + LN
 #       - TODO
-
 
 # * Можно ли сжимать контекст за счет этого механизма?
 #       - Необходимо: Как управлять степенью сжатия контекста?

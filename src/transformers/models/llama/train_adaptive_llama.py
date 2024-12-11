@@ -127,7 +127,7 @@ class AdaptiveLlamaTrainer(Trainer):
             "attention_mask": inputs['attention_mask'],
         }
 
-        if isinstance(model, AdaptiveLlamaForCausalLM):
+        if isinstance(model, AdaptiveLlamaForCausalLM) or ( isinstance(model, nn.DataParallel) and isinstance(model.module, AdaptiveLlamaForCausalLM)):
             assert special_embeddings_mask is not None
             # assert special_embeddings_mask.sum() > 1
 
@@ -145,7 +145,7 @@ class AdaptiveLlamaTrainer(Trainer):
         sum_merged_tokens = 0
 
         if isinstance(model, AdaptiveLlamaForCausalLM):
-            sum_merged_tokens = outputs.mean_merged_tokens
+            sum_merged_tokens = outputs.mean_merged_tokens.item()
             if self.args.ce_merging_loss_weight > 0.0:
                 for i, (fan_in_merging_logits, fan_in_merging_logits_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                     # ce_targets = outputs.fan_in_merging_maps[i][:, :, 1].flatten()
@@ -176,8 +176,11 @@ class AdaptiveLlamaTrainer(Trainer):
         total_tokens = inputs['attention_mask'].sum().item()
 
         if log_metrics and self.state.global_step % self.args.logging_steps == 0:
+            outputs_loss = outputs.loss
+            if len(outputs_loss.shape) > 0:
+                outputs_loss = outputs.loss.mean()
             log_info = {
-                "debug/straight_loss": outputs.loss.detach().item(),
+                "debug/straight_loss": outputs_loss.detach().item(),
                 "debug/not_merged_tokens": (total_tokens - sum_merged_tokens),
                 "debug/mean_merged_tokens": sum_merged_tokens,
                 "debug/total_tokens": total_tokens,
@@ -681,7 +684,8 @@ if __name__ == "__main__":
             smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=[ "cosmopedia-v2/train-00000-of-00104.parquet" ])
 
             def tokenize_function(examples):
-                tokenized_inputs = tokenizer(examples['text'], return_special_tokens_mask=True, truncation=True, max_length=2048)
+                # 2046 = 2048 - 1 - 1 # eos and bos tokens
+                tokenized_inputs = tokenizer(examples['text'], return_special_tokens_mask=True, truncation=True, max_length=2046)
                 for x in tokenized_inputs['input_ids']:
                     x.insert(0, im_start_token_id)
                     x.append(im_end_token_id)
