@@ -5,6 +5,7 @@ import time
 
 __all__ = ["generate_merges_transform", "fan_out_restore_residuals"]
 
+CHECK_WITH_PYTHON = False
 
 def generate_merges_transform(
         merging_map: Tensor,
@@ -73,22 +74,36 @@ def _backward_generate_merges_transform(ctx, output_merging_map_grad, merged_emb
         # start_repeat_interleaved = time.time()
 
         # 10 it = 01:07
-        # grad_merging_map_output = torch.zeros_like(grad_merging_map)
-        # merged_embeddings_counts_sum = merged_embeddings_counts.sum(dim=-1)
-        # for batch_i in range(batch_size):
-        #     repeat_mask = merged_embeddings_counts[batch_i]
-        #     total_tokens = merged_embeddings_counts_sum[batch_i].item()
-        #     grad_merging_map_output[batch_i, :total_tokens] = grad_merging_map[batch_i].repeat_interleave(repeat_mask, dim=0)
-
-        # 10 it = 58 sec
         grad_merging_map_output = torch.ops.generate_merges.batch_repeat_interleave_for_merges_count.default(grad_merging_map, merged_embeddings_counts)
-        # assert (grad_merging_map_output_cuda == grad_merging_map_output).all()
-        # assert ((grad_merging_map_output == 0).sum(dim=-1) == 1).all()
-        # breakpoint()
-        # grad_merging_map_output = grad_merging_map_output_cuda
 
-        # print("backward grad compute:", time.time() - start_repeat_interleaved)
+        # if CHECK_WITH_PYTHON:
+        #     grad_merging_map_output_py = torch.zeros_like(grad_merging_map)
+        #     merged_embeddings_counts_sum = merged_embeddings_counts.sum(dim=-1)
+        #     for batch_i in range(batch_size):
+        #         repeat_mask = merged_embeddings_counts[batch_i]
+        #         total_tokens = merged_embeddings_counts_sum[batch_i].item()
+        #         grad_merging_map_output_py[batch_i, :total_tokens] = grad_merging_map[batch_i].repeat_interleave(repeat_mask, dim=0)
 
+        #         current_pos = 0
+        #         for i in range(len(repeat_mask)):
+        #             current_repeat_count = repeat_mask[i].item()
+        #             if current_repeat_count == 0:
+        #                 break
+
+        #             if current_repeat_count == 1:
+        #                 current_pos += 1
+        #             else:
+        #                 for _ in range(current_repeat_count - 1):
+        #                     grad_merging_map_output_py[batch_i, current_pos, 0] = 0
+        #                     current_pos += 1
+
+        #                 grad_merging_map_output_py[batch_i, current_pos, 1] = 0
+        #                 current_pos += 1
+            
+        #     # grad_merging_map_output = grad_merging_map_output_py
+        #     assert (grad_merging_map_output_py == grad_merging_map_output).all()
+
+        
     return grad_merging_map_output, None
 
 

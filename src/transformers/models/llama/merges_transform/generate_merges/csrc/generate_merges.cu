@@ -38,7 +38,7 @@ __global__ void generate_merges_transform_kernel(
         }
 
         bool want_merge = merging_map[batch_i][seq_len_i][1] > 0.0f; // Check if merge is requested
-        if (want_merge && seq_len_i < seq_len - 1) {
+        if (want_merge) {
             if (buffer_length == 0) {
                 start_want_merge = seq_len_i;
             }
@@ -46,18 +46,19 @@ __global__ void generate_merges_transform_kernel(
         } else {
             if (buffer_length > 0) {
                 // Handle the merging
-                merged_embeddings_counts[batch_i][new_seq_len_i] = seq_len_i - start_want_merge;
-                for (int i = start_want_merge; i < seq_len_i; ++i) {
+                merged_embeddings_counts[batch_i][new_seq_len_i] = seq_len_i - start_want_merge + 1;
+                // attention on `<=`! i <= seq_len_i
+                for (int i = start_want_merge; i <= seq_len_i; ++i) {
                     aggregated_embeddings_transform[batch_i][new_seq_len_i][i] = 1.0;
                 }
                 new_seq_len_i++;
                 buffer_length = 0;
+            } else {
+                // Handle individual token (no merge)
+                aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = 1.0;
+                merged_embeddings_counts[batch_i][new_seq_len_i] = 1;
+                new_seq_len_i++;
             }
-
-            // Handle individual token (no merge)
-            aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = 1.0;
-            merged_embeddings_counts[batch_i][new_seq_len_i] = 1;
-            new_seq_len_i++;
         }
     }
 
@@ -126,11 +127,22 @@ __global__ void batch_repeat_interleave_for_merges_count_kernel(
             break;
         }
 
-        for (int repeats_i = 0; repeats_i < current_repeats_num; ++repeats_i) {
+        if (current_repeats_num == 1) {
             merging_map_output[batch_i][output_seq_len_i][0] = merging_map[batch_i][seq_len_i][0];
             merging_map_output[batch_i][output_seq_len_i][1] = merging_map[batch_i][seq_len_i][1];
+            ++output_seq_len_i;            
+        } else {
+            // repeat interleave
+            for (int repeats_i = 0; repeats_i < current_repeats_num - 1; ++repeats_i) {
+                // merging_map_output[batch_i][output_seq_len_i][0] = 0;
+                merging_map_output[batch_i][output_seq_len_i][1] = merging_map[batch_i][seq_len_i][1];
+                ++output_seq_len_i;
+            }
+
+            merging_map_output[batch_i][output_seq_len_i][0] = merging_map[batch_i][seq_len_i][0];
             ++output_seq_len_i;
         }
+
     }
 }
 

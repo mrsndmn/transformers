@@ -168,6 +168,7 @@ class LlamaConfig(PretrainedConfig):
         head_dim=None,
         dummy_adaptive_fan_in=None,
         generate_merges_transform_impl='python',
+        fan_out_projection=True,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -181,6 +182,7 @@ class LlamaConfig(PretrainedConfig):
             dummy_adaptive_fan_in = [ True ] * (num_hidden_layers // 2)
         self.dummy_adaptive_fan_in = dummy_adaptive_fan_in
         self.generate_merges_transform_impl = generate_merges_transform_impl
+        self.fan_out_projection = fan_out_projection
 
         # for backward compatibility
         if num_key_value_heads is None:

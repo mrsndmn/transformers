@@ -25,7 +25,7 @@ from transformers import AutoModelForCausalLM, GenerationConfig, LlamaConfig, Ll
 
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
 
-def build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=None, generate_merges_transform_impl='python'):
+def build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=None, generate_merges_transform_impl='python', fan_out_projection=True):
 
     llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint)
     llama_model_state_dict = llama_model.state_dict()
@@ -33,6 +33,7 @@ def build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_
     config: LlamaConfig = llama_model.config
     config.dummy_adaptive_fan_in = dummy_adaptive_fan_in
     config.generate_merges_transform_impl = generate_merges_transform_impl
+    config.fan_out_projection = fan_out_projection
     
     num_hidden_layers = config.num_hidden_layers
     assert num_hidden_layers % 2 == 0

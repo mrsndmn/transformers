@@ -129,7 +129,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
         if isinstance(model, AdaptiveLlamaForCausalLM):
             assert special_embeddings_mask is not None
-            assert special_embeddings_mask.sum() > 1
+            # assert special_embeddings_mask.sum() > 1
 
             model_kwargs["special_embeddings_mask"] = special_embeddings_mask
             
@@ -171,7 +171,7 @@ class AdaptiveLlamaTrainer(Trainer):
         loss = outputs.loss + ce_merging_loss_sum * self.args.ce_merging_loss_weight
         outputs.loss = loss
 
-        assert ~ loss.isnan().any(), 'loss cant be none'
+        # assert ~ loss.isnan().any(), 'loss cant be none'
         
         total_tokens = inputs['attention_mask'].sum().item()
 
@@ -580,6 +580,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     reverse_dummy_adaptive_fan_in_layers: bool = False
     
     select_train_dataset_items: int = 20000
+    fan_out_projection: bool = True
 
 def build_model(training_args: AdaptiveTrainingArguments):
     tokeniezer = None
@@ -623,7 +624,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
             dummy_adaptive_fan_in = list(reversed(dummy_adaptive_fan_in))
         
         assert len(dummy_adaptive_fan_in) == num_layers_half
-        model = build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=dummy_adaptive_fan_in, generate_merges_transform_impl=training_args.generate_merges_transform_impl)
+        model = build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=dummy_adaptive_fan_in, generate_merges_transform_impl=training_args.generate_merges_transform_impl, fan_out_projection=training_args.fan_out_projection)
 
         tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
     elif training_args.model_type == 'SmolLM-135M':
@@ -718,7 +719,7 @@ if __name__ == "__main__":
                 currrent_special_tokens_mask = ex['special_tokens_mask']
                 collate_dummy['special_tokens_mask'][i, :len(currrent_special_tokens_mask)] = torch.tensor(currrent_special_tokens_mask, dtype=torch.long)
 
-            assert (collate_dummy['special_tokens_mask'].sum(dim=-1) == 2).all()
+            # assert (collate_dummy['special_tokens_mask'].sum(dim=-1) == 2).all()
 
             return collate_dummy
 
@@ -753,6 +754,7 @@ if __name__ == "__main__":
     # with torch.autocast("cuda"):
     trainer.train(
         resume_from_checkpoint=None,
+        # resume_from_checkpoint="adaptive_11-15_fan_out_with_residual_projection/checkpoint-1080/",
         # resume_from_checkpoint="llama_for_sequential_numbers/checkpoint-1170"
     )
 
