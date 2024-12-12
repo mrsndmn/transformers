@@ -577,7 +577,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
     model_type: str = "dummy" # dummy | pretrained | SmolLM-135M
     
     ce_merging_loss_weight: float = 0.0
-    dummy_adaptive_fan_in_layers: int = 14
+    dummy_adaptive_fan_in_layers: Optional[int] = None
+    dummy_adaptive_fan_in_layers_str: Optional[str] = None
     generate_merges_transform_impl: str = 'cuda_kernel'
 
     reverse_dummy_adaptive_fan_in_layers: bool = False
@@ -621,10 +622,18 @@ def build_model(training_args: AdaptiveTrainingArguments):
         num_layers = llama_config.num_hidden_layers
         num_layers_half = num_layers // 2
 
-        smart_layers_count = num_layers_half - training_args.dummy_adaptive_fan_in_layers
-        dummy_adaptive_fan_in = [ True ] * training_args.dummy_adaptive_fan_in_layers + [ False ] * smart_layers_count
+        if training_args.dummy_adaptive_fan_in_layers is not None:
+            smart_layers_count = num_layers_half - training_args.dummy_adaptive_fan_in_layers
+            dummy_adaptive_fan_in = [ True ] * training_args.dummy_adaptive_fan_in_layers + [ False ] * smart_layers_count
+        elif training_args.dummy_adaptive_fan_in_layers_str is not None:
+            assert not training_args.reverse_dummy_adaptive_fan_in_layers, 'reverse_dummy_adaptive_fan_in_layers is prohibited with dummy_adaptive_fan_in_layers_str'
+            dummy_adaptive_fan_in = list(map(lambda x: bool(int(x)), training_args.dummy_adaptive_fan_in_layers_str.split(',')))
+        else:
+            raise ValueError("either dummy_adaptive_fan_in_layers or dummy_adaptive_fan_in_layers_str must be defined")
         if training_args.reverse_dummy_adaptive_fan_in_layers:
             dummy_adaptive_fan_in = list(reversed(dummy_adaptive_fan_in))
+        
+        print("dummy_adaptive_fan_in", dummy_adaptive_fan_in)
         
         assert len(dummy_adaptive_fan_in) == num_layers_half
         model = build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=dummy_adaptive_fan_in, generate_merges_transform_impl=training_args.generate_merges_transform_impl, fan_out_projection=training_args.fan_out_projection)
