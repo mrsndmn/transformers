@@ -144,10 +144,14 @@ class NoOpFanIn(nn.Module):
         )
 
         return res
+    
+    def set_gumbel_tau(self, _):
+        return
+
 
 def scaled_gumbel_softmax(
         logits,
-        tau: float = 10.,
+        tau: float = 1.,
         scale = 1.0,
         hard = True,
         dim: int = -1,
@@ -182,15 +186,27 @@ class AdaptiveFanInGumbel(nn.Module):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
-        self.fan_in_mlp = nn.Linear(self.hidden_size * 2, 2)
+        
+        self.gumbel_tau = 1.0
+        
+        self.merging_type = self.config.merging_type
+        
+        if self.merging_type == 'next_token_merge_mlp':
+            self.fan_in_mlp = nn.Linear(self.hidden_size * 2, 2, bias=False) # todo is it ok
+        else:
+            self.fan_in_mlp = nn.Linear(self.hidden_size, 2, bias=False) # todo is it ok
 
-        assert config.generate_merges_transform_impl in [ 'python', 'cuda_kernel' ]
+        assert config.generate_merges_transform_impl in [ 'python', 'cuda_kernel', 'python_selective_not_merge' ]
         self.generate_merges_transform_impl = config.generate_merges_transform_impl
         print("AdaptiveFanInGumbel generate_merges_transform_impl:", self.generate_merges_transform_impl)
         
         approximate_batch_size_length = 100
         max_seq_len_buffer = torch.arange(config.max_position_embeddings).unsqueeze(0).repeat(approximate_batch_size_length, 1)
         self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
+
+
+    def set_gumbel_tau(self, new_tau):
+        self.gumbel_tau = new_tau
 
     def generate_merges_transform(self, merging_map, attention_mask):
         if self.generate_merges_transform_impl == 'python':
@@ -207,11 +223,13 @@ class AdaptiveFanInGumbel(nn.Module):
             #     assert (merged_attention_mask == py_merged_attention_mask).all()
             
             return merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask
+        elif self.generate_merges_transform_impl == 'python_selective_not_merge':
+            return self._generate_merges_transform(merging_map, attention_mask, transform_type='select')
         else:
             raise ValueError(f"invalid value for self.generate_merges_transform_impl={self.generate_merges_transform_impl}")
 
     @classmethod
-    def _generate_merges_transform(klass, merging_map, attention_mask):
+    def _generate_merges_transform(klass, merging_map, attention_mask, transform_type='merge'):
         """Generates differentiable merges transform matrix
 
         Args:
@@ -266,11 +284,19 @@ class AdaptiveFanInGumbel(nn.Module):
                 else:
                     if buffer_length > 0:
                         merged_embeddings_counts[batch_i, new_seq_len_i] = seq_len_i - start_want_merge + 1
-                        aggregated_embeddings_transform[batch_i, new_seq_len_i, start_want_merge:seq_len_i] = merging_map[batch_i, start_want_merge:seq_len_i, 1]
-                        assert merging_map[batch_i, seq_len_i, 0].item() == 1, 'merging map is zero?'
-                        aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 0]
-                        new_seq_len_i += 1
-                        buffer_length = 0
+
+                        if transform_type == 'merge':
+                            aggregated_embeddings_transform[batch_i, new_seq_len_i, start_want_merge:seq_len_i] = merging_map[batch_i, start_want_merge:seq_len_i, 1]
+                            assert merging_map[batch_i, seq_len_i, 0].item() == 1, 'merging map is zero?'
+                            aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 0]
+                            new_seq_len_i += 1
+                            buffer_length = 0
+                        elif transform_type == 'select':
+                            aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 0] + merging_map[batch_i, start_want_merge:seq_len_i, 1].sum(-1, keepdim=True) - merging_map[batch_i, start_want_merge:seq_len_i, 1].sum(-1, keepdim=True).detach()
+                            new_seq_len_i += 1
+                            buffer_length = 0
+                        else:
+                            raise ValueError(f'unknown_merge_type {transform_type}')
                     else:
                         aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 0]
                         merged_embeddings_counts[batch_i, new_seq_len_i] = 1
@@ -315,38 +341,48 @@ class AdaptiveFanInGumbel(nn.Module):
         seq_len = hidden_state.shape[1]
         hidden_dim = hidden_state.shape[2]
         assert seq_len <= self.config.max_position_embeddings
+        
+        if self.merging_type == 'next_token_merge_mlp':
+            merging_mask_stub = torch.zeros([batch_size, 1, hidden_dim * 2], device=hidden_state.device)
 
-        merging_mask_stub = torch.zeros([batch_size, 1, hidden_dim * 2], device=hidden_state.device)
+            # joined prev and next tokens
+            # each embedding could be explained as: should it be merged with the next one embedding?
+            # [ bs, seq_len - 1, hidden_size * 2 ]
+            attn_output_pairs = torch.cat([ hidden_state[:, :-1], hidden_state[:, 1:] ], dim=-1)
+            # [ bs, seq_len, hidden_size * 2 ]
+            attn_output_pairs = torch.cat([ attn_output_pairs, merging_mask_stub ], dim=1)
 
-        # joined prev and next tokens
-        # each embedding could be explained as: should it be merged with the next one embedding?
-        # [ bs, seq_len - 1, hidden_size * 2 ]
-        attn_output_pairs = torch.cat([ hidden_state[:, :-1], hidden_state[:, 1:] ], dim=-1)
-        # [ bs, seq_len, hidden_size * 2 ]
-        attn_output_pairs = torch.cat([ attn_output_pairs, merging_mask_stub ], dim=1)
+            # [ bs, seq_len, 2 ] # should be merged or not (probas)?
+            if merging_log_probas is None:
+                merging_log_probas = self.fan_in_mlp(attn_output_pairs)
+        elif self.merging_type == 'attention_output_mlp':
+            if merging_log_probas is None:
+                merging_log_probas = self.fan_in_mlp(hidden_state)
+        else:
+            raise ValueError(f"unknown self.merging_type: {self.merging_type}")
 
-        # [ bs, seq_len, 2 ] # should be merged or not (probas)?
-        if merging_log_probas is None:
-            merging_log_probas = self.fan_in_mlp(attn_output_pairs)
-
+        
         # OHE: [ bs, seq_len, 2 ]
         if self.training:
-            merging_map = scaled_gumbel_softmax(merging_log_probas, hard=True, dim=-1)
+            merging_map = scaled_gumbel_softmax(merging_log_probas, hard=True, dim=-1, tau=self.gumbel_tau)
         else:
             merging_map = torch.zeros_like(merging_log_probas)
-            merging_map[:, :, 0] = (merging_log_probas[:, :, 0] > merging_log_probas[:, :, 1]).to(torch.float32)
+            merging_map[:, :, 0] = (merging_log_probas[:, :, 0] > merging_log_probas[:, :, 1]).to(merging_map.dtype)
             merging_map[:, :, 1] = 1 - merging_map[:, :, 0]
 
         # OHE: [ bs, seq_len, 2 ]
-        merging_map[special_embeddings_mask.bool()] = torch.tensor([1., 0.], device=merging_map.device)
+        merging_map[special_embeddings_mask.bool()] = torch.tensor([1., 0.], device=merging_map.device, dtype=merging_map.dtype)
         merging_map[~attention_mask.bool()] = 0
         
         if self.max_seq_len_buffer.shape[0] < attention_mask.shape[0]:
             self.max_seq_len_buffer.data = self.max_seq_len_buffer.data[:1].repeat(attention_mask.shape[0], 1)
 
-        arange_buffer = self.max_seq_len_buffer[:batch_size, :seq_len]
-        before_eos_mask = (arange_buffer == (attention_mask.long().sum(dim=-1, keepdim=True)-2))
-        merging_map[before_eos_mask] = torch.tensor([1., 0.], device=merging_map.device)
+        # arange_buffer = self.max_seq_len_buffer[:batch_size, :seq_len]
+        # before_eos_mask = (arange_buffer == (attention_mask.long().sum(dim=-1, keepdim=True)-2))
+        # merging_map[before_eos_mask] = torch.tensor([1., 0.], device=merging_map.device, dtype=merging_map.dtype)
+        
+        # prohibit merging of after bos tokens
+        merging_map[:, 1] = torch.tensor([1., 0.], device=merging_map.device, dtype=merging_map.dtype)
         
         # [ bs, new_seq_len, seq_len ] - состоит из нулей и единичек
         merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = self.generate_merges_transform(merging_map, attention_mask)
@@ -360,6 +396,8 @@ class AdaptiveFanInGumbel(nn.Module):
         merged_special_embeddings_mask[merged_eos_mask] = 1
         
         assert (merged_special_embeddings_mask.sum(-1) == 2).all()
+        
+        merged_embeddings_transform = merged_embeddings_transform.to(hidden_state.dtype)
 
         # [ bs, new_seq_len, emb_dim ] = [ bs, new_seq_len, seq_len ] @ [ bs, seq_len, emb_dim ]
         merged_attention_outputs = torch.bmm(merged_embeddings_transform, hidden_state)
@@ -386,7 +424,7 @@ class AdaptiveFanOut(nn.Module):
         self.fan_out_implementation = config.generate_merges_transform_impl
         self.fan_out_mlp = nn.Linear(self.hidden_size, self.hidden_size)
 
-    def _python_fan_out(self, batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection) -> torch.Tensor:
+    def _python_fan_out(self, batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection, type='merge') -> torch.Tensor:
         # [bs, seq_len, hidden_dim]
         
         restored_hidden_states = residual_hidden_states_projection
@@ -451,11 +489,10 @@ class AdaptiveFanOut(nn.Module):
         else:
             residual_hidden_states_projection = residual_hidden_states
         
-        if self.fan_out_implementation == 'python':
+        if self.fan_out_implementation in ('python',):
             restored_hidden_states = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
-        elif self.fan_out_implementation == 'cuda_kernel':
+        elif self.fan_out_implementation in ('cuda_kernel', 'python_selective_not_merge'):
             restored_hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection)
-
             # if CHECK_WITH_PYTHON:
             #     restored_hidden_states_py = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
             #     assert (restored_hidden_states_py == restored_hidden_states).all()
@@ -1201,7 +1238,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
             attentions=outputs.attentions,
             mean_merged_tokens=torch.tensor(outputs.mean_merged_tokens, device=logits.device),
             # fan_in_merging_maps=outputs.fan_in_merging_maps,
-            # fan_in_merging_logits=outputs.fan_in_merging_logits,
-            # fan_in_merging_logits_attention_mask=outputs.fan_in_merging_logits_attention_mask,
+            fan_in_merging_logits=outputs.fan_in_merging_logits,
+            fan_in_merging_logits_attention_mask=outputs.fan_in_merging_logits_attention_mask,
         )
 

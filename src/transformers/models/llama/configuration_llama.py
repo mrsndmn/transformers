@@ -169,6 +169,7 @@ class LlamaConfig(PretrainedConfig):
         dummy_adaptive_fan_in=None,
         generate_merges_transform_impl='python',
         fan_out_projection=True,
+        merging_type='next_token_merge_mlp',
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -183,6 +184,7 @@ class LlamaConfig(PretrainedConfig):
         self.dummy_adaptive_fan_in = dummy_adaptive_fan_in
         self.generate_merges_transform_impl = generate_merges_transform_impl
         self.fan_out_projection = fan_out_projection
+        self.merging_type = merging_type
 
         # for backward compatibility
         if num_key_value_heads is None:

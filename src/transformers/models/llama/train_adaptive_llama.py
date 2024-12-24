@@ -1,6 +1,6 @@
 import pytest
 from dataclasses import dataclass, field
-
+import math
 
 import wandb
 
@@ -197,9 +197,14 @@ class AdaptiveLlamaTrainer(Trainer):
 
         # if merger_mpl_grad > 5:
         #     breakpoint()
-
+        
+        current_tau = 1.0 + abs(math.sin(math.pi * self.state.global_step / 2000)) * 9.0
+        
         if self.state.global_step % self.args.logging_steps == 0:
             extra_log = dict()
+            if self.args.temperature_schedule:
+                extra_log['tau'] = current_tau
+
             if hasattr(model.model, "adaptive_down"):
                 for i, adown in enumerate(model.model.adaptive_down):
                     if isinstance(adown, (AdaptiveFanInGumbel)):
@@ -208,7 +213,14 @@ class AdaptiveLlamaTrainer(Trainer):
                         extra_log[f"merger_mpl_grad_norm_{i}"] = merger_mpl_grad
 
             self.log(extra_log)
-
+        
+        if self.args.temperature_schedule:
+            if hasattr(model.model, "adaptive_down"):
+                if self.state.global_step % 50 == 0:
+                    print("self.state.global_step, tau=", current_tau, "global_step", self.state.global_step)
+                for i, adown in enumerate(model.model.adaptive_down):
+                    adown.set_gumbel_tau(current_tau)
+        
         return result
 
 
@@ -572,6 +584,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     logging_steps: int = field(default=50)
     dataloader_drop_last: bool = field(default=True)
     dataloader_num_workers: int = field(default=0)
+    merging_type: str = field(default="next_token_merge_mlp")
 
     training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
     model_type: str = "dummy" # dummy | pretrained | SmolLM-135M
@@ -582,6 +595,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     generate_merges_transform_impl: str = 'cuda_kernel'
 
     reverse_dummy_adaptive_fan_in_layers: bool = False
+    temperature_schedule: bool = False
     
     select_train_dataset_items: int = 20000
     fan_out_projection: bool = True
@@ -611,6 +625,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
             use_cache=False,
             attn_implementation = 'eager',
             dummy_adaptive_fan_in = dummy_adaptive_fan_in,
+            merging_type=training_args.merging_type,
         )
 
         model = AdaptiveLlamaForCausalLM(llama_config)
@@ -636,7 +651,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
         print("dummy_adaptive_fan_in", dummy_adaptive_fan_in)
         
         assert len(dummy_adaptive_fan_in) == num_layers_half
-        model = build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=dummy_adaptive_fan_in, generate_merges_transform_impl=training_args.generate_merges_transform_impl, fan_out_projection=training_args.fan_out_projection)
+        model = build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=dummy_adaptive_fan_in, generate_merges_transform_impl=training_args.generate_merges_transform_impl, fan_out_projection=training_args.fan_out_projection, merging_type=training_args.merging_type)
 
         tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
     elif training_args.model_type == 'SmolLM-135M':
@@ -762,12 +777,9 @@ if __name__ == "__main__":
     )
 
     # with torch.autograd.set_detect_anomaly(True):
-    
-    
-    # with torch.autocast("cuda"):
+
     trainer.train(
         resume_from_checkpoint=None,
-        # resume_from_checkpoint="adaptive_11-15_fan_out_with_residual_projection/checkpoint-1080/",
-        # resume_from_checkpoint="llama_for_sequential_numbers/checkpoint-1170"
+        # resume_from_checkpoint="adaptive_14-15_residual_projection_bs20_merging_type_attention_output_mlp/checkpoint-3995/",
     )
 

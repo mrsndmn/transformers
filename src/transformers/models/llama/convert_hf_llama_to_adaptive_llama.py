@@ -21,23 +21,30 @@ from typing import List
 
 import torch
 
-from transformers import AutoModelForCausalLM, GenerationConfig, LlamaConfig, LlamaForCausalLM, LlamaTokenizer, PreTrainedTokenizerFast
+from transformers import AutoModelForCausalLM, GenerationConfig, LlamaConfig, LlamaForCausalLM, LlamaTokenizer, PreTrainedTokenizerFast, AutoConfig
 
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
 
-def build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=None, generate_merges_transform_impl='python', fan_out_projection=True):
+def build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=None, generate_merges_transform_impl='python', fan_out_projection=True, merging_type='next_token_merge_mlp'):
 
     llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint)
     llama_model_state_dict = llama_model.state_dict()
 
-    config: LlamaConfig = llama_model.config
+    config_kwargs = {
+        "attn_implementation": 'flash_attention_2',
+    }
+    
+    config: LlamaConfig = AutoConfig.from_pretrained(llama_checkpoint, **config_kwargs)
     config.dummy_adaptive_fan_in = dummy_adaptive_fan_in
     config.generate_merges_transform_impl = generate_merges_transform_impl
     config.fan_out_projection = fan_out_projection
+    config.merging_type = merging_type
+    config._attn_implementation
     
     num_hidden_layers = config.num_hidden_layers
     assert num_hidden_layers % 2 == 0
     half_num_hidden_layers = num_hidden_layers // 2
+
 
     adaptive_llama_model = AdaptiveLlamaForCausalLM(config)
     adaptive_llama_model_state_dict = adaptive_llama_model.state_dict()
@@ -58,6 +65,8 @@ def build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_
         adaptive_llama_model_state_dict[param_name] = param_value
 
     adaptive_llama_model.load_state_dict(adaptive_llama_model_state_dict)
+    
+    adaptive_llama_model.to(torch.bfloat16)
 
     return adaptive_llama_model
 

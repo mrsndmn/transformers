@@ -24,9 +24,11 @@ def generate_merges_transform(
     torch._check(len(merging_map.shape) == 3)
     torch._check(merging_map.shape[-1] == 2)
     torch._check(merging_map.shape[:2] == attention_mask.shape[:2])
-    torch._check(merging_map.dtype == torch.float)
+    torch._check(merging_map.dtype == torch.float or merging_map.dtype == torch.bfloat16 or merging_map.dtype == torch.float16)
     torch._check(attention_mask.dtype == torch.bool)
     torch._check(merging_map.device == attention_mask.device)
+    
+    merging_map = merging_map.to(torch.float32)
     
     assert (merging_map.sum(dim=-1).bool() == attention_mask).all()
 
@@ -133,16 +135,22 @@ def fan_out_restore_residuals(
     torch._check(len(merged_embeddings_counts.shape) == 2)
     torch._check(merged_embeddings_counts.shape[:2] == hidden_states.shape[:2])
     torch._check(merged_embeddings_counts.dtype == torch.long)
-    torch._check(hidden_states.dtype == torch.float)
-    torch._check(residual_hidden_states.dtype == torch.float)
+    torch._check(hidden_states.dtype == torch.float or hidden_states.dtype == torch.float16 or hidden_states.dtype == torch.bfloat16)
+    # torch._check(residual_hidden_states.dtype == torch.float)
     torch._check(residual_hidden_states.device == residual_hidden_states.device)
     torch._check(merged_embeddings_counts.device == residual_hidden_states.device)
+
+    orig_dtype = residual_hidden_states.dtype
+    residual_hidden_states = residual_hidden_states.to(torch.float32)
+    hidden_states = hidden_states.to(torch.float32)
 
     restored_hidden_states = torch.ops.generate_merges.fan_out_restore_residuals.default(
         merged_embeddings_counts,
         hidden_states,
         residual_hidden_states,
     )
+    
+    restored_hidden_states = restored_hidden_states.to(orig_dtype)
 
     return restored_hidden_states
 
