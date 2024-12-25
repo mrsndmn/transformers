@@ -95,15 +95,15 @@ def _backward_generate_merges_transform(ctx, output_merging_map_grad, merged_emb
         #             if current_repeat_count == 1:
         #                 current_pos += 1
         #             else:
-        #                 for _ in range(current_repeat_count - 1):
+        #                 grad_merging_map_output_py[batch_i, current_pos, 1] = 0
+        #                 current_pos += 1
+
+        #                 for _ in range(1, current_repeat_count):
         #                     grad_merging_map_output_py[batch_i, current_pos, 0] = 0
         #                     current_pos += 1
 
-        #                 grad_merging_map_output_py[batch_i, current_pos, 1] = 0
-        #                 current_pos += 1
-            
-        #     # grad_merging_map_output = grad_merging_map_output_py
-        #     assert (grad_merging_map_output_py == grad_merging_map_output).all()
+        #    grad_merging_map_output = grad_merging_map_output_py
+        #    assert (grad_merging_map_output_py == grad_merging_map_output).all()
 
         
     return grad_merging_map_output, None

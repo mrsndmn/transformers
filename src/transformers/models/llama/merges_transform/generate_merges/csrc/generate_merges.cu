@@ -28,8 +28,6 @@ __global__ void generate_merges_transform_kernel(
         return; // Out of bounds check
     }
 
-    int buffer_length = 0;
-    int start_want_merge = 0;
     int new_seq_len_i = 0;
 
     for (int seq_len_i = 0; seq_len_i < seq_len; ++seq_len_i) {
@@ -39,26 +37,13 @@ __global__ void generate_merges_transform_kernel(
 
         bool want_merge = merging_map[batch_i][seq_len_i][1] > 0.0f; // Check if merge is requested
         if (want_merge) {
-            if (buffer_length == 0) {
-                start_want_merge = seq_len_i;
-            }
-            buffer_length++;
+            int prev_new_seq_len_i = new_seq_len_i - 1;
+            merged_embeddings_counts[batch_i][prev_new_seq_len_i] += 1;
+            aggregated_embeddings_transform[batch_i][prev_new_seq_len_i][seq_len_i] = 1.0;
         } else {
-            if (buffer_length > 0) {
-                // Handle the merging
-                merged_embeddings_counts[batch_i][new_seq_len_i] = seq_len_i - start_want_merge + 1;
-                // attention on `<=`! i <= seq_len_i
-                for (int i = start_want_merge; i <= seq_len_i; ++i) {
-                    aggregated_embeddings_transform[batch_i][new_seq_len_i][i] = 1.0;
-                }
-                new_seq_len_i++;
-                buffer_length = 0;
-            } else {
-                // Handle individual token (no merge)
-                aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = 1.0;
-                merged_embeddings_counts[batch_i][new_seq_len_i] = 1;
-                new_seq_len_i++;
-            }
+            aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = 1.0;
+            merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
+            new_seq_len_i += 1;
         }
     }
 
@@ -108,7 +93,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> generate_merges_transfor
 
 
 __global__ void batch_repeat_interleave_for_merges_count_kernel(
-    const torch::PackedTensorAccessor64<float, 3> merging_map,
+    const torch::PackedTensorAccessor64<float, 3> grad_merging_map,
     const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
     torch::PackedTensorAccessor64<float, 3> merging_map_output,
     int batch_size, int seq_len
@@ -128,19 +113,20 @@ __global__ void batch_repeat_interleave_for_merges_count_kernel(
         }
 
         if (current_repeats_num == 1) {
-            merging_map_output[batch_i][output_seq_len_i][0] = merging_map[batch_i][seq_len_i][0];
-            merging_map_output[batch_i][output_seq_len_i][1] = merging_map[batch_i][seq_len_i][1];
+            merging_map_output[batch_i][output_seq_len_i][0] = grad_merging_map[batch_i][seq_len_i][0];
+            merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
             ++output_seq_len_i;            
         } else {
             // repeat interleave
-            for (int repeats_i = 0; repeats_i < current_repeats_num - 1; ++repeats_i) {
+            merging_map_output[batch_i][output_seq_len_i][0] = grad_merging_map[batch_i][seq_len_i][0];
+            ++output_seq_len_i;
+
+            for (int repeats_i = 1; repeats_i < current_repeats_num; ++repeats_i) {
                 // merging_map_output[batch_i][output_seq_len_i][0] = 0;
-                merging_map_output[batch_i][output_seq_len_i][1] = merging_map[batch_i][seq_len_i][1];
+                merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
                 ++output_seq_len_i;
             }
 
-            merging_map_output[batch_i][output_seq_len_i][0] = merging_map[batch_i][seq_len_i][0];
-            ++output_seq_len_i;
         }
 
     }

@@ -252,7 +252,6 @@ class AdaptiveFanInGumbel(nn.Module):
         #   [ 1, 2, 2, 1, 0, 0 ],
         # ]
         merged_embeddings_counts = torch.zeros([batch_size, seq_len], dtype=torch.long, device=device)
-        merged_embeddings_counts[:, 0] = 1
 
         # Example
         # [
@@ -269,38 +268,24 @@ class AdaptiveFanInGumbel(nn.Module):
         max_new_seq_len = 0
         for batch_i in range(batch_size):
             new_seq_len_i = 0
-            buffer_length = 0
-            start_want_merge = 0
             total_tokens_count = total_initial_num_embeddings[batch_i].item()
 
             for seq_len_i in range(0, total_tokens_count):
                 want_merge = merging_map[batch_i, seq_len_i, 1].item() > 0.5
-                # if batch_i == 0 and seq_len_i == total_tokens_count - 1:
-                #     breakpoint()
-                if want_merge:
-                    if buffer_length == 0:
-                        start_want_merge = seq_len_i
-                    buffer_length += 1
-                else:
-                    if buffer_length > 0:
-                        merged_embeddings_counts[batch_i, new_seq_len_i] = seq_len_i - start_want_merge + 1
 
-                        if transform_type == 'merge':
-                            aggregated_embeddings_transform[batch_i, new_seq_len_i, start_want_merge:seq_len_i] = merging_map[batch_i, start_want_merge:seq_len_i, 1]
-                            assert merging_map[batch_i, seq_len_i, 0].item() == 1, 'merging map is zero?'
-                            aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 0]
-                            new_seq_len_i += 1
-                            buffer_length = 0
-                        elif transform_type == 'select':
-                            aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 0] + merging_map[batch_i, start_want_merge:seq_len_i, 1].sum(-1, keepdim=True) - merging_map[batch_i, start_want_merge:seq_len_i, 1].sum(-1, keepdim=True).detach()
-                            new_seq_len_i += 1
-                            buffer_length = 0
-                        else:
-                            raise ValueError(f'unknown_merge_type {transform_type}')
+                if want_merge:
+                    prev_new_seq_len_i = new_seq_len_i - 1
+                    merged_embeddings_counts[batch_i, prev_new_seq_len_i] += 1
+                    if transform_type == 'merge':
+                        assert merging_map[batch_i, seq_len_i, 1].item() == 1, 'merging map is one'
+                        aggregated_embeddings_transform[batch_i, prev_new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 1]
                     else:
-                        aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 0]
-                        merged_embeddings_counts[batch_i, new_seq_len_i] = 1
-                        new_seq_len_i += 1
+                        raise ValueError(f'unknown_merge_type {transform_type}')
+                else:
+                    assert merging_map[batch_i, seq_len_i, 1].item() == 0, 'merging map is zero'
+                    aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 0]
+                    merged_embeddings_counts[batch_i, new_seq_len_i] += 1
+                    new_seq_len_i += 1
 
             merged_attention_mask[batch_i, :new_seq_len_i] = 1
             max_new_seq_len = max(max_new_seq_len, new_seq_len_i)
@@ -371,6 +356,8 @@ class AdaptiveFanInGumbel(nn.Module):
             merging_map[:, :, 1] = 1 - merging_map[:, :, 0]
 
         # OHE: [ bs, seq_len, 2 ]
+        # print("forward fan in gumbel")
+        # breakpoint()
         merging_map[special_embeddings_mask.bool()] = torch.tensor([1., 0.], device=merging_map.device, dtype=merging_map.dtype)
         merging_map[~attention_mask.bool()] = 0
         
@@ -383,6 +370,8 @@ class AdaptiveFanInGumbel(nn.Module):
         
         # prohibit merging of after bos tokens
         merging_map[:, 1] = torch.tensor([1., 0.], device=merging_map.device, dtype=merging_map.dtype)
+        
+        # print("merging_map", merging_map)
         
         # [ bs, new_seq_len, seq_len ] - состоит из нулей и единичек
         merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = self.generate_merges_transform(merging_map, attention_mask)

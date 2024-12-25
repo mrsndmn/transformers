@@ -57,7 +57,7 @@ def test_adaptive_fan_in_all_merge():
 
     return
 
-def test_adaptive_fan_in_all_but_first_merge():
+def test_adaptive_fan_in_all_but_last_merge():
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2, generate_merges_transform_impl='python')
 
     adaptive_fan_in = AdaptiveFanInGumbel(config)
@@ -71,12 +71,12 @@ def test_adaptive_fan_in_all_but_first_merge():
 
     merging_log_probas = torch.ones([batch_size, seq_len, 2])
     merging_log_probas[:, :, 1] = 0
-    merging_log_probas[:, 1] = torch.tensor([0, 1])
+    merging_log_probas[:, -2] = torch.tensor([0, 1])
     merging_log_probas += 1e-4
     merging_log_probas = merging_log_probas.log()
 
     adaptive_fan_in_output = adaptive_fan_in.forward(hidden_states, attention_mask, special_embeddings_mask, merging_log_probas=merging_log_probas)
-    
+
     expected_seq_len = seq_len - 1
 
     assert adaptive_fan_in_output.attention_mask.shape[1] == expected_seq_len # bos + original_embedding + merged_embedding (with eos)
@@ -84,7 +84,7 @@ def test_adaptive_fan_in_all_but_first_merge():
     assert adaptive_fan_in_output.merged_embeddings_counts.shape[1] == expected_seq_len # bos + original_embedding + merged_embedding (with eos)
     assert adaptive_fan_in_output.special_embeddings_mask.shape[1] == expected_seq_len # bos + original_embedding + merged_embedding (with eos)
 
-    assert torch.allclose(adaptive_fan_in_output.hidden_state[:, 2:], hidden_states[:, 3:], atol=1e-4)
+    assert torch.allclose(adaptive_fan_in_output.hidden_state[:, :-2], hidden_states[:, :-3], atol=1e-4)
     assert torch.allclose(adaptive_fan_in_output.hidden_state[:, 0], hidden_states[:, 0], atol=1e-4)
 
     return
@@ -184,7 +184,7 @@ def test_cuda_kernel_merges_transform_generate_merges_transform():
     
     py_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_py)
     cuda_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_cuda_kernel)
-    
+
     batch_size = 3
     seq_len = 5
     
@@ -192,8 +192,9 @@ def test_cuda_kernel_merges_transform_generate_merges_transform():
     merging_map_1[:, :, 0] = 1.
     
     merging_map_2 = torch.zeros([batch_size, seq_len, 2])
-    merging_map_2[:, 1:seq_len-1, 1] = 1
+    merging_map_2[:, 2:seq_len-1, 1] = 1
     merging_map_2[:, 0, 0] = 1
+    merging_map_2[:, 1, 0] = 1
     merging_map_2[:, -1, 0] = 1
     
     merging_map_3 = torch.zeros([batch_size, seq_len, 2])
@@ -206,21 +207,21 @@ def test_cuda_kernel_merges_transform_generate_merges_transform():
     merging_map_4 = torch.tensor([
         [
             [ 1., 0. ],
-            [ 0., 1. ],
+            [ 1., 0. ],
             [ 0., 1. ],
             [ 0., 1. ],
             [ 1., 0. ],
         ],
         [
             [ 1., 0. ],
-            [ 0., 1. ],
+            [ 1., 0. ],
             [ 0., 1. ],
             [ 1., 0. ],
             [ 0., 0. ],
         ],
         [
             [ 1., 0. ],
-            [ 0., 1. ],
+            [ 1., 0. ],
             [ 1., 0. ],
             [ 0., 0. ],
             [ 0., 0. ],
@@ -350,9 +351,12 @@ def test_cuda_kernel_merges_transform_backward():
     cuda_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_cuda_kernel)
     
     cuda_adaptive_fan_in_gumbel.fan_in_mlp.weight.data.copy_(py_adaptive_fan_in_gumbel.fan_in_mlp.weight.data)
-    cuda_adaptive_fan_in_gumbel.fan_in_mlp.bias.data.copy_(py_adaptive_fan_in_gumbel.fan_in_mlp.bias.data)
     
-    assert id(cuda_adaptive_fan_in_gumbel.fan_in_mlp.bias) != id(py_adaptive_fan_in_gumbel.fan_in_mlp.bias)
+    if py_adaptive_fan_in_gumbel.fan_in_mlp.bias is not None and cuda_adaptive_fan_in_gumbel.fan_in_mlp.bias is not None:
+        cuda_adaptive_fan_in_gumbel.fan_in_mlp.bias.data.copy_(py_adaptive_fan_in_gumbel.fan_in_mlp.bias.data)
+
+        assert id(cuda_adaptive_fan_in_gumbel.fan_in_mlp.bias) != id(py_adaptive_fan_in_gumbel.fan_in_mlp.bias)
+    
     assert id(cuda_adaptive_fan_in_gumbel.fan_in_mlp.weight) != id(py_adaptive_fan_in_gumbel.fan_in_mlp.weight)
     
     
@@ -370,7 +374,7 @@ def test_cuda_kernel_merges_transform_backward():
     
     merging_map = torch.zeros([batch_size, seq_len, 2], device='cuda')
     merging_map[:, :, 0] = 1.
-    merging_map[:, 1] = torch.tensor([0., 1.], device='cuda')
+    merging_map[:, 2] = torch.tensor([0., 1.], device='cuda')
     merging_map.requires_grad = True
     
     cuda_merging_map = merging_map.clone()
