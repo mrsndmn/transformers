@@ -192,9 +192,9 @@ class AdaptiveFanInGumbel(nn.Module):
         self.merging_type = self.config.merging_type
         
         if self.merging_type == 'next_token_merge_mlp':
-            self.fan_in_mlp = nn.Linear(self.hidden_size * 2, 2, bias=False) # todo is it ok
+            self.fan_in_mlp = nn.Linear(self.hidden_size * 2, 2)
         else:
-            self.fan_in_mlp = nn.Linear(self.hidden_size, 2, bias=False) # todo is it ok
+            self.fan_in_mlp = nn.Linear(self.hidden_size, 2)
 
         assert config.generate_merges_transform_impl in [ 'python', 'cuda_kernel', 'python_selective_not_merge' ]
         self.generate_merges_transform_impl = config.generate_merges_transform_impl

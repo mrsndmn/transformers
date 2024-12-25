@@ -587,6 +587,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     dataloader_drop_last: bool = field(default=True)
     dataloader_num_workers: int = field(default=0)
     merging_type: str = field(default="next_token_merge_mlp")
+    freeze_lm_backbone: bool = field(default=False)
 
     training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
     model_type: str = "dummy" # dummy | pretrained | SmolLM-135M
@@ -653,7 +654,14 @@ def build_model(training_args: AdaptiveTrainingArguments):
         print("dummy_adaptive_fan_in", dummy_adaptive_fan_in)
         
         assert len(dummy_adaptive_fan_in) == num_layers_half
-        model = build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=dummy_adaptive_fan_in, generate_merges_transform_impl=training_args.generate_merges_transform_impl, fan_out_projection=training_args.fan_out_projection, merging_type=training_args.merging_type)
+        model = build_adaptive_llama_from_llama_checkpoint(
+            llama_checkpoint,
+            dummy_adaptive_fan_in=dummy_adaptive_fan_in,
+            generate_merges_transform_impl=training_args.generate_merges_transform_impl,
+            fan_out_projection=training_args.fan_out_projection,
+            merging_type=training_args.merging_type,
+            freeze_lm_backbone=training_args.freeze_lm_backbone,
+        )
 
         tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
     elif training_args.model_type == 'SmolLM-135M':

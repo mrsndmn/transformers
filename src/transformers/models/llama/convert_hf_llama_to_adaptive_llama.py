@@ -25,7 +25,14 @@ from transformers import AutoModelForCausalLM, GenerationConfig, LlamaConfig, Ll
 
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
 
-def build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_fan_in=None, generate_merges_transform_impl='python', fan_out_projection=True, merging_type='next_token_merge_mlp'):
+def build_adaptive_llama_from_llama_checkpoint(
+        llama_checkpoint,
+        dummy_adaptive_fan_in=None,
+        generate_merges_transform_impl='python',
+        fan_out_projection=True,
+        merging_type='next_token_merge_mlp',
+        freeze_lm_backbone=False,
+    ):
 
     llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint)
     llama_model_state_dict = llama_model.state_dict()
@@ -67,6 +74,17 @@ def build_adaptive_llama_from_llama_checkpoint(llama_checkpoint, dummy_adaptive_
     adaptive_llama_model.load_state_dict(adaptive_llama_model_state_dict)
     
     adaptive_llama_model.to(torch.bfloat16)
+
+
+    for p in adaptive_llama_model.parameters():
+        p.requires_grad = False
+
+    for p in adaptive_llama_model.model.adaptive_down.parameters():
+        p.requires_grad = True
+
+    for p in adaptive_llama_model.model.adaptive_up.parameters():
+        p.requires_grad = True
+
 
     return adaptive_llama_model
 
