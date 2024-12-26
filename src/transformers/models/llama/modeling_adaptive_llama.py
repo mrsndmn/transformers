@@ -77,7 +77,6 @@ from torch.distributions.categorical import Categorical
 
 CHECK_WITH_PYTHON = False
 
-
 @dataclass
 class AdaptiveBaseModelOutputWithPast(BaseModelOutputWithPast):
     mean_merged_tokens: Optional[int] = None
@@ -153,7 +152,7 @@ def scaled_gumbel_softmax(
         logits,
         tau: float = 1.,
         scale = 1.0,
-        hard = True,
+        hard = False,
         dim: int = -1,
     ):
 
@@ -171,13 +170,16 @@ def scaled_gumbel_softmax(
     gumbels = (logits + gumbels) / tau  # ~Gumbel(logits,tau)
     y_soft = gumbels.softmax(dim) * scale
 
-    # Straight through.
-    index = y_soft.max(dim, keepdim=True)[1]
+    if hard:
+        # Straight through.
+        index = y_soft.max(dim, keepdim=True)[1]
 
-    y_hard = torch.zeros_like(
-        logits, memory_format=torch.legacy_contiguous_format
-    ).scatter_(dim, index, 1.0)
-    ret = y_hard - y_soft.detach() + y_soft
+        y_hard = torch.zeros_like(
+            logits, memory_format=torch.legacy_contiguous_format
+        ).scatter_(dim, index, 1.0)
+        ret = y_hard - y_soft.detach() + y_soft
+    else:
+        ret = y_soft
 
     return ret
 
@@ -188,8 +190,9 @@ class AdaptiveFanInGumbel(nn.Module):
         self.hidden_size = config.hidden_size
         
         self.gumbel_tau = 1.0
-        
+
         self.merging_type = self.config.merging_type
+        print("self.merging_type", self.merging_type)
         
         if self.merging_type == 'next_token_merge_mlp':
             self.fan_in_mlp = nn.Linear(self.hidden_size * 2, 2)
@@ -209,18 +212,19 @@ class AdaptiveFanInGumbel(nn.Module):
         self.gumbel_tau = new_tau
 
     def generate_merges_transform(self, merging_map, attention_mask):
+        
         if self.generate_merges_transform_impl == 'python':
             return self._generate_merges_transform(merging_map, attention_mask)
         elif self.generate_merges_transform_impl == 'cuda_kernel':
             # call cuda implementation
             merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = generate_merges_transform(merging_map, attention_mask.bool())
 
-            # if CHECK_WITH_PYTHON:
-            #     py_merged_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = self._generate_merges_transform(merging_map, attention_mask)
+            if CHECK_WITH_PYTHON:
+                py_merged_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = self._generate_merges_transform(merging_map, attention_mask)
                 
-            #     assert (merged_embeddings_transform == py_merged_embeddings_transform).all()
-            #     assert (merged_embeddings_counts == py_merged_embeddings_counts).all()
-            #     assert (merged_attention_mask == py_merged_attention_mask).all()
+                assert (merged_embeddings_transform == py_merged_embeddings_transform).all()
+                assert (merged_embeddings_counts == py_merged_embeddings_counts).all()
+                assert (merged_attention_mask == py_merged_attention_mask).all()
             
             return merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask
         elif self.generate_merges_transform_impl == 'python_selective_not_merge':
@@ -328,7 +332,7 @@ class AdaptiveFanInGumbel(nn.Module):
         assert seq_len <= self.config.max_position_embeddings
         
         if self.merging_type == 'next_token_merge_mlp':
-            merging_mask_stub = torch.zeros([batch_size, 1, hidden_dim * 2], device=hidden_state.device)
+            merging_mask_stub = torch.zeros([batch_size, 1, hidden_dim * 2], device=hidden_state.device, dtype=hidden_state.dtype)
 
             # joined prev and next tokens
             # each embedding could be explained as: should it be merged with the next one embedding?
@@ -367,10 +371,14 @@ class AdaptiveFanInGumbel(nn.Module):
         # arange_buffer = self.max_seq_len_buffer[:batch_size, :seq_len]
         # before_eos_mask = (arange_buffer == (attention_mask.long().sum(dim=-1, keepdim=True)-2))
         # merging_map[before_eos_mask] = torch.tensor([1., 0.], device=merging_map.device, dtype=merging_map.dtype)
-        
-        # prohibit merging of after bos tokens
+
+        # TODO move this logic to cuda kernel
+        # prohibit merging the token after bos token
         merging_map[:, 1] = torch.tensor([1., 0.], device=merging_map.device, dtype=merging_map.dtype)
         
+        # print('merging_map.sum(dim=-1)', merging_map.sum(dim=-1))
+        # breakpoint()
+
         # print("merging_map", merging_map)
         
         # [ bs, new_seq_len, seq_len ] - состоит из нулей и единичек
@@ -411,7 +419,7 @@ class AdaptiveFanOut(nn.Module):
         self.projection_enabled: bool = config.fan_out_projection
         
         self.fan_out_implementation = config.generate_merges_transform_impl
-        self.fan_out_mlp = nn.Linear(self.hidden_size, self.hidden_size)
+        self.fan_out_linear = nn.Linear(self.hidden_size, self.hidden_size)
 
     def _python_fan_out(self, batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection, type='merge') -> torch.Tensor:
         # [bs, seq_len, hidden_dim]
@@ -474,17 +482,17 @@ class AdaptiveFanOut(nn.Module):
         # restored_hidden_states[:, :hidden_states.shape[1]] += hidden_states
         
         if self.projection_enabled:
-            residual_hidden_states_projection = self.fan_out_mlp(residual_hidden_states)
+            residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
         else:
-            residual_hidden_states_projection = residual_hidden_states
+            residual_hidden_states_projection = residual_hidden_states.clone()
         
         if self.fan_out_implementation in ('python',):
             restored_hidden_states = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
         elif self.fan_out_implementation in ('cuda_kernel', 'python_selective_not_merge'):
             restored_hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection)
-            # if CHECK_WITH_PYTHON:
-            #     restored_hidden_states_py = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
-            #     assert (restored_hidden_states_py == restored_hidden_states).all()
+            if CHECK_WITH_PYTHON:
+                restored_hidden_states_py = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
+                assert (restored_hidden_states_py == restored_hidden_states).all()
                 
         else:
             raise ValueError(f"unknown self.fan_out_implementation={self.fan_out_implementation}")
@@ -497,7 +505,7 @@ class NoopAdaptiveFanOut(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
-        # self.fan_out_mlp = nn.Linear(self.hidden_size * 2, self.hidden_size)
+        # self.fan_out_linear = nn.Linear(self.hidden_size * 2, self.hidden_size)
 
     def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
         """Returns base hidden states

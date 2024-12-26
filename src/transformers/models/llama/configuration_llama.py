@@ -169,7 +169,7 @@ class LlamaConfig(PretrainedConfig):
         dummy_adaptive_fan_in=None,
         generate_merges_transform_impl='python',
         fan_out_projection=True,
-        merging_type='next_token_merge_mlp',
+        merging_type='attention_output_mlp',
         **kwargs,
     ):
         self.vocab_size = vocab_size

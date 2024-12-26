@@ -411,18 +411,19 @@ def test_cuda_kernel_fan_out_backward():
     
     device = 'cuda'
 
-    config_py = LlamaConfig(hidden_size=hidden_size, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
-    config_cuda_kernel = LlamaConfig(hidden_size=hidden_size, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="cuda_kernel")
+    config_py = LlamaConfig(hidden_size=hidden_size, num_hidden_layers=2, attn_implementation='flash_attention_2', generate_merges_transform_impl="python", merging_type='attention_output_mlp')
+    config_cuda_kernel = LlamaConfig(hidden_size=hidden_size, num_hidden_layers=2, attn_implementation='flash_attention_2', generate_merges_transform_impl="cuda_kernel", merging_type='attention_output_mlp')
     
-    adaptive_fan_in = AdaptiveFanInGumbel(config_py).to(device)
+    current_dtype = torch.bfloat16
+    adaptive_fan_in = AdaptiveFanInGumbel(config_py).to(device).to(current_dtype)
 
-    py_adaptive_fan_out = AdaptiveFanOut(config_py).to(device)
-    cuda_adaptive_fan_out = AdaptiveFanOut(config_cuda_kernel).to(device)
+    py_adaptive_fan_out = AdaptiveFanOut(config_py).to(device).to(current_dtype)
+    cuda_adaptive_fan_out = AdaptiveFanOut(config_cuda_kernel).to(device).to(current_dtype)
     cuda_adaptive_fan_out.load_state_dict(py_adaptive_fan_out.state_dict())
     
-    hidden_states = torch.rand([ batch_size, seq_len, hidden_size ], requires_grad=True, device=device)
-    attention_mask = torch.ones([batch_size, seq_len], device=device)
-    special_embeddings_mask = torch.zeros([batch_size, seq_len], device=device)
+    hidden_states = torch.rand([ batch_size, seq_len, hidden_size ], requires_grad=True, device=device, dtype=current_dtype)
+    attention_mask = torch.ones([batch_size, seq_len], device=device, dtype=current_dtype)
+    special_embeddings_mask = torch.zeros([batch_size, seq_len], device=device, dtype=current_dtype)
     special_embeddings_mask[:, 0] = 1
     special_embeddings_mask[:, -1] = 1
 
@@ -471,7 +472,7 @@ def test_cuda_kernel_fan_out_backward():
 
     assert (py_adaptive_fan_in_output_hidden_state_gradients == cuda_kernel_adaptive_fan_in_output_hidden_state_gradients).all()
     assert (py_residual_hidden_states_gradients == cuda_kernel_residual_hidden_states_gradients).all()
-
+    
     return
 
 

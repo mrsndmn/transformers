@@ -76,14 +76,17 @@ def build_adaptive_llama_from_llama_checkpoint(
     adaptive_llama_model.to(torch.bfloat16)
 
 
-    for p in adaptive_llama_model.parameters():
-        p.requires_grad = False
+    if freeze_lm_backbone:
+        for p in adaptive_llama_model.parameters():
+            p.requires_grad = False
 
-    for p in adaptive_llama_model.model.adaptive_down.parameters():
-        p.requires_grad = True
+        for p in adaptive_llama_model.model.adaptive_down.parameters():
+            p.requires_grad = True
 
-    for p in adaptive_llama_model.model.adaptive_up.parameters():
-        p.requires_grad = True
+        for p in adaptive_llama_model.model.adaptive_up.parameters():
+            p.requires_grad = True
+            
+    print("total parameters:", sum(p.numel() for p in adaptive_llama_model.parameters()))
 
 
     return adaptive_llama_model

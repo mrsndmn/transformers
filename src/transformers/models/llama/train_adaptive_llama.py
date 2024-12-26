@@ -209,8 +209,19 @@ class AdaptiveLlamaTrainer(Trainer):
                 for i, adown in enumerate(model.model.adaptive_down):
                     if isinstance(adown, (AdaptiveFanInGumbel)):
                         merger_mpl_grad = adown.fan_in_mlp.weight.grad.norm(2).item()
+                        fan_in_mlp_weight_grad_sum = adown.fan_in_mlp.weight.grad.sum(1)
+                        fan_in_mlp_weight_sum = adown.fan_in_mlp.weight.sum(1)
+                        fan_in_mlp_bias = adown.fan_in_mlp.bias
                         assert merger_mpl_grad is not None, "merger_mpl_grad is expected to be not none"
                         extra_log[f"merger_mpl_grad_norm_{i}"] = merger_mpl_grad
+                        extra_log[f"merger_mpl_weight_grad_sum_0_{i}"] = fan_in_mlp_weight_grad_sum[0].item()
+                        extra_log[f"merger_mpl_weight_grad_sum_1_{i}"] = fan_in_mlp_weight_grad_sum[1].item()
+
+                        extra_log[f"merger_mpl_weight_sum_0_{i}"] = fan_in_mlp_weight_sum[0].item()
+                        extra_log[f"merger_mpl_weight_sum_1_{i}"] = fan_in_mlp_weight_sum[1].item()
+                        
+                        extra_log[f"merger_mpl_bias_0_{i}"] = fan_in_mlp_bias[0].item()
+                        extra_log[f"merger_mpl_bias_1_{i}"] = fan_in_mlp_bias[1].item()
 
             self.log(extra_log)
         
@@ -671,7 +682,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
     else:
         raise ValueError(f"{training_args.training_dataset} is not supported")
 
-    print("num model parameters:", sum(p.numel() for p in model.parameters()))
+    print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
 
     return model, tokeniezer
 

@@ -5,7 +5,7 @@ import time
 
 __all__ = ["generate_merges_transform", "fan_out_restore_residuals"]
 
-CHECK_WITH_PYTHON = False
+CHECK_WITH_PYTHON = True
 
 def generate_merges_transform(
         merging_map: Tensor,
@@ -54,7 +54,6 @@ def generate_merges_transform(
 def _backward_generate_merges_transform(ctx, output_merging_map_grad, merged_embeddings_counts, merged_attention_mask):
     # [bs, seq_len, 2] [bs, new_seq_len, seq_len]
     saved_merging_map, output_transform_matrix, merged_embeddings_counts = ctx.saved_tensors
-    
     batch_size = saved_merging_map.shape[0]
     seq_len = saved_merging_map.shape[1]
     
@@ -78,34 +77,35 @@ def _backward_generate_merges_transform(ctx, output_merging_map_grad, merged_emb
         # 10 it = 01:07
         grad_merging_map_output = torch.ops.generate_merges.batch_repeat_interleave_for_merges_count.default(grad_merging_map, merged_embeddings_counts)
 
-        # if CHECK_WITH_PYTHON:
-        #     grad_merging_map_output_py = torch.zeros_like(grad_merging_map)
-        #     merged_embeddings_counts_sum = merged_embeddings_counts.sum(dim=-1)
-        #     for batch_i in range(batch_size):
-        #         repeat_mask = merged_embeddings_counts[batch_i]
-        #         total_tokens = merged_embeddings_counts_sum[batch_i].item()
-        #         grad_merging_map_output_py[batch_i, :total_tokens] = grad_merging_map[batch_i].repeat_interleave(repeat_mask, dim=0)
+        if CHECK_WITH_PYTHON:
+            grad_merging_map_output_py = torch.zeros_like(grad_merging_map)
+            merged_embeddings_counts_sum = merged_embeddings_counts.sum(dim=-1)
+            for batch_i in range(batch_size):
+                repeat_mask = merged_embeddings_counts[batch_i]
+                total_tokens = merged_embeddings_counts_sum[batch_i].item()
+                grad_merging_map_output_py[batch_i, :total_tokens] = grad_merging_map[batch_i].repeat_interleave(repeat_mask, dim=0)
 
-        #         current_pos = 0
-        #         for i in range(len(repeat_mask)):
-        #             current_repeat_count = repeat_mask[i].item()
-        #             if current_repeat_count == 0:
-        #                 break
+                current_pos = 0
+                for i in range(len(repeat_mask)):
+                    current_repeat_count = repeat_mask[i].item()
+                    if current_repeat_count == 0:
+                        break
 
-        #             if current_repeat_count == 1:
-        #                 current_pos += 1
-        #             else:
-        #                 grad_merging_map_output_py[batch_i, current_pos, 1] = 0
-        #                 current_pos += 1
+                    if current_repeat_count == 1:
+                        current_pos += 1
+                    else:
+                        grad_merging_map_output_py[batch_i, current_pos, 1] = 0
+                        current_pos += 1
 
-        #                 for _ in range(1, current_repeat_count):
-        #                     grad_merging_map_output_py[batch_i, current_pos, 0] = 0
-        #                     current_pos += 1
+                        for _ in range(current_repeat_count - 1):
+                            grad_merging_map_output_py[batch_i, current_pos, 0] = 0
+                            current_pos += 1
 
-        #    grad_merging_map_output = grad_merging_map_output_py
-        #    assert (grad_merging_map_output_py == grad_merging_map_output).all()
+            assert (grad_merging_map_output_py == grad_merging_map_output).all()
+            # grad_merging_map_output = grad_merging_map_output_py
+            # print("grad_merging_map_output", grad_merging_map_output)
+            # breakpoint()
 
-        
     return grad_merging_map_output, None
 
 
@@ -157,6 +157,7 @@ def fan_out_restore_residuals(
 
 def _backward_fan_out_restore_residuals(ctx, restored_hidden_states_grad):
     # restored_hidden_states_grad ~ [ bs, seq_len, hidden_dim ]
+    
     (merged_embeddings_counts,) = ctx.saved_tensors
     
     hidden_states_grad = None
@@ -166,6 +167,9 @@ def _backward_fan_out_restore_residuals(ctx, restored_hidden_states_grad):
             merged_embeddings_counts,
             restored_hidden_states_grad,
         )
+        
+        # print("_backward_fan_out_restore_residuals hidden_states_grad", hidden_states_grad)
+        # breakpoint()
 
     assert hidden_states_grad is not None
     assert residual_hidden_states_grad is not None
