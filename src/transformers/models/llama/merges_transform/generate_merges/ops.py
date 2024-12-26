@@ -5,11 +5,12 @@ import time
 
 __all__ = ["generate_merges_transform", "fan_out_restore_residuals"]
 
-CHECK_WITH_PYTHON = True
+CHECK_WITH_PYTHON = False
 
 def generate_merges_transform(
         merging_map: Tensor,
-        attention_mask: Tensor
+        attention_mask: Tensor,
+        special_embeddings_mask: Tensor,
         ) -> Tensor:
     """Generates Merging map with custom cuda kernel
 
@@ -25,8 +26,10 @@ def generate_merges_transform(
     torch._check(merging_map.shape[-1] == 2)
     torch._check(merging_map.shape[:2] == attention_mask.shape[:2])
     torch._check(merging_map.dtype == torch.float or merging_map.dtype == torch.bfloat16 or merging_map.dtype == torch.float16)
-    torch._check(attention_mask.dtype == torch.bool)
     torch._check(merging_map.device == attention_mask.device)
+    torch._check(merging_map.device == special_embeddings_mask.device)
+    torch._check(attention_mask.dtype == torch.bool)
+    torch._check(special_embeddings_mask.dtype == torch.bool)
     
     merging_map = merging_map.to(torch.float32)
     
@@ -39,7 +42,8 @@ def generate_merges_transform(
 
     aggregated_embeddings_transform_output, merged_embeddings_counts, merged_attention_mask = torch.ops.generate_merges.generate_merges_transform.default(
         merging_map,
-        attention_mask
+        attention_mask,
+        special_embeddings_mask,
     )
     
     max_new_seq_len = merged_attention_mask.sum(dim=-1).max()
@@ -51,9 +55,9 @@ def generate_merges_transform(
     return aggregated_embeddings_transform_output, merged_embeddings_counts, merged_attention_mask
 
 
-def _backward_generate_merges_transform(ctx, output_merging_map_grad, merged_embeddings_counts, merged_attention_mask):
+def _backward_generate_merges_transform(ctx, output_merging_map_grad, merged_embeddings_counts_grad, merged_attention_mask_grad):
     # [bs, seq_len, 2] [bs, new_seq_len, seq_len]
-    saved_merging_map, output_transform_matrix, merged_embeddings_counts = ctx.saved_tensors
+    saved_merging_map, output_transform_matrix, merged_embeddings_counts, special_embeddings_mask = ctx.saved_tensors
     batch_size = saved_merging_map.shape[0]
     seq_len = saved_merging_map.shape[1]
     
@@ -66,57 +70,51 @@ def _backward_generate_merges_transform(ctx, output_merging_map_grad, merged_emb
     grad_merging_map_output = None
     if ctx.needs_input_grad[0]:
         # [ bs, seq_len, 2 ]
-        grad_merging_map = torch.bmm(output_merging_map_grad_zeroed, saved_merging_map)
+        mask_template = torch.ones_like(saved_merging_map)
+        mask_template[merged_embeddings_counts != 1] = torch.tensor([0.0, 1.0], dtype=mask_template.dtype, device=mask_template.device)
+        mask_template[merged_embeddings_counts == 1] = torch.tensor([1.0, 0.0], dtype=mask_template.dtype, device=mask_template.device)
+        mask_for_grads = torch.ops.generate_merges.batch_repeat_interleave_for_merges_count.default(mask_template, merged_embeddings_counts)
+
+        grad_merging_map_output = mask_for_grads * output_merging_map_grad_zeroed.sum(1).unsqueeze(-1)
         # breakpoint()
-        
-        # grad_merging_map = grad_merging_map.flatten(0, 1)
-        # merged_embeddings_counts = merged_embeddings_counts.flatten(0, 1)
 
-        # start_repeat_interleaved = time.time()
+        # if CHECK_WITH_PYTHON:
+        #     grad_merging_map_output_py = torch.zeros_like(grad_merging_map)
+        #     merged_embeddings_counts_sum = merged_embeddings_counts.sum(dim=-1)
+        #     for batch_i in range(batch_size):
+        #         repeat_mask = merged_embeddings_counts[batch_i]
+        #         total_tokens = merged_embeddings_counts_sum[batch_i].item()
+        #         grad_merging_map_output_py[batch_i, :total_tokens] = grad_merging_map[batch_i].repeat_interleave(repeat_mask, dim=0)
 
-        # 10 it = 01:07
-        grad_merging_map_output = torch.ops.generate_merges.batch_repeat_interleave_for_merges_count.default(grad_merging_map, merged_embeddings_counts)
+        #         current_pos = 0
+        #         for i in range(len(repeat_mask)):
+        #             current_repeat_count = repeat_mask[i].item()
+        #             if current_repeat_count == 0:
+        #                 break
 
-        if CHECK_WITH_PYTHON:
-            grad_merging_map_output_py = torch.zeros_like(grad_merging_map)
-            merged_embeddings_counts_sum = merged_embeddings_counts.sum(dim=-1)
-            for batch_i in range(batch_size):
-                repeat_mask = merged_embeddings_counts[batch_i]
-                total_tokens = merged_embeddings_counts_sum[batch_i].item()
-                grad_merging_map_output_py[batch_i, :total_tokens] = grad_merging_map[batch_i].repeat_interleave(repeat_mask, dim=0)
+        #             if current_repeat_count == 1:
+        #                 current_pos += 1
+        #             else:
+        #                 for _ in range(current_repeat_count):
+        #                     grad_merging_map_output_py[batch_i, current_pos, 0] = 0
+        #                     current_pos += 1
 
-                current_pos = 0
-                for i in range(len(repeat_mask)):
-                    current_repeat_count = repeat_mask[i].item()
-                    if current_repeat_count == 0:
-                        break
+        #     assert (grad_merging_map_output_py == grad_merging_map_output).all()
+        #     # grad_merging_map_output = grad_merging_map_output_py
+        #     # print("grad_merging_map_output", grad_merging_map_output)
+        #     # breakpoint()
 
-                    if current_repeat_count == 1:
-                        current_pos += 1
-                    else:
-                        grad_merging_map_output_py[batch_i, current_pos, 1] = 0
-                        current_pos += 1
-
-                        for _ in range(current_repeat_count - 1):
-                            grad_merging_map_output_py[batch_i, current_pos, 0] = 0
-                            current_pos += 1
-
-            assert (grad_merging_map_output_py == grad_merging_map_output).all()
-            # grad_merging_map_output = grad_merging_map_output_py
-            # print("grad_merging_map_output", grad_merging_map_output)
-            # breakpoint()
-
-    return grad_merging_map_output, None
+    return grad_merging_map_output, None, None
 
 
 def _setup_context(ctx, inputs, output):
-    merging_map, attention_mask = inputs
+    merging_map, attention_mask, special_embeddings_mask = inputs
     output_transform_matrix, merged_embeddings_counts, merged_attention_mask = output
     saved_merging_map = None
     if ctx.needs_input_grad[0]:
         saved_merging_map = merging_map
 
-    ctx.save_for_backward(saved_merging_map, output_transform_matrix, merged_embeddings_counts)
+    ctx.save_for_backward(saved_merging_map, output_transform_matrix, merged_embeddings_counts, special_embeddings_mask)
 
 
 # This adds training support for the operator. You must provide us

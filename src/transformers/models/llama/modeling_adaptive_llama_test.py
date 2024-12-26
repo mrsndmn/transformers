@@ -190,12 +190,18 @@ def test_cuda_kernel_merges_transform_generate_merges_transform():
     
     merging_map_1 = torch.zeros([batch_size, seq_len, 2])
     merging_map_1[:, :, 0] = 1.
+    special_tokens_mask_1 = torch.zeros([batch_size, seq_len], dtype=torch.bool)
+    special_tokens_mask_1[:, 0] = 1
+    special_tokens_mask_1[:, -1] = 1
     
     merging_map_2 = torch.zeros([batch_size, seq_len, 2])
     merging_map_2[:, 2:seq_len-1, 1] = 1
     merging_map_2[:, 0, 0] = 1
     merging_map_2[:, 1, 0] = 1
     merging_map_2[:, -1, 0] = 1
+    special_tokens_mask_2 = torch.zeros([batch_size, seq_len], dtype=torch.bool)
+    special_tokens_mask_2[:, 0] = 1
+    special_tokens_mask_2[:, -1] = 1
     
     merging_map_3 = torch.zeros([batch_size, seq_len, 2])
     merging_map_3[:, 1:seq_len-2, 1] = 1
@@ -203,6 +209,9 @@ def test_cuda_kernel_merges_transform_generate_merges_transform():
     merging_map_3[:, -2, 0] = 1
     attention_mask_3 = torch.ones([batch_size, seq_len], dtype=torch.bool)
     attention_mask_3[:, seq_len-1] = False
+    special_tokens_mask_3 = torch.zeros([batch_size, seq_len], dtype=torch.bool)
+    special_tokens_mask_3[:, 0] = 1
+    special_tokens_mask_3[:, -2] = 1
 
     merging_map_4 = torch.tensor([
         [
@@ -230,31 +239,38 @@ def test_cuda_kernel_merges_transform_generate_merges_transform():
     attention_mask_4 = torch.ones([batch_size, seq_len], dtype=torch.bool)
     attention_mask_4[1, -1] = False
     attention_mask_4[2, -2:] = False
-
+    special_tokens_mask_4 = torch.zeros([batch_size, seq_len], dtype=torch.bool)
+    special_tokens_mask_4[1, -1] = False
+    special_tokens_mask_4[2, -2:] = False
+    
     test_cases = [
         {
             "name": "dummy no merging",
             "merging_map": merging_map_1,
             "attention_mask": torch.ones([batch_size, seq_len], dtype=torch.bool),
             "expected_seq_len": seq_len,
+            "special_tokens_mask": special_tokens_mask_1,
         },
         {
             "name": "all except bos/eos merged",
             "merging_map": merging_map_2,
             "attention_mask": torch.ones([batch_size, seq_len], dtype=torch.bool),
             "expected_seq_len": 3, # [bos, merged_tokens, eos]
+            "special_tokens_mask": special_tokens_mask_2,
         },
         {
             "name": "all except bos/eos merged with padding",
             "merging_map": merging_map_3,
             "attention_mask": attention_mask_3,
             "expected_seq_len": 3,
+            "special_tokens_mask": special_tokens_mask_3,
         },
         {
             "name": "custom merging with custom padding",
             "merging_map": merging_map_4,
             "attention_mask": attention_mask_4,
             "expected_seq_len": 3,
+            "special_tokens_mask": special_tokens_mask_4,
         },
     ]
 
@@ -263,12 +279,14 @@ def test_cuda_kernel_merges_transform_generate_merges_transform():
         test_case_name = test_case['name']
         merging_map = test_case['merging_map']
         attention_mask = test_case['attention_mask']
+        special_tokens_mask = test_case['special_tokens_mask']
         
         cuda_merging_map = merging_map.to('cuda').to(dtype=torch.float32)
         cuda_attention_mask = attention_mask.to('cuda').to(dtype=torch.bool)
+        special_tokens_mask = special_tokens_mask.to('cuda').to(dtype=torch.bool)
         
-        py_aggregated_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(merging_map, attention_mask)
-        cuda_aggregated_embeddings_transform, cuda_merged_embeddings_counts, cuda_merged_attention_mask = cuda_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask)
+        py_aggregated_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(merging_map, attention_mask, special_tokens_mask)
+        cuda_aggregated_embeddings_transform, cuda_merged_embeddings_counts, cuda_merged_attention_mask = cuda_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask, special_tokens_mask)
         
         assert (py_aggregated_embeddings_transform == cuda_aggregated_embeddings_transform.to('cpu')).all(), f"{test_case_name}: aggregated_embeddings_transform mismatch"
         assert (py_merged_embeddings_counts == cuda_merged_embeddings_counts.to('cpu')).all(), f"{test_case_name}: merged_embeddings_counts mismatch"
@@ -367,6 +385,9 @@ def test_cuda_kernel_merges_transform_backward():
     # python_merging_map = cuda_merging_map.clone()
 
     cuda_attention_mask = torch.ones([batch_size, seq_len], device='cuda', dtype=torch.bool)
+    cuda_special_embeddings_mask = torch.zeros([batch_size, seq_len], device='cuda', dtype=torch.bool)
+    cuda_special_embeddings_mask[:, 0] = True
+    cuda_special_embeddings_mask[:, -1  ] = True
 
     # special_embeddings_mask = torch.zeros_like(cuda_attention_mask)
     # special_embeddings_mask[:, 0] = 1
@@ -374,7 +395,8 @@ def test_cuda_kernel_merges_transform_backward():
     
     merging_map = torch.zeros([batch_size, seq_len, 2], device='cuda')
     merging_map[:, :, 0] = 1.
-    merging_map[:, 2] = torch.tensor([0., 1.], device='cuda')
+    merging_map[:, 2] = torch.tensor([0., 0.5], device='cuda')
+    merging_map[:, 3] = torch.tensor([0., 0.5], device='cuda')
     merging_map.requires_grad = True
     
     cuda_merging_map = merging_map.clone()
@@ -382,7 +404,7 @@ def test_cuda_kernel_merges_transform_backward():
     
 
     # cuda kernel forward
-    cuda_merged_embeddings_transform, cuda_merged_embeddings_counts, cuda_merged_attention_mask = cuda_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask)
+    cuda_merged_embeddings_transform, cuda_merged_embeddings_counts, cuda_merged_attention_mask = cuda_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask, cuda_special_embeddings_mask)
 
     output_gradients = torch.rand_like(cuda_merged_embeddings_transform)
     output_gradients[~cuda_merged_embeddings_transform.bool()] = 0
@@ -391,7 +413,7 @@ def test_cuda_kernel_merges_transform_backward():
     (input_gradients_cuda_kernel,) = torch.autograd.grad(cuda_merged_embeddings_transform, cuda_merging_map, grad_outputs=output_gradients_cuda)
 
     # py forward
-    py_merged_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(py_merging_map, cuda_attention_mask)
+    py_merged_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(py_merging_map, cuda_attention_mask, cuda_special_embeddings_mask)
     
     assert (py_merged_embeddings_transform == cuda_merged_embeddings_transform).all()
     assert (cuda_merged_embeddings_counts == py_merged_embeddings_counts).all()

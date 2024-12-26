@@ -16,6 +16,7 @@ void check_cuda_errors() {
 __global__ void generate_merges_transform_kernel(
     const torch::PackedTensorAccessor64<float, 3> merging_map,
     const torch::PackedTensorAccessor64<bool, 2> attention_mask,
+    const torch::PackedTensorAccessor64<bool, 2> special_embeddings_mask,
     torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
     torch::PackedTensorAccessor64<bool, 2> merged_attention_mask,
     torch::PackedTensorAccessor64<float, 3> aggregated_embeddings_transform,
@@ -29,22 +30,45 @@ __global__ void generate_merges_transform_kernel(
     }
 
     int new_seq_len_i = 0;
-
+    bool prev_want_merge = false;
     for (int seq_len_i = 0; seq_len_i < seq_len; ++seq_len_i) {
         if (!attention_mask[batch_i][seq_len_i]) {
             break;
         }
 
-        bool want_merge = merging_map[batch_i][seq_len_i][1] > 0.0f; // Check if merge is requested
+        bool is_special = special_embeddings_mask[batch_i][seq_len_i];
+        bool is_next_after_special = false;
+        bool is_next_special = false;
+        if (seq_len_i > 0) {
+            is_next_after_special = special_embeddings_mask[batch_i][seq_len_i - 1];
+        }
+        if (seq_len_i < seq_len - 1) {
+            is_next_special = special_embeddings_mask[batch_i][seq_len_i + 1];
+        }
+
+        bool want_merge = ! is_special && !(is_next_after_special && is_next_special) && merging_map[batch_i][seq_len_i][1] > merging_map[batch_i][seq_len_i][0];
+        if (new_seq_len_i > 0 && prev_want_merge && !want_merge && merged_embeddings_counts[batch_i][new_seq_len_i] == 1) {
+            want_merge = true;
+        }
+
+        if (want_merge and is_next_special and not prev_want_merge) {
+            want_merge = false;
+        }
+
         if (want_merge) {
-            int prev_new_seq_len_i = new_seq_len_i - 1;
-            merged_embeddings_counts[batch_i][prev_new_seq_len_i] += 1;
-            aggregated_embeddings_transform[batch_i][prev_new_seq_len_i][seq_len_i] = 1.0;
+            merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
+            aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = 1.0;
         } else {
+            if (prev_want_merge) {
+                new_seq_len_i += 1;
+            }
+
             aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = 1.0;
             merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
             new_seq_len_i += 1;
         }
+
+        prev_want_merge = want_merge;
     }
 
     // Update the merged_attention_mask for the current batch
@@ -55,7 +79,8 @@ __global__ void generate_merges_transform_kernel(
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> generate_merges_transform_cuda(
     const torch::Tensor& merging_map,
-    const torch::Tensor& attention_mask
+    const torch::Tensor& attention_mask,
+    const torch::Tensor& special_embeddings_mask
 ) {
     const int batch_size = merging_map.size(0);
     const int seq_len = merging_map.size(1);
@@ -78,6 +103,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> generate_merges_transfor
     generate_merges_transform_kernel<<<grid_size, block_size>>>(
         merging_map.packed_accessor64<float, 3>(),
         attention_mask.packed_accessor64<bool, 2>(),
+        special_embeddings_mask.packed_accessor64<bool, 2>(),
         merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
         merged_attention_mask.packed_accessor64<bool, 2>(),
         aggregated_embeddings_transform.packed_accessor64<float, 3>(),
@@ -117,11 +143,7 @@ __global__ void batch_repeat_interleave_for_merges_count_kernel(
             merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
             ++output_seq_len_i;            
         } else {
-            // repeat interleave
-            merging_map_output[batch_i][output_seq_len_i][0] = grad_merging_map[batch_i][seq_len_i][0];
-            ++output_seq_len_i;
-
-            for (int repeats_i = 1; repeats_i < current_repeats_num; ++repeats_i) {
+            for (int repeats_i = 0; repeats_i < current_repeats_num; ++repeats_i) {
                 // merging_map_output[batch_i][output_seq_len_i][0] = 0;
                 merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
                 ++output_seq_len_i;
@@ -287,7 +309,7 @@ std::tuple<torch::Tensor, torch::Tensor> backward_fan_out_restore_residuals(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {}
 
 TORCH_LIBRARY(generate_merges, m) {
-    m.def("generate_merges_transform(Tensor a, Tensor b) -> (Tensor, Tensor, Tensor)");
+    m.def("generate_merges_transform(Tensor a, Tensor b, Tensor c) -> (Tensor, Tensor, Tensor)");
     m.def("batch_repeat_interleave_for_merges_count(Tensor a, Tensor b) -> Tensor");
     m.def("fan_out_restore_residuals(Tensor a, Tensor b, Tensor c) -> Tensor");
     m.def("backward_fan_out_restore_residuals(Tensor a, Tensor b) -> (Tensor, Tensor)");

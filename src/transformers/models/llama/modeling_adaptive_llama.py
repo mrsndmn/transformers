@@ -156,8 +156,6 @@ def scaled_gumbel_softmax(
         dim: int = -1,
     ):
 
-    assert hard, 'soft mode is not supported'
-
     gumbels = (
         -torch.empty_like(logits, memory_format=torch.legacy_contiguous_format)
         .exponential_()
@@ -211,13 +209,13 @@ class AdaptiveFanInGumbel(nn.Module):
     def set_gumbel_tau(self, new_tau):
         self.gumbel_tau = new_tau
 
-    def generate_merges_transform(self, merging_map, attention_mask):
+    def generate_merges_transform(self, merging_map, attention_mask, special_embeddings_mask):
         
         if self.generate_merges_transform_impl == 'python':
-            return self._generate_merges_transform(merging_map, attention_mask)
+            return self._generate_merges_transform(merging_map, attention_mask, special_embeddings_mask)
         elif self.generate_merges_transform_impl == 'cuda_kernel':
             # call cuda implementation
-            merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = generate_merges_transform(merging_map, attention_mask.bool())
+            merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = generate_merges_transform(merging_map, attention_mask.bool(), special_embeddings_mask.bool())
 
             if CHECK_WITH_PYTHON:
                 py_merged_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = self._generate_merges_transform(merging_map, attention_mask)
@@ -227,13 +225,11 @@ class AdaptiveFanInGumbel(nn.Module):
                 assert (merged_attention_mask == py_merged_attention_mask).all()
             
             return merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask
-        elif self.generate_merges_transform_impl == 'python_selective_not_merge':
-            return self._generate_merges_transform(merging_map, attention_mask, transform_type='select')
         else:
             raise ValueError(f"invalid value for self.generate_merges_transform_impl={self.generate_merges_transform_impl}")
 
     @classmethod
-    def _generate_merges_transform(klass, merging_map, attention_mask, transform_type='merge'):
+    def _generate_merges_transform(klass, merging_map, attention_mask, special_embeddings_mask):
         """Generates differentiable merges transform matrix
 
         Args:
@@ -274,25 +270,45 @@ class AdaptiveFanInGumbel(nn.Module):
             new_seq_len_i = 0
             total_tokens_count = total_initial_num_embeddings[batch_i].item()
 
+
+            want_merge_history = []
+            prev_want_merge = False
             for seq_len_i in range(0, total_tokens_count):
-                want_merge = merging_map[batch_i, seq_len_i, 1].item() > 0.5
+                is_special = special_embeddings_mask[batch_i, seq_len_i]
+                is_next_after_special = False
+                is_next_special = False
+                if seq_len_i > 0:
+                    is_next_after_special = special_embeddings_mask[batch_i, seq_len_i - 1]
+                if seq_len_i < total_tokens_count - 1:
+                    is_next_special = special_embeddings_mask[batch_i, seq_len_i + 1]
+
+                want_merge = not is_special and not (is_next_after_special and is_next_special) and merging_map[batch_i, seq_len_i, 1].item() > merging_map[batch_i, seq_len_i, 0].item()
+                if new_seq_len_i > 0 and prev_want_merge and not want_merge and merged_embeddings_counts[batch_i, new_seq_len_i] == 1:
+                    want_merge = True
+                    
+                if want_merge and is_next_special and not prev_want_merge:
+                    want_merge = False
 
                 if want_merge:
-                    prev_new_seq_len_i = new_seq_len_i - 1
-                    merged_embeddings_counts[batch_i, prev_new_seq_len_i] += 1
-                    if transform_type == 'merge':
-                        assert merging_map[batch_i, seq_len_i, 1].item() == 1, 'merging map is one'
-                        aggregated_embeddings_transform[batch_i, prev_new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 1]
-                    else:
-                        raise ValueError(f'unknown_merge_type {transform_type}')
+                    merged_embeddings_counts[batch_i, new_seq_len_i] += 1
+                    # assert merging_map[batch_i, seq_len_i, 1].item() == 1, 'merging map is one'
+                    aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = 1.0 + merging_map[batch_i, seq_len_i, 1] - merging_map[batch_i, seq_len_i, 1].detach()
                 else:
-                    assert merging_map[batch_i, seq_len_i, 1].item() == 0, 'merging map is zero'
-                    aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 0]
+                    if prev_want_merge:
+                        assert merged_embeddings_counts[batch_i, new_seq_len_i] > 1
+                        new_seq_len_i += 1
+
+                    # assert merging_map[batch_i, seq_len_i, 1].item() == 0, 'merging map is zero'
+                    aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = 1.0 + merging_map[batch_i, seq_len_i, 0] - merging_map[batch_i, seq_len_i, 0].detach()
                     merged_embeddings_counts[batch_i, new_seq_len_i] += 1
                     new_seq_len_i += 1
+                    
+                prev_want_merge = want_merge
+                want_merge_history.append(want_merge)
 
             merged_attention_mask[batch_i, :new_seq_len_i] = 1
             max_new_seq_len = max(max_new_seq_len, new_seq_len_i)
+            # breakpoint()
 
         # [ bs, new_seq_len ]
         merged_embeddings_counts = merged_embeddings_counts[:, :max_new_seq_len]
@@ -353,7 +369,7 @@ class AdaptiveFanInGumbel(nn.Module):
         
         # OHE: [ bs, seq_len, 2 ]
         if self.training:
-            merging_map = scaled_gumbel_softmax(merging_log_probas, hard=True, dim=-1, tau=self.gumbel_tau)
+            merging_map = scaled_gumbel_softmax(merging_log_probas, hard=False, dim=-1, tau=self.gumbel_tau)
         else:
             merging_map = torch.zeros_like(merging_log_probas)
             merging_map[:, :, 0] = (merging_log_probas[:, :, 0] > merging_log_probas[:, :, 1]).to(merging_map.dtype)
@@ -362,7 +378,6 @@ class AdaptiveFanInGumbel(nn.Module):
         # OHE: [ bs, seq_len, 2 ]
         # print("forward fan in gumbel")
         # breakpoint()
-        merging_map[special_embeddings_mask.bool()] = torch.tensor([1., 0.], device=merging_map.device, dtype=merging_map.dtype)
         merging_map[~attention_mask.bool()] = 0
         
         if self.max_seq_len_buffer.shape[0] < attention_mask.shape[0]:
@@ -374,7 +389,7 @@ class AdaptiveFanInGumbel(nn.Module):
 
         # TODO move this logic to cuda kernel
         # prohibit merging the token after bos token
-        merging_map[:, 1] = torch.tensor([1., 0.], device=merging_map.device, dtype=merging_map.dtype)
+        # merging_map[:, 1] = torch.tensor([1., 0.], device=merging_map.device, dtype=merging_map.dtype)
         
         # print('merging_map.sum(dim=-1)', merging_map.sum(dim=-1))
         # breakpoint()
@@ -382,7 +397,7 @@ class AdaptiveFanInGumbel(nn.Module):
         # print("merging_map", merging_map)
         
         # [ bs, new_seq_len, seq_len ] - состоит из нулей и единичек
-        merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = self.generate_merges_transform(merging_map, attention_mask)
+        merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = self.generate_merges_transform(merging_map, attention_mask, special_embeddings_mask)
         
         merged_special_embeddings_mask = torch.zeros([batch_size, merged_embeddings_transform.shape[1]], device=hidden_state.device)
         merged_special_embeddings_mask[:, 0] = 1
