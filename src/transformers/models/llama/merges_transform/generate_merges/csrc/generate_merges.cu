@@ -58,6 +58,11 @@ __global__ void generate_merges_transform_kernel(
         if (want_merge) {
             merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
             aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = 1.0;
+            if (prev_want_merge) {
+                // TODO! Test cover
+                // no token merging - only last token will be saved
+                aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i - 1] = 0.0;
+            }
         } else {
             if (prev_want_merge) {
                 new_seq_len_i += 1;
@@ -143,12 +148,16 @@ __global__ void batch_repeat_interleave_for_merges_count_kernel(
             merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
             ++output_seq_len_i;            
         } else {
-            for (int repeats_i = 0; repeats_i < current_repeats_num; ++repeats_i) {
-                // merging_map_output[batch_i][output_seq_len_i][0] = 0;
-                merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
-                ++output_seq_len_i;
-            }
+            // TODO! Test cover
+            output_seq_len_i = output_seq_len_i + current_repeats_num - 1;
+            merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
+            ++output_seq_len_i;
 
+            // for (int repeats_i = 0; repeats_i < current_repeats_num; ++repeats_i) {
+            //     // merging_map_output[batch_i][output_seq_len_i][0] = 0;
+            //     merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
+            //     ++output_seq_len_i;
+            // }
         }
 
     }

@@ -198,7 +198,8 @@ class AdaptiveLlamaTrainer(Trainer):
         # if merger_mpl_grad > 5:
         #     breakpoint()
         
-        current_tau = 1.0 + abs(math.sin(math.pi * self.state.global_step / 2000)) * 9.0
+        base_temperature_value = 1.0
+        current_tau = base_temperature_value + abs(math.sin(math.pi * self.state.global_step / 2000)) * (self.args.temperature_schedule_max_value - base_temperature_value)
         
         if self.state.global_step % self.args.logging_steps == 0:
             extra_log = dict()
@@ -610,6 +611,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
     reverse_dummy_adaptive_fan_in_layers: bool = False
     temperature_schedule: bool = False
+    temperature_schedule_max_value: int = field(default=10)
     
     select_train_dataset_items: int = 20000
     fan_out_projection: bool = True
@@ -697,7 +699,7 @@ if __name__ == "__main__":
 
     hf_parser = transformers.HfArgumentParser(AdaptiveTrainingArguments)
     (training_args,) = hf_parser.parse_args_into_dataclasses()
-
+    
     model, tokenizer = build_model(training_args)
     
     compute_metrics = None
@@ -801,6 +803,7 @@ if __name__ == "__main__":
 
     trainer.train(
         resume_from_checkpoint=None,
+        # resume_from_checkpoint="adaptive_14-15_residual_projection_bs20_fixed_semantic_freeze_lm_backbone/checkpoint-2700/",
         # resume_from_checkpoint="adaptive_14-15_residual_projection_bs20_merging_type_attention_output_mlp/checkpoint-3995/",
     )
 
