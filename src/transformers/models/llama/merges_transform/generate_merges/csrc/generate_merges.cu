@@ -179,6 +179,9 @@ __global__ void fan_out_restore_residuals_kernel(
         if (num_repeats == 0) {
             break;
         }
+        if (num_repeats == 1) {
+            continue;
+        }
 
         int restored_idx = int(restored_seq_len + num_repeats - 1);
         for (int hi = 0; hi < hidden_dim; ++hi) {

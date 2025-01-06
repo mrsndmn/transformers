@@ -188,6 +188,7 @@ class AdaptiveLlamaTrainer(Trainer):
             outputs_loss = outputs.loss
             if len(outputs_loss.shape) > 0:
                 outputs_loss = outputs.loss.mean()
+
             log_info = {
                 "debug/straight_loss": outputs_loss.detach().item(),
                 "debug/not_merged_tokens": (total_tokens - sum_merged_tokens),
@@ -196,7 +197,24 @@ class AdaptiveLlamaTrainer(Trainer):
                 "debug/merged_tokens_percent": (sum_merged_tokens / (total_tokens + 1e-4)),
                 "debug/ce_merging_loss_sum": ce_merging_loss_sum.item(),
             }
-            
+
+            if model.config.merging_type == 'hcg':
+                for i, concrete in enumerate(outputs.fan_in_merging_logits):
+                    if concrete is None:
+                        continue
+                    
+                    # [ bs, seq_len ]
+                    concrete = concrete.squeeze(2)
+                    log_info[f'debug/concrete_mean_{i}'] = concrete.mean().item()
+                    q = torch.tensor([0.1, 0.5, 0.9], device=concrete.device)
+                    # [ 3, bs ]
+                    concrete_quantiles = torch.quantile(concrete.float(), q, dim=1, keepdim=False)
+                    # [ 3 ]
+                    concrete_quantiles_mean = concrete_quantiles.mean(dim=-1)
+                    log_info[f'debug/concrete_q10_mean_{i}'] = concrete_quantiles_mean[0].item()
+                    log_info[f'debug/concrete_q50_mean_{i}'] = concrete_quantiles_mean[1].item()
+                    log_info[f'debug/concrete_q90_mean_{i}'] = concrete_quantiles_mean[2].item()
+
             if outputs_full_unmerge:
                 log_info["debug/full_unmerge_loss"] = outputs_full_unmerge.loss.detach().item(),
             
@@ -822,7 +840,6 @@ if __name__ == "__main__":
     )
 
     # with torch.autograd.set_detect_anomaly(True):
-
     trainer.train(
         resume_from_checkpoint=None,
         # resume_from_checkpoint="adaptive_14-15_residual_projection_bs20_fixed_semantic_freeze_lm_backbone/checkpoint-2700/",

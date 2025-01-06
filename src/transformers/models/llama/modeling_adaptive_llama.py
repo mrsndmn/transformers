@@ -426,6 +426,139 @@ class AdaptiveFanInGumbel(nn.Module):
 
 
 
+class HardConcreteGate(nn.Module):
+    def __init__(self,
+                 max_seq_len=2048,
+                 temperature=1.0,
+                 adjust_range=(-0.1, 1.1),
+                #  l0_penalty_lambda=0.0,
+                #  l2_penalty_lambda=0.0,
+                 eps=1e-9,
+                 ):
+        super(HardConcreteGate, self).__init__()
+
+        self.eps = eps
+
+        self.register_buffer("temperature", torch.Tensor([temperature]))
+        self.register_buffer("adjust_range", torch.Tensor(adjust_range))
+
+        self.register_buffer("random_buffer", torch.rand(1, max_seq_len, 1), persistent=False)
+
+        self.sigmoid = nn.Sigmoid()
+
+        # self.p_open = self.get_p_open()
+
+        return
+
+    def get_p_open(self, log_a):
+        p_open = self.sigmoid(log_a - self.temperature * torch.log(- self.adjust_range[0] / self.adjust_range[1]) )
+        p_open = torch.clip(p_open, min=self.eps, max=1-self.eps)
+        return p_open
+
+    def forward(self, log_a: torch.Tensor) -> torch.Tensor:
+        # log_a ~ [ batch_size, seq_len ]
+        # inputs ~ [ batch_size, seq_len, hidden_dim ]
+        # assert inputs.size(-1) % log_a.size(0) == 0
+        seq_len = log_a.shape[1]
+
+        if self.training:
+            torch.rand(self.random_buffer.size(), out=self.random_buffer) # avoid extra allocations
+
+            random_buffer_log = self.random_buffer.log()[:, :seq_len]
+            one_minus_rand_log = (1 - self.random_buffer).log()[:, :seq_len]
+
+            concrete = self.sigmoid((random_buffer_log - one_minus_rand_log + log_a) / self.temperature)
+        else:
+            concrete = self.sigmoid(log_a)
+
+        concrete = concrete * (self.adjust_range[1] - self.adjust_range[0]) + self.adjust_range[0]
+        concrete = torch.clip(concrete, min=0, max=1)
+        # print(f"concrete mean={concrete.mean().item():.2f} max={concrete.max().item():.2f} min={concrete.min().item():.2f}")
+
+        return concrete
+
+
+class AdaptiveFanInHCG(nn.Module):
+    def __init__(self, config: LlamaConfig):
+        super().__init__()
+        self.config = config
+        self.hidden_size = config.hidden_size
+
+        self.hcg = HardConcreteGate(max_seq_len=config.max_position_embeddings)
+        
+        self.merging_type = self.config.merging_type
+        assert self.merging_type == 'hcg'
+        
+        self.fan_in_mlp = nn.Linear(self.hidden_size, 1, bias=True)
+        # self.fan_in_mlp.
+
+        approximate_batch_size_length = 100
+        max_seq_len_buffer = torch.arange(config.max_position_embeddings).unsqueeze(0).repeat(approximate_batch_size_length, 1)
+        self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
+
+
+    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, full_unmerge=False) -> AdaptiveFanInOutput:
+        """_summary_
+
+        Args:
+            hidden_state (torch.Tensor ~ [ bs, seq_len, hidden_size ]): Transformer hidden states
+            attention_mask (torch.Tensor ~ [ bs, seq_len ]): Hidden states padding attention mask
+            special_embeddings_mask (torch.Tensor ~ [ bs, seq_len ]): Mask for BOS / EOS tokens that could not be merged
+
+            merging_log_probas (torch.Tensor, optional): Force probabilities of merging. Should be used only for tests. Defaults to None.
+
+        Returns:
+            AdaptiveFanInOutput: outputs of the module
+        """
+
+        # hidden_state ~ [ bs, seq_len, hidden_size ]
+        assert hidden_state.shape[-1] == self.hidden_size
+
+        # attention_mask ~ [ bs, seq_len ]
+        assert hidden_state.shape[:2] == attention_mask.shape
+        assert special_embeddings_mask is not None
+        assert attention_mask is not None
+        assert special_embeddings_mask.shape == attention_mask.shape
+
+        batch_size = hidden_state.shape[0]
+        seq_len = hidden_state.shape[1]
+        hidden_dim = hidden_state.shape[2]
+        assert seq_len <= self.config.max_position_embeddings
+        
+        residual_hidden_state = hidden_state
+
+        # OHE: [ bs, seq_len, 1 ]
+        log_a = self.fan_in_mlp(hidden_state)
+
+        # [ bs, seq_len, 1 ]
+        concrete = self.hcg(log_a)
+        # if concrete.isnan().any():
+        #     print("found nan after hcg")
+        #     breakpoint()
+
+        # assert concrete.shape == special_embeddings_mask.shape
+        concrete[special_embeddings_mask] = 1.0
+        # breakpoint()
+
+        hidden_state = concrete * hidden_state
+        residual_hidden_state = (1 - concrete) * residual_hidden_state
+
+        res = AdaptiveFanInOutput(
+            hidden_state=hidden_state,
+            residual_hidden_state=residual_hidden_state,
+            attention_mask=attention_mask,
+            merged_embeddings_counts=attention_mask,
+            special_embeddings_mask=special_embeddings_mask,
+            merging_map=None,
+            merging_map_logits=concrete,
+        )
+
+        return res
+
+
+
+
+
 class AdaptiveFanOut(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
@@ -507,7 +640,7 @@ class AdaptiveFanOut(nn.Module):
             if CHECK_WITH_PYTHON:
                 restored_hidden_states_py = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
                 assert (restored_hidden_states_py == restored_hidden_states).all()
-                
+
         else:
             raise ValueError(f"unknown self.fan_out_implementation={self.fan_out_implementation}")
 
@@ -535,6 +668,30 @@ class NoopAdaptiveFanOut(nn.Module):
             AdaptiveFanOutOutput: input hidden states
         """
 
+        return AdaptiveFanOutOutput(hidden_state=hidden_states)
+
+
+class AdaptiveFanOutHCG(nn.Module):
+    def __init__(self, config: LlamaConfig):
+        super().__init__()
+        self.hidden_size = config.hidden_size
+        self.fan_out_linear = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
+
+    def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
+        """Returns base hidden states
+
+        Args:
+            hidden_states (torch.Tensor ~ [ bs, new_seq_len, hidden_size ]): transformer hidden states with previously reduced sequence length
+            attention_mask (torch.Tensor ~ [ bs, new_seq_len, hidden_size ]): padding attention mask for hidden states
+            merged_embeddings_counts (torch.Tensor ~ [ bs, new_seq_len ]): merged_embeddings_counts from corresponding AdaptiveFanInOutput
+            residual_hidden_states (torch.Tensor ~ [ bs, seq_len, hidden_size ]): hidden states from corresponding AdaptiveFanInOutput
+            residual_attention_mask (torch.Tensor ~ [ bs, seq_len ]): padding attention mask from corresponding AdaptiveFanInOutput
+
+        Returns:
+            AdaptiveFanOutOutput: input hidden states
+        """
+
+        hidden_states = hidden_states + self.fan_out_linear(residual_hidden_states)
         return AdaptiveFanOutOutput(hidden_state=hidden_states)
 
 
@@ -690,6 +847,9 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             if is_dummy:
                 return NoOpFanIn(config)
 
+            if config.merging_type == 'hcg':
+                return AdaptiveFanInHCG(config)
+
             return AdaptiveFanInGumbel(config)
         self.adaptive_down = nn.ModuleList(
             [get_fan_in_module(is_dummy_fan_in[i]) for i in range(num_hidden_layers_half)]
@@ -704,6 +864,11 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         def get_fan_out_module(is_dummy):
             if is_dummy:
                 return NoopAdaptiveFanOut(config)
+
+            if config.merging_type == 'hcg':
+                return NoopAdaptiveFanOut(config)
+                # return AdaptiveFanOutHCG(config)
+
             return AdaptiveFanOut(config)
 
         is_dummy_fan_out = list(reversed(is_dummy_fan_in))
