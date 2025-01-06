@@ -139,6 +139,11 @@ class AdaptiveLlamaTrainer(Trainer):
         # [ bs, seq_len, 2 ]
 
         # fan_in_merging_logits_sum = sum(x.sum(dim=[0, 1]) for x in fan_in_merging_logits)
+        outputs_full_unmerge = None
+        if model.config.full_unmerge is not None and sum(model.config.full_unmerge) > 0:
+            model_kwargs['full_unmerge'] = model.config.full_unmerge
+            outputs_full_unmerge = model.forward(**model_kwargs)
+        
 
         ce_merging_loss_sum = torch.tensor(0.0, device=outputs.loss.device)
         count_merging_losses = 0
@@ -169,6 +174,10 @@ class AdaptiveLlamaTrainer(Trainer):
 
         # loss = outputs.loss
         loss = outputs.loss + ce_merging_loss_sum * self.args.ce_merging_loss_weight
+        
+        if outputs_full_unmerge is not None:
+            loss += outputs_full_unmerge.loss
+        
         outputs.loss = loss
 
         # assert ~ loss.isnan().any(), 'loss cant be none'
@@ -187,6 +196,10 @@ class AdaptiveLlamaTrainer(Trainer):
                 "debug/merged_tokens_percent": (sum_merged_tokens / (total_tokens + 1e-4)),
                 "debug/ce_merging_loss_sum": ce_merging_loss_sum.item(),
             }
+            
+            if outputs_full_unmerge:
+                log_info["debug/full_unmerge_loss"] = outputs_full_unmerge.loss.detach().item(),
+            
 
             self.log(log_info)
 
@@ -221,8 +234,9 @@ class AdaptiveLlamaTrainer(Trainer):
                         extra_log[f"merger_mpl_weight_sum_0_{i}"] = fan_in_mlp_weight_sum[0].item()
                         extra_log[f"merger_mpl_weight_sum_1_{i}"] = fan_in_mlp_weight_sum[1].item()
                         
-                        extra_log[f"merger_mpl_bias_0_{i}"] = fan_in_mlp_bias[0].item()
-                        extra_log[f"merger_mpl_bias_1_{i}"] = fan_in_mlp_bias[1].item()
+                        if fan_in_mlp_bias is not None:
+                            extra_log[f"merger_mpl_bias_0_{i}"] = fan_in_mlp_bias[0].item()
+                            extra_log[f"merger_mpl_bias_1_{i}"] = fan_in_mlp_bias[1].item()
 
             self.log(extra_log)
         
@@ -607,6 +621,9 @@ class AdaptiveTrainingArguments(TrainingArguments):
     ce_merging_loss_weight: float = 0.0
     dummy_adaptive_fan_in_layers: Optional[int] = None
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
+    
+    full_unmerge_str: Optional[str] = None
+    
     generate_merges_transform_impl: str = 'cuda_kernel'
 
     reverse_dummy_adaptive_fan_in_layers: bool = False
@@ -664,6 +681,10 @@ def build_model(training_args: AdaptiveTrainingArguments):
         if training_args.reverse_dummy_adaptive_fan_in_layers:
             dummy_adaptive_fan_in = list(reversed(dummy_adaptive_fan_in))
         
+        full_unmerge = None
+        if training_args.full_unmerge_str is not None:
+            full_unmerge = list(map(lambda x: bool(int(x)), training_args.full_unmerge_str.split(',')))
+        
         print("dummy_adaptive_fan_in", dummy_adaptive_fan_in)
         
         assert len(dummy_adaptive_fan_in) == num_layers_half
@@ -674,6 +695,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
             fan_out_projection=training_args.fan_out_projection,
             merging_type=training_args.merging_type,
             freeze_lm_backbone=training_args.freeze_lm_backbone,
+            full_unmerge=full_unmerge,
         )
 
         tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)

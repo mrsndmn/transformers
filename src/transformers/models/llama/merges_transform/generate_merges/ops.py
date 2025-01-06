@@ -72,7 +72,7 @@ def _backward_generate_merges_transform(ctx, output_merging_map_grad, merged_emb
         # [ bs, seq_len, 2 ]
         mask_template = torch.ones_like(saved_merging_map)
         mask_template[merged_embeddings_counts != 1] = torch.tensor([0.0, 1.0], dtype=mask_template.dtype, device=mask_template.device)
-        mask_template[merged_embeddings_counts == 1] = torch.tensor([1.0, 0.0], dtype=mask_template.dtype, device=mask_template.device)
+        mask_template[merged_embeddings_counts == 1] = torch.tensor([0.0, 1.0], dtype=mask_template.dtype, device=mask_template.device)
         mask_for_grads = torch.ops.generate_merges.batch_repeat_interleave_for_merges_count.default(mask_template, merged_embeddings_counts)
 
         grad_merging_map_output = mask_for_grads * output_merging_map_grad_zeroed.sum(1).unsqueeze(-1)

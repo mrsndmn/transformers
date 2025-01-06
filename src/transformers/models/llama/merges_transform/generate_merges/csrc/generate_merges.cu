@@ -30,50 +30,20 @@ __global__ void generate_merges_transform_kernel(
     }
 
     int new_seq_len_i = 0;
-    bool prev_want_merge = false;
     for (int seq_len_i = 0; seq_len_i < seq_len; ++seq_len_i) {
         if (!attention_mask[batch_i][seq_len_i]) {
             break;
         }
 
-        bool is_special = special_embeddings_mask[batch_i][seq_len_i];
-        bool is_next_after_special = false;
-        bool is_next_special = false;
-        if (seq_len_i > 0) {
-            is_next_after_special = special_embeddings_mask[batch_i][seq_len_i - 1];
-        }
-        if (seq_len_i < seq_len - 1) {
-            is_next_special = special_embeddings_mask[batch_i][seq_len_i + 1];
-        }
-
-        bool want_merge = ! is_special && !(is_next_after_special && is_next_special) && merging_map[batch_i][seq_len_i][1] > merging_map[batch_i][seq_len_i][0];
-        if (new_seq_len_i > 0 && prev_want_merge && !want_merge && merged_embeddings_counts[batch_i][new_seq_len_i] == 1) {
-            want_merge = true;
-        }
-
-        if (want_merge and is_next_special and not prev_want_merge) {
-            want_merge = false;
-        }
+        bool want_merge = merging_map[batch_i][seq_len_i][1] > merging_map[batch_i][seq_len_i][0];
 
         if (want_merge) {
             merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
             aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = 1.0;
-            if (prev_want_merge) {
-                // TODO! Test cover
-                // no token merging - only last token will be saved
-                aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i - 1] = 0.0;
-            }
-        } else {
-            if (prev_want_merge) {
-                new_seq_len_i += 1;
-            }
-
-            aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = 1.0;
-            merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
             new_seq_len_i += 1;
+        } else {
+            merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
         }
-
-        prev_want_merge = want_merge;
     }
 
     // Update the merged_attention_mask for the current batch
@@ -143,22 +113,22 @@ __global__ void batch_repeat_interleave_for_merges_count_kernel(
             break;
         }
 
-        if (current_repeats_num == 1) {
-            merging_map_output[batch_i][output_seq_len_i][0] = grad_merging_map[batch_i][seq_len_i][0];
-            merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
-            ++output_seq_len_i;            
-        } else {
+        // if (current_repeats_num == 1) {
+        //     merging_map_output[batch_i][output_seq_len_i][0] = grad_merging_map[batch_i][seq_len_i][0];
+        //     merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
+        //     ++output_seq_len_i;            
+        // } else {
             // TODO! Test cover
-            output_seq_len_i = output_seq_len_i + current_repeats_num - 1;
-            merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
-            ++output_seq_len_i;
+            // output_seq_len_i = output_seq_len_i + current_repeats_num - 1;
+            // merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
+            // ++output_seq_len_i;
 
-            // for (int repeats_i = 0; repeats_i < current_repeats_num; ++repeats_i) {
-            //     // merging_map_output[batch_i][output_seq_len_i][0] = 0;
-            //     merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
-            //     ++output_seq_len_i;
-            // }
-        }
+            for (int repeats_i = 0; repeats_i < current_repeats_num; ++repeats_i) {
+                // merging_map_output[batch_i][output_seq_len_i][0] = 0;
+                merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
+                ++output_seq_len_i;
+            }
+        // }
 
     }
 }

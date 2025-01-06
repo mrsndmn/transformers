@@ -170,6 +170,7 @@ class LlamaConfig(PretrainedConfig):
         generate_merges_transform_impl='python',
         fan_out_projection=True,
         merging_type='attention_output_mlp',
+        full_unmerge=None,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -182,6 +183,13 @@ class LlamaConfig(PretrainedConfig):
         if dummy_adaptive_fan_in is None:
             dummy_adaptive_fan_in = [ True ] * (num_hidden_layers // 2)
         self.dummy_adaptive_fan_in = dummy_adaptive_fan_in
+        
+        if full_unmerge is None:
+            full_unmerge = [ False ] * (num_hidden_layers // 2)
+
+        assert len(full_unmerge) == num_hidden_layers // 2
+        self.full_unmerge = full_unmerge
+        
         self.generate_merges_transform_impl = generate_merges_transform_impl
         self.fan_out_projection = fan_out_projection
         self.merging_type = merging_type

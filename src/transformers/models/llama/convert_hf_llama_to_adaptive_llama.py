@@ -32,6 +32,7 @@ def build_adaptive_llama_from_llama_checkpoint(
         fan_out_projection=True,
         merging_type='next_token_merge_mlp',
         freeze_lm_backbone=False,
+        full_unmerge=None
     ):
 
     llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint)
@@ -46,6 +47,7 @@ def build_adaptive_llama_from_llama_checkpoint(
     config.generate_merges_transform_impl = generate_merges_transform_impl
     config.fan_out_projection = fan_out_projection
     config.merging_type = merging_type
+    config.full_unmerge = full_unmerge
     config._attn_implementation
     
     num_hidden_layers = config.num_hidden_layers
