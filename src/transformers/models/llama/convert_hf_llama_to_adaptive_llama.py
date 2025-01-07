@@ -23,7 +23,7 @@ import torch
 
 from transformers import AutoModelForCausalLM, GenerationConfig, LlamaConfig, LlamaForCausalLM, LlamaTokenizer, PreTrainedTokenizerFast, AutoConfig
 
-from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanInHCG
 
 def build_adaptive_llama_from_llama_checkpoint(
         llama_checkpoint,
@@ -32,7 +32,10 @@ def build_adaptive_llama_from_llama_checkpoint(
         fan_out_projection=True,
         merging_type='next_token_merge_mlp',
         freeze_lm_backbone=False,
-        full_unmerge=None
+        full_unmerge=None,
+        fan_out_type=None,
+        hcg_temperature=1.0,
+        learnt_temperature=False,
     ):
 
     llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint)
@@ -48,7 +51,11 @@ def build_adaptive_llama_from_llama_checkpoint(
     config.fan_out_projection = fan_out_projection
     config.merging_type = merging_type
     config.full_unmerge = full_unmerge
+    config.fan_out_type = fan_out_type
+    config.hcg_temperature = hcg_temperature
+    config.learnt_temperature = learnt_temperature
     config._attn_implementation
+
     
     num_hidden_layers = config.num_hidden_layers
     assert num_hidden_layers % 2 == 0
@@ -76,6 +83,10 @@ def build_adaptive_llama_from_llama_checkpoint(
     adaptive_llama_model.load_state_dict(adaptive_llama_model_state_dict)
     
     adaptive_llama_model.to(torch.bfloat16)
+
+    for adaptive_down in adaptive_llama_model.model.adaptive_down:
+        if isinstance(adaptive_down, AdaptiveFanInHCG):
+            adaptive_down.hcg.to(torch.float32)
 
 
     if freeze_lm_backbone:

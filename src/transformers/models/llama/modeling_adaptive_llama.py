@@ -430,6 +430,7 @@ class HardConcreteGate(nn.Module):
     def __init__(self,
                  max_seq_len=2048,
                  temperature=1.0,
+                 learnt_temperature=False,
                  adjust_range=(-0.1, 1.1),
                 #  l0_penalty_lambda=0.0,
                 #  l2_penalty_lambda=0.0,
@@ -439,8 +440,14 @@ class HardConcreteGate(nn.Module):
 
         self.eps = eps
 
-        self.register_buffer("temperature", torch.Tensor([temperature]))
-        self.register_buffer("adjust_range", torch.Tensor(adjust_range))
+        print('temperature', temperature, "learnt_temperature", learnt_temperature)
+
+        if learnt_temperature:
+            self.register_parameter("temperature", nn.Parameter(torch.tensor([temperature])))
+        else:
+            self.register_buffer("temperature", torch.tensor([temperature]))
+
+        self.register_buffer("adjust_range", torch.tensor(adjust_range))
 
         self.register_buffer("random_buffer", torch.rand(1, max_seq_len, 1), persistent=False)
 
@@ -455,25 +462,52 @@ class HardConcreteGate(nn.Module):
         p_open = torch.clip(p_open, min=self.eps, max=1-self.eps)
         return p_open
 
-    def forward(self, log_a: torch.Tensor) -> torch.Tensor:
+    def forward(self, log_a: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         # log_a ~ [ batch_size, seq_len ]
         # inputs ~ [ batch_size, seq_len, hidden_dim ]
         # assert inputs.size(-1) % log_a.size(0) == 0
+
+        log_a_dtype = log_a.dtype
+        if log_a_dtype != torch.float32:
+            log_a = log_a.to(torch.float32)
+
         seq_len = log_a.shape[1]
 
         if self.training:
             torch.rand(self.random_buffer.size(), out=self.random_buffer) # avoid extra allocations
 
-            random_buffer_log = self.random_buffer.log()[:, :seq_len]
-            one_minus_rand_log = (1 - self.random_buffer).log()[:, :seq_len]
+            assert self.random_buffer.dtype == torch.float32
 
-            concrete = self.sigmoid((random_buffer_log - one_minus_rand_log + log_a) / self.temperature)
+            random_buffer_log = (self.random_buffer + 1e-5).log()[:, :seq_len]
+            one_minus_rand_log = (1 - self.random_buffer + 1e-5).log()[:, :seq_len]
+
+            # avoid nan gradients in backward for learned temperature
+            temperature_scale = (attention_mask * self.temperature).unsqueeze(-1) + 1e-6
+            # breakpoint()
+            def db_hook(grad):
+                grad[ attention_mask == 0 ] = 0
+                if grad.isnan().sum() > 0:
+                    print(self, 'attention_mask.shape', attention_mask.shape, temperature_scale.shape, (random_buffer_log - one_minus_rand_log + log_a).shape)
+                    grad[ grad.isnan() ] = 0
+                    breakpoint()
+
+                return grad
+            temperature_scale.register_hook(db_hook)
+
+            sigmoid_arg = random_buffer_log - one_minus_rand_log + log_a
+            concrete = self.sigmoid(sigmoid_arg / temperature_scale )
         else:
             concrete = self.sigmoid(log_a)
 
         concrete = concrete * (self.adjust_range[1] - self.adjust_range[0]) + self.adjust_range[0]
         concrete = torch.clip(concrete, min=0, max=1)
-        # print(f"concrete mean={concrete.mean().item():.2f} max={concrete.max().item():.2f} min={concrete.min().item():.2f}")
+        concrete[attention_mask == 0] = 0
+
+        if concrete.isnan().any():
+            print("found nan after hcg")
+            print(f"concrete mean={concrete.mean().item():.2f} max={concrete.max().item():.2f} min={concrete.min().item():.2f}")
+            breakpoint()
+
 
         return concrete
 
@@ -484,13 +518,12 @@ class AdaptiveFanInHCG(nn.Module):
         self.config = config
         self.hidden_size = config.hidden_size
 
-        self.hcg = HardConcreteGate(max_seq_len=config.max_position_embeddings)
+        self.hcg = HardConcreteGate(max_seq_len=config.max_position_embeddings, temperature=config.hcg_temperature, learnt_temperature=config.learnt_temperature)
         
         self.merging_type = self.config.merging_type
         assert self.merging_type == 'hcg'
         
         self.fan_in_mlp = nn.Linear(self.hidden_size, 1, bias=True)
-        # self.fan_in_mlp.
 
         approximate_batch_size_length = 100
         max_seq_len_buffer = torch.arange(config.max_position_embeddings).unsqueeze(0).repeat(approximate_batch_size_length, 1)
@@ -531,17 +564,17 @@ class AdaptiveFanInHCG(nn.Module):
         log_a = self.fan_in_mlp(hidden_state)
 
         # [ bs, seq_len, 1 ]
-        concrete = self.hcg(log_a)
-        # if concrete.isnan().any():
-        #     print("found nan after hcg")
-        #     breakpoint()
+        concrete = self.hcg(log_a, attention_mask=attention_mask)
 
         # assert concrete.shape == special_embeddings_mask.shape
         concrete[special_embeddings_mask] = 1.0
         # breakpoint()
 
-        hidden_state = concrete * hidden_state
-        residual_hidden_state = (1 - concrete) * residual_hidden_state
+        hs_dtype = hidden_state.dtype
+        rhs_dtype = residual_hidden_state.dtype
+
+        hidden_state = (concrete * hidden_state).to(hs_dtype)
+        residual_hidden_state = ((1 - concrete) * residual_hidden_state).to(rhs_dtype)
 
         res = AdaptiveFanInOutput(
             hidden_state=hidden_state,
@@ -865,9 +898,12 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             if is_dummy:
                 return NoopAdaptiveFanOut(config)
 
-            if config.merging_type == 'hcg':
-                return NoopAdaptiveFanOut(config)
-                # return AdaptiveFanOutHCG(config)
+            # check explicit fan out type
+            if config.fan_out_type is not None:
+                if config.fan_out_type == 'noop':
+                    return NoopAdaptiveFanOut(config)
+                elif config.fan_out_type == 'residual_linear_projection':
+                    return AdaptiveFanOutHCG(config)
 
             return AdaptiveFanOut(config)
 

@@ -215,6 +215,10 @@ class AdaptiveLlamaTrainer(Trainer):
                     log_info[f'debug/concrete_q50_mean_{i}'] = concrete_quantiles_mean[1].item()
                     log_info[f'debug/concrete_q90_mean_{i}'] = concrete_quantiles_mean[2].item()
 
+                    if self.args.learnt_temperature:
+                        log_info[f'debug/concrete_{i}_temperature'] = model.model.adaptive_down[i].hcg.temperature.item()
+
+
             if outputs_full_unmerge:
                 log_info["debug/full_unmerge_loss"] = outputs_full_unmerge.loss.detach().item(),
             
@@ -618,6 +622,10 @@ class AdaptiveTrainingArguments(TrainingArguments):
     per_device_train_batch_size: int = field(default=32)
     per_device_eval_batch_size: int = field(default=16)
     num_train_epochs: int = field(default=1)
+    max_steps_pretrain_fan_modules: int = field(default=2000)
+    hcg_temperature: float = field(default=1.0)
+    learnt_temperature: bool = field(default=False)
+
     weight_decay: float = field(default=0.01)
     eval_strategy: str = field(default="steps")
     eval_steps: int = field(default=500)
@@ -641,6 +649,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
     
     full_unmerge_str: Optional[str] = None
+    fan_out_type: Optional[str] = None
     
     generate_merges_transform_impl: str = 'cuda_kernel'
 
@@ -714,6 +723,9 @@ def build_model(training_args: AdaptiveTrainingArguments):
             merging_type=training_args.merging_type,
             freeze_lm_backbone=training_args.freeze_lm_backbone,
             full_unmerge=full_unmerge,
+            fan_out_type=training_args.fan_out_type,
+            hcg_temperature=training_args.hcg_temperature,
+            learnt_temperature=training_args.learnt_temperature,
         )
 
         tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
@@ -768,7 +780,8 @@ if __name__ == "__main__":
             smollm_corpus = datasets.Dataset.load_from_disk(disk_dataset_path)
         else:
             # load and tokenize
-            smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=[ "cosmopedia-v2/train-00000-of-00104.parquet" ])
+            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(2) ]
+            smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files)
 
             def tokenize_function(examples):
                 # 2046 = 2048 - 1 - 1 # eos and bos tokens
@@ -787,11 +800,11 @@ if __name__ == "__main__":
                 
                 return tokenized_inputs
 
-            smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items)).map(tokenize_function, batched=True)
+            smollm_corpus = smollm_corpus.map(tokenize_function, batched=True)
             # smollm_corpus = smollm_corpus.rename_column('special_tokens_mask', 'special_embeddings_mask')
             # print(smollm_corpus[0]['input_ids'])
             # breakpoint()
-            smollm_corpus.save_to_disk("data/tokenized-smollm-corpus-1-shard.dataset")
+            # smollm_corpus.save_to_disk("data/tokenized-smollm-corpus-1-shard.dataset")
 
         assert sum(smollm_corpus[0]['special_tokens_mask']) > 0
         
@@ -818,6 +831,9 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"{training_args.training_dataset} is not supported")
 
+    # training_args.max_steps = training_args.max_steps_pretrain_fan_modules
+    # trainer.args.max_steps = -1
+    # trainer.args.warmup_steps = 0
 
     trainer = AdaptiveLlamaTrainer(
         model,
@@ -829,12 +845,6 @@ if __name__ == "__main__":
         compute_metrics=compute_metrics,
     )
 
-    # trainer.accelerator.log_with = filter_trackers("wandb", training_args.output_dir)
-    # trackers = filter_trackers(log_with, self.logging_dir)
-    # if len(trackers) < 1 and log_with is not None:
-    #     warnings.warn(f"`log_with={log_with}` was passed but no supported trackers are currently installed.")
-    # self.log_with = trackers
-
     trainer.accelerator.init_trackers(
         project_name=training_args.output_dir,
     )
@@ -842,7 +852,4 @@ if __name__ == "__main__":
     # with torch.autograd.set_detect_anomaly(True):
     trainer.train(
         resume_from_checkpoint=None,
-        # resume_from_checkpoint="adaptive_14-15_residual_projection_bs20_fixed_semantic_freeze_lm_backbone/checkpoint-2700/",
-        # resume_from_checkpoint="adaptive_14-15_residual_projection_bs20_merging_type_attention_output_mlp/checkpoint-3995/",
     )
-
