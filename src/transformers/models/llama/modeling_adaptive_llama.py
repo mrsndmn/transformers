@@ -451,14 +451,15 @@ class HardConcreteGate(nn.Module):
 
         self.register_buffer("random_buffer", torch.rand(1, max_seq_len, 1), persistent=False)
 
-        self.sigmoid = nn.Sigmoid()
+        # self.activation = nn.Sigmoid()
+        self.activation = nn.ReLU()
 
         # self.p_open = self.get_p_open()
 
         return
 
     def get_p_open(self, log_a):
-        p_open = self.sigmoid(log_a - self.temperature * torch.log(- self.adjust_range[0] / self.adjust_range[1]) )
+        p_open = self.activation(log_a - self.temperature * torch.log(- self.adjust_range[0] / self.adjust_range[1]) )
         p_open = torch.clip(p_open, min=self.eps, max=1-self.eps)
         return p_open
 
@@ -491,17 +492,26 @@ class HardConcreteGate(nn.Module):
                     grad[ grad.isnan() ] = 0
                     breakpoint()
 
+                # Scale grad for faster temperature convergence
+                grad *= 50
+
                 return grad
-            temperature_scale.register_hook(db_hook)
+
+            if temperature_scale.requires_grad:
+                temperature_scale.register_hook(db_hook)
 
             sigmoid_arg = random_buffer_log - one_minus_rand_log + log_a
-            concrete = self.sigmoid(sigmoid_arg / temperature_scale )
+            concrete = self.activation(sigmoid_arg / temperature_scale )
         else:
-            concrete = self.sigmoid(log_a)
+            concrete = self.activation(log_a)
 
         concrete = concrete * (self.adjust_range[1] - self.adjust_range[0]) + self.adjust_range[0]
         concrete = torch.clip(concrete, min=0, max=1)
         concrete[attention_mask == 0] = 0
+
+        # print('attention_mask.sum()', attention_mask.sum())
+        # print('attention_mask.numel()', attention_mask.numel())
+        # print('attention_mask.sum / numel', attention_mask.sum() / attention_mask.numel())
 
         if concrete.isnan().any():
             print("found nan after hcg")
@@ -708,7 +718,7 @@ class AdaptiveFanOutHCG(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.fan_out_linear = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
+        self.fan_out_linear = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
 
     def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
         """Returns base hidden states

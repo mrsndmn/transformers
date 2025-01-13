@@ -121,10 +121,11 @@ class AdaptiveLlamaTrainer(Trainer):
         if special_embeddings_mask is None:
             special_embeddings_mask = inputs.get('special_tokens_mask') > 0
 
+        attention_mask = inputs['attention_mask']
         model_kwargs = {
             "input_ids": inputs['input_ids'],
             "labels": labels,
-            "attention_mask": inputs['attention_mask'],
+            "attention_mask": attention_mask,
         }
 
         if isinstance(model, AdaptiveLlamaForCausalLM) or ( isinstance(model, nn.DataParallel) and isinstance(model.module, AdaptiveLlamaForCausalLM)):
@@ -133,7 +134,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
             model_kwargs["special_embeddings_mask"] = special_embeddings_mask
             
-            assert special_embeddings_mask.shape == inputs['attention_mask'].shape
+            assert special_embeddings_mask.shape == attention_mask.shape
 
         outputs = model.forward(**model_kwargs)
         # [ bs, seq_len, 2 ]
@@ -182,7 +183,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
         # assert ~ loss.isnan().any(), 'loss cant be none'
         
-        total_tokens = inputs['attention_mask'].sum().item()
+        total_tokens = attention_mask.sum().item()
 
         if log_metrics and self.state.global_step % self.args.logging_steps == 0:
             outputs_loss = outputs.loss
@@ -203,12 +204,15 @@ class AdaptiveLlamaTrainer(Trainer):
                     if concrete is None:
                         continue
                     
-                    # [ bs, seq_len ]
-                    concrete = concrete.squeeze(2)
-                    log_info[f'debug/concrete_mean_{i}'] = concrete.mean().item()
-                    q = torch.tensor([0.1, 0.5, 0.9], device=concrete.device)
+                    # [ bs * seq_len ]
+                    concrete = concrete.squeeze(2).flatten()
+                    concrete_non_masked = concrete[attention_mask]
+                    log_info[f'debug/concrete_mean_{i}'] = concrete_non_masked.mean().item()
+                    log_info[f'debug/concrete_lt_0.1'] = (concrete_non_masked < 0.1).sum().item()
+                    log_info[f'debug/concrete_lt_0.5'] = (concrete_non_masked < 0.5).sum().item()
+                    q = torch.tensor([0.1, 0.5, 0.9], device=concrete_non_masked.device)
                     # [ 3, bs ]
-                    concrete_quantiles = torch.quantile(concrete.float(), q, dim=1, keepdim=False)
+                    concrete_quantiles = torch.quantile(concrete_non_masked.float(), q, dim=1, keepdim=False)
                     # [ 3 ]
                     concrete_quantiles_mean = concrete_quantiles.mean(dim=-1)
                     log_info[f'debug/concrete_q10_mean_{i}'] = concrete_quantiles_mean[0].item()
@@ -780,12 +784,12 @@ if __name__ == "__main__":
             smollm_corpus = datasets.Dataset.load_from_disk(disk_dataset_path)
         else:
             # load and tokenize
-            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(2) ]
+            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(1) ]
             smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files)
 
             def tokenize_function(examples):
                 # 2046 = 2048 - 1 - 1 # eos and bos tokens
-                tokenized_inputs = tokenizer(examples['text'], return_special_tokens_mask=True, truncation=True, max_length=2046)
+                tokenized_inputs = tokenizer(examples['text'], return_special_tokens_mask=True, truncation=True, max_length=1022)
                 for x in tokenized_inputs['input_ids']:
                     x.insert(0, im_start_token_id)
                     x.append(im_end_token_id)
@@ -801,6 +805,7 @@ if __name__ == "__main__":
                 return tokenized_inputs
 
             smollm_corpus = smollm_corpus.map(tokenize_function, batched=True)
+            smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items))
             # smollm_corpus = smollm_corpus.rename_column('special_tokens_mask', 'special_embeddings_mask')
             # print(smollm_corpus[0]['input_ids'])
             # breakpoint()
@@ -851,5 +856,5 @@ if __name__ == "__main__":
 
     # with torch.autograd.set_detect_anomaly(True):
     trainer.train(
-        resume_from_checkpoint=None,
+        resume_from_checkpoint='adaptive_13-13_hcg_temp_5.0/checkpoint-4995/',
     )
