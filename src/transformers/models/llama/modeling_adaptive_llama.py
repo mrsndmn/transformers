@@ -734,7 +734,7 @@ class AdaptiveFanOutHCG(nn.Module):
             AdaptiveFanOutOutput: input hidden states
         """
 
-        hidden_states = hidden_states + self.fan_out_linear(residual_hidden_states)
+        # hidden_states = hidden_states + self.fan_out_linear(residual_hidden_states)
         return AdaptiveFanOutOutput(hidden_state=hidden_states)
 
 
