@@ -451,8 +451,8 @@ class HardConcreteGate(nn.Module):
 
         self.register_buffer("random_buffer", torch.rand(1, max_seq_len, 1), persistent=False)
 
-        # self.activation = nn.Sigmoid()
-        self.activation = nn.ReLU()
+        self.activation = nn.Sigmoid()
+        # self.activation = nn.LeakyReLU()
 
         # self.p_open = self.get_p_open()
 
@@ -486,11 +486,11 @@ class HardConcreteGate(nn.Module):
             temperature_scale = (attention_mask * self.temperature).unsqueeze(-1) + 1e-6
             # breakpoint()
             def db_hook(grad):
-                grad[ attention_mask == 0 ] = 0
-                if grad.isnan().sum() > 0:
-                    print(self, 'attention_mask.shape', attention_mask.shape, temperature_scale.shape, (random_buffer_log - one_minus_rand_log + log_a).shape)
-                    grad[ grad.isnan() ] = 0
-                    breakpoint()
+                # grad[ attention_mask == 0 ] = 0
+                # if grad.isnan().sum() > 0:
+                #     print(self, 'attention_mask.shape', attention_mask.shape, temperature_scale.shape, (random_buffer_log - one_minus_rand_log + log_a).shape)
+                #     grad[ grad.isnan() ] = 0
+                #     breakpoint()
 
                 # Scale grad for faster temperature convergence
                 grad *= 50
@@ -499,9 +499,11 @@ class HardConcreteGate(nn.Module):
 
             if temperature_scale.requires_grad:
                 temperature_scale.register_hook(db_hook)
-
-            sigmoid_arg = random_buffer_log - one_minus_rand_log + log_a
-            concrete = self.activation(sigmoid_arg / temperature_scale )
+            
+            # print("log_a min", log_a.min().item(), "log_a max", log_a.max().item(), "log_a mean", log_a.mean().item())
+            log_a = torch.clip(log_a, min=-4, max=4)
+            sigmoid_arg = (random_buffer_log - one_minus_rand_log + log_a) / temperature_scale
+            concrete = self.activation(sigmoid_arg)
         else:
             concrete = self.activation(log_a)
 
@@ -734,7 +736,7 @@ class AdaptiveFanOutHCG(nn.Module):
             AdaptiveFanOutOutput: input hidden states
         """
 
-        # hidden_states = hidden_states + self.fan_out_linear(residual_hidden_states)
+        # hidden_states = hidden_states + self.fan_out_linear(residual_hidden_states.detach())
         return AdaptiveFanOutOutput(hidden_state=hidden_states)
 
 

@@ -171,10 +171,19 @@ class AdaptiveLlamaTrainer(Trainer):
                 if count_merging_losses > 0:
                     ce_merging_loss_sum /= count_merging_losses
 
+        concrete_regularization = 0
+        if self.args.concrete_regularization_weight > 0.0 and  model.config.merging_type == 'hcg':
+            for i, concrete in enumerate(outputs.fan_in_merging_logits):
+                if concrete is None:
+                    continue
+                
+                concrete = concrete.squeeze(2).flatten()
+                concrete_non_masked = concrete[attention_mask]
 
+                concrete_regularization += concrete_non_masked.mean()
 
         # loss = outputs.loss
-        loss = outputs.loss + ce_merging_loss_sum * self.args.ce_merging_loss_weight
+        loss = outputs.loss + ce_merging_loss_sum * self.args.ce_merging_loss_weight + concrete_regularization * self.args.concrete_regularization_weight
         
         if outputs_full_unmerge is not None:
             loss += outputs_full_unmerge.loss
@@ -646,9 +655,10 @@ class AdaptiveTrainingArguments(TrainingArguments):
     freeze_lm_backbone: bool = field(default=False)
 
     training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
-    model_type: str = "dummy" # dummy | pretrained | SmolLM-135M
+    model_type: str = "dummy" # dummy | pretrained | SmolLM-1.7B
     
     ce_merging_loss_weight: float = 0.0
+    concrete_regularization_weight: float = 0.0
     dummy_adaptive_fan_in_layers: Optional[int] = None
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
     
@@ -696,7 +706,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
     elif training_args.model_type == 'pretrained':
         from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
 
-        llama_checkpoint = "HuggingFaceTB/SmolLM-135M"
+        llama_checkpoint = "HuggingFaceTB/SmolLM-1.7B"
         llama_config = LlamaConfig.from_pretrained(llama_checkpoint)
         num_layers = llama_config.num_hidden_layers
         num_layers_half = num_layers // 2
@@ -733,8 +743,8 @@ def build_model(training_args: AdaptiveTrainingArguments):
         )
 
         tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
-    elif training_args.model_type == 'SmolLM-135M':
-        llama_checkpoint = "HuggingFaceTB/SmolLM-135M"
+    elif training_args.model_type == 'SmolLM-1.7B':
+        llama_checkpoint = "HuggingFaceTB/SmolLM-1.7B"
         model = LlamaForCausalLM.from_pretrained(llama_checkpoint, )
         tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
     else:
@@ -856,5 +866,5 @@ if __name__ == "__main__":
 
     # with torch.autograd.set_detect_anomaly(True):
     trainer.train(
-        resume_from_checkpoint='adaptive_13-13_hcg_temp_5.0/checkpoint-4995/',
+        # resume_from_checkpoint='adaptive_13-13_hcg_temp_5.0/checkpoint-4995/',
     )
