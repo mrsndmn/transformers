@@ -674,7 +674,7 @@ class AdaptiveFanOut(nn.Module):
         # restored_hidden_states[:, :hidden_states.shape[1]] += hidden_states
         
         if self.projection_enabled:
-            residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
+            residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states.detach())
         else:
             residual_hidden_states_projection = residual_hidden_states.clone()
         
@@ -720,7 +720,7 @@ class AdaptiveFanOutHCG(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.fan_out_linear = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
+        self.fan_out_linear = nn.Linear(self.hidden_size, self.hidden_size)
 
     def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
         """Returns base hidden states

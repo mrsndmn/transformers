@@ -277,8 +277,8 @@ class AdaptiveLlamaTrainer(Trainer):
         
         if self.args.temperature_schedule:
             if hasattr(model.model, "adaptive_down"):
-                if self.state.global_step % 50 == 0:
-                    print("self.state.global_step, tau=", current_tau, "global_step", self.state.global_step)
+                # if self.state.global_step % 50 == 0:
+                #     print("self.state.global_step, tau=", current_tau, "global_step", self.state.global_step)
                 for i, adown in enumerate(model.model.adaptive_down):
                     adown.set_gumbel_tau(current_tau)
         
@@ -866,6 +866,6 @@ if __name__ == "__main__":
 
     # with torch.autograd.set_detect_anomaly(True):
     trainer.train(
-        resume_from_checkpoint="adaptive_gumbel_2-2_1.7B_model/_my_checkpoint-4995",
+        resume_from_checkpoint="adaptive_gumbel_2-2_1.7B_model_my_checkpoint-4995",
         # resume_from_checkpoint='adaptive_13-13_hcg_temp_5.0/checkpoint-4995/',
     )
