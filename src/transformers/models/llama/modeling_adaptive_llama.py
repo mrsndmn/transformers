@@ -285,7 +285,6 @@ class AdaptiveFanInGumbel(nn.Module):
                     merged_embeddings_counts[batch_i, new_seq_len_i] += 1
                     # aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 0]
                     # new_seq_len_i += 1
-                    
 
             merged_attention_mask[batch_i, :new_seq_len_i] = 1
             max_new_seq_len = max(max_new_seq_len, new_seq_len_i)
@@ -350,14 +349,15 @@ class AdaptiveFanInGumbel(nn.Module):
         
         # OHE: [ bs, seq_len, 2 ]
         if self.training:
-            if full_unmerge:
-                merging_map = scaled_gumbel_softmax(merging_log_probas, hard=True, dim=-1, tau=self.gumbel_tau)
-            else:
-                merging_map_soft = scaled_gumbel_softmax(merging_log_probas, hard=False, dim=-1, tau=self.gumbel_tau)
+            merging_map = scaled_gumbel_softmax(merging_log_probas, hard=True, dim=-1, tau=self.gumbel_tau)
+            assert not full_unmerge, 'full_unmerge option is deprecated'
+            # if not full_unmerge:
+            # else:
+            #     merging_map_soft = scaled_gumbel_softmax(merging_log_probas, hard=False, dim=-1, tau=self.gumbel_tau)
                 
-                y_hard = torch.zeros_like(merging_map_soft)
-                y_hard[:, :, 1] = 1.0
-                merging_map = y_hard - merging_map_soft.detach() + merging_map_soft
+            #     y_hard = torch.zeros_like(merging_map_soft)
+            #     y_hard[:, :, 1] = 1.0
+            #     merging_map = y_hard - merging_map_soft.detach() + merging_map_soft
 
             # if merging_map.requires_grad:
             #     def merging_map_register_hook(grad):
@@ -401,7 +401,8 @@ class AdaptiveFanInGumbel(nn.Module):
         # [ bs, new_seq_len, emb_dim ] = [ bs, new_seq_len, seq_len ] @ [ bs, seq_len, emb_dim ]
         merged_attention_outputs = torch.bmm(merged_embeddings_transform, hidden_state)
         
-        residual_hidden_state = hidden_state # * merging_map[:, :, 0:1]
+        # gradients for a first merging
+        residual_hidden_state = hidden_state * merging_map[:, :, 0:1]
 
         # if merging_map.requires_grad:
         #     def residual_hidden_state_register_hook(grad):
@@ -485,7 +486,7 @@ class HardConcreteGate(nn.Module):
             # avoid nan gradients in backward for learned temperature
             temperature_scale = (attention_mask * self.temperature).unsqueeze(-1) + 1e-6
             # breakpoint()
-            def db_hook(grad):
+            # def db_hook(grad):
                 # grad[ attention_mask == 0 ] = 0
                 # if grad.isnan().sum() > 0:
                 #     print(self, 'attention_mask.shape', attention_mask.shape, temperature_scale.shape, (random_buffer_log - one_minus_rand_log + log_a).shape)
@@ -493,15 +494,14 @@ class HardConcreteGate(nn.Module):
                 #     breakpoint()
 
                 # Scale grad for faster temperature convergence
-                grad *= 50
+                # grad *= 50
+                # return grad
 
-                return grad
-
-            if temperature_scale.requires_grad:
-                temperature_scale.register_hook(db_hook)
+            # if temperature_scale.requires_grad:
+            #     temperature_scale.register_hook(db_hook)
             
             # print("log_a min", log_a.min().item(), "log_a max", log_a.max().item(), "log_a mean", log_a.mean().item())
-            log_a = torch.clip(log_a, min=-4, max=4)
+            # log_a = torch.clip(log_a, min=-4, max=4)
             sigmoid_arg = (random_buffer_log - one_minus_rand_log + log_a) / temperature_scale
             concrete = self.activation(sigmoid_arg)
         else:
@@ -736,7 +736,7 @@ class AdaptiveFanOutHCG(nn.Module):
             AdaptiveFanOutOutput: input hidden states
         """
 
-        # hidden_states = hidden_states + self.fan_out_linear(residual_hidden_states.detach())
+        hidden_states = hidden_states + self.fan_out_linear(residual_hidden_states.detach())
         return AdaptiveFanOutOutput(hidden_state=hidden_states)
 
 
