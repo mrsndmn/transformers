@@ -274,7 +274,7 @@ class AdaptiveLlamaTrainer(Trainer):
                             extra_log[f"merger_mpl_bias_1_{i}"] = fan_in_mlp_bias[1].item()
 
             self.log(extra_log)
-        
+
         if self.args.temperature_schedule:
             if hasattr(model.model, "adaptive_down"):
                 # if self.state.global_step % 50 == 0:
@@ -866,6 +866,6 @@ if __name__ == "__main__":
 
     # with torch.autograd.set_detect_anomaly(True):
     trainer.train(
-        resume_from_checkpoint="adaptive_gumbel_2-2_1.7B_model_my_checkpoint-4995",
+        # resume_from_checkpoint="adaptive_gumbel_2-2_1.7B_model_my_checkpoint-4995",
         # resume_from_checkpoint='adaptive_13-13_hcg_temp_5.0/checkpoint-4995/',
     )
