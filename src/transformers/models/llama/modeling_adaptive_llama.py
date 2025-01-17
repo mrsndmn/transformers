@@ -674,9 +674,9 @@ class AdaptiveFanOut(nn.Module):
         # restored_hidden_states[:, :hidden_states.shape[1]] += hidden_states
         
         if self.projection_enabled:
-            residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
+            residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states.detach())
         else:
-            residual_hidden_states_projection = residual_hidden_states.clone()
+            residual_hidden_states_projection = residual_hidden_states.detach()
         
         if self.fan_out_implementation in ('python',):
             restored_hidden_states = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
@@ -736,7 +736,7 @@ class AdaptiveFanOutHCG(nn.Module):
             AdaptiveFanOutOutput: input hidden states
         """
 
-        residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
+        residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states.detach())
         hidden_states = hidden_states + residual_hidden_states_projection
         return AdaptiveFanOutOutput(hidden_state=hidden_states)
 
