@@ -187,6 +187,8 @@ class LlamaConfig(PretrainedConfig):
             dummy_adaptive_fan_in = [ True ] * (num_hidden_layers // 2)
         self.dummy_adaptive_fan_in = dummy_adaptive_fan_in
         
+        assert len(self.dummy_adaptive_fan_in) == (num_hidden_layers // 2)
+        
         if full_unmerge is None:
             full_unmerge = [ False ] * (num_hidden_layers // 2)
         

@@ -343,10 +343,15 @@ class AdaptiveFanInGumbel(nn.Module):
         elif self.merging_type == 'attention_output_mlp':
             if merging_log_probas is None:
                 merging_log_probas = self.fan_in_mlp(hidden_state)
+        elif self.merging_type == 'no_merging':
+            merging_log_probas = torch.zeros([batch_size, seq_len, 2], device=hidden_state.device)
+            merging_log_probas[:, :, 1] = 1
+            merging_log_probas += 1e-4
+            merging_log_probas = merging_log_probas.log()
         else:
             raise ValueError(f"unknown self.merging_type: {self.merging_type}")
 
-        
+
         # OHE: [ bs, seq_len, 2 ]
         if self.training:
             merging_map = scaled_gumbel_softmax(merging_log_probas, hard=True, dim=-1, tau=self.gumbel_tau)
@@ -673,10 +678,13 @@ class AdaptiveFanOut(nn.Module):
         # 22 seconds for 10 iterations
         # restored_hidden_states[:, :hidden_states.shape[1]] += hidden_states
         
+        residual_hidden_states = residual_hidden_states.detach()
+        
         if self.projection_enabled:
-            residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states.detach())
+            residual_hidden_states = residual_hidden_states.to(self.fan_out_linear.weight.dtype)
+            residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
         else:
-            residual_hidden_states_projection = residual_hidden_states.detach()
+            residual_hidden_states_projection = residual_hidden_states
         
         if self.fan_out_implementation in ('python',):
             restored_hidden_states = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
@@ -1011,6 +1019,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         # all_loop_down_special_embeddings_mask = [ ]
         all_loop_down_merged_embeddings_counts = [ ]
         all_loop_down_attention_mask = []
+        all_loop_down_residual_attention_mask = []
         all_loop_down_causal_mask = [ ]
         all_loop_down_position_embeddings = [ ]
         all_loop_down_position_ids = [ ]
@@ -1036,10 +1045,9 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                 all_hidden_states += (hidden_states,)
 
             # all_loop_down_special_embeddings_mask.append(loop_down_special_embeddings_mask)
-            all_loop_down_merged_embeddings_counts.append(loop_down_merged_embeddings_counts)
-            all_loop_down_attention_mask.append(loop_down_attention_mask)
             all_loop_down_causal_mask.append(loop_down_causal_mask)
             all_loop_down_position_embeddings.append(loop_down_position_embeddings)
+            all_loop_down_residual_attention_mask.append(loop_down_attention_mask)
 
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
@@ -1073,7 +1081,6 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             if full_unmerge is not None:
                 current_full_unmerge = full_unmerge[i]
 
-            # print("current_full_unmerge", current_full_unmerge)
             adaptive_down_output: AdaptiveFanInOutput = adaptive_down_layer.forward(
                 hidden_state=hidden_states,
                 attention_mask=loop_down_attention_mask,
@@ -1088,8 +1095,12 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             fan_in_merging_logits_attention_mask.append(loop_down_attention_mask)
 
             hidden_states = adaptive_down_output.hidden_state
+
             loop_down_attention_mask = adaptive_down_output.attention_mask
+            all_loop_down_attention_mask.append(loop_down_attention_mask)
+
             loop_down_merged_embeddings_counts = adaptive_down_output.merged_embeddings_counts
+            all_loop_down_merged_embeddings_counts.append(loop_down_merged_embeddings_counts)
 
             past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
             cache_position = torch.arange(
@@ -1110,21 +1121,14 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
+        
+            # End loop adaptive down
 
-
-        # Save the last loop objects
-        # all_loop_down_special_embeddings_mask.append(loop_down_special_embeddings_mask)
-        all_loop_down_merged_embeddings_counts.append(loop_down_merged_embeddings_counts)
-        all_loop_down_attention_mask.append(loop_down_attention_mask)
-
-        #     print("Total count of merged tokens:", [ (x > 1).sum() for x in all_loop_down_merged_embeddings_counts if x is not None ])
         mean_merged_tokens = sum([ x[x > 1].sum().item() for x in all_loop_down_merged_embeddings_counts if x is not None])
-        # all_loop_down_causal_mask.append(loop_down_causal_mask)
-        # all_loop_down_position_embeddings.append(loop_down_position_embeddings)
 
-        # DO NOT ADD LAST HIDDEN STATE
-        # it is already exists in hidden_states variable
-        # all_loop_down_hidden_states.append(hidden_states)
+        
+        assert len(all_loop_down_attention_mask) == len(self.layers_up)
+        assert len(all_loop_down_merged_embeddings_counts) == len(self.layers_up)
 
         for i, decoder_layer in enumerate(self.layers_up):
             if output_hidden_states:
@@ -1134,7 +1138,11 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             loop_up_attention_mask = all_loop_down_attention_mask.pop(-1)
             merged_embeddings_counts = all_loop_down_merged_embeddings_counts.pop(-1)
             residual_hidden_states = all_loop_down_hidden_states.pop(-1)
-            residual_attention_mask = all_loop_down_attention_mask[-1]
+            residual_attention_mask = all_loop_down_residual_attention_mask.pop(-1)
+            
+            assert loop_up_attention_mask.shape[1] == hidden_states.shape[1]
+            assert residual_attention_mask.shape[1] == residual_hidden_states.shape[1]
+            assert residual_attention_mask.shape[1] >= loop_up_attention_mask.shape[1]
 
             adaptive_up_output: AdaptiveFanOutOutput = adaptive_up_layer.forward(
                 hidden_states,
@@ -1145,6 +1153,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             )
 
             hidden_states = adaptive_up_output.hidden_state
+            assert hidden_states.shape == residual_hidden_states.shape
 
             # all_loop_down_special_embeddings_mask
             loop_up_causal_mask = all_loop_down_causal_mask.pop(-1)
