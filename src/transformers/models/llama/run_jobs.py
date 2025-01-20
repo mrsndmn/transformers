@@ -21,7 +21,8 @@ workdir_prefix = "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_f
 
 def run_gumbel_experiments():
     
-    experiment_prefix = "adaptive_gumbel_lm_freeze"
+    output_base_path = '/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out'
+    experiment_prefix = os.path.join(output_base_path, "adaptive_gumbel_lm_freeze")
 
     gumbel_experiments = [
         {
