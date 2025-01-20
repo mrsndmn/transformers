@@ -642,7 +642,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     weight_decay: float = field(default=0.01)
     eval_strategy: str = field(default="steps")
     eval_steps: int = field(default=500)
-    save_strategy: str = field(default="epoch")
+    save_strategy: str = field(default="no")
     save_total_limit: Optional[int] = field(default=2)
     
     push_to_hub: bool = field(default=False)

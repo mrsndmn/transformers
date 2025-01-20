@@ -36,15 +36,16 @@ def build_adaptive_llama_from_llama_checkpoint(
         fan_out_type=None,
         hcg_temperature=1.0,
         learnt_temperature=False,
+        flash_attention=True,
     ):
 
     llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint)
     llama_model_state_dict = llama_model.state_dict()
 
-    config_kwargs = {
-        "attn_implementation": 'flash_attention_2',
-    }
-    
+    config_kwargs = {}
+    if flash_attention:
+        config_kwargs["attn_implementation"] = 'flash_attention_2'
+
     config: LlamaConfig = AutoConfig.from_pretrained(llama_checkpoint, **config_kwargs)
     config.dummy_adaptive_fan_in = dummy_adaptive_fan_in
     config.generate_merges_transform_impl = generate_merges_transform_impl
@@ -56,11 +57,9 @@ def build_adaptive_llama_from_llama_checkpoint(
     config.learnt_temperature = learnt_temperature
     config._attn_implementation
 
-    
     num_hidden_layers = config.num_hidden_layers
     assert num_hidden_layers % 2 == 0
     half_num_hidden_layers = num_hidden_layers // 2
-
 
     adaptive_llama_model = AdaptiveLlamaForCausalLM(config)
     adaptive_llama_model_state_dict = adaptive_llama_model.state_dict()

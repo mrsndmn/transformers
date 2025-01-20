@@ -1118,8 +1118,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         all_loop_down_attention_mask.append(loop_down_attention_mask)
 
         #     print("Total count of merged tokens:", [ (x > 1).sum() for x in all_loop_down_merged_embeddings_counts if x is not None ])
-        mean_merged_tokens = sum([ x[x > 1].sum() for x in all_loop_down_merged_embeddings_counts if x is not None ]).item()
-
+        mean_merged_tokens = sum([ x[x > 1].sum().item() for x in all_loop_down_merged_embeddings_counts if x is not None])
         # all_loop_down_causal_mask.append(loop_down_causal_mask)
         # all_loop_down_position_embeddings.append(loop_down_position_embeddings)
 
@@ -1468,7 +1467,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
 
         return AdaptiveCausalLMOutputWithPast(
             loss=loss,
-            # logits=logits,
+            logits=logits,
             past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
