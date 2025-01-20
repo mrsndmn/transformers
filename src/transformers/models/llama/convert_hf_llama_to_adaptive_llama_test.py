@@ -39,10 +39,10 @@ def test_build_adaptive_llama_from_llama_checkpoint_no_pruning():
     
     
 def test_build_adaptive_llama_from_llama_checkpoint_no_pruning():
-    
+
     llama_checkpoint = 'HuggingFaceTB/SmolLM-135M'
-    pretrained_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint)
-    pretrained_model.to(torch.bfloat16)
+    pretrained_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch.bfloat16)
+    # pretrained_model.to(torch.bfloat16)
 
     adaptive_model = build_adaptive_llama_from_llama_checkpoint(
         llama_checkpoint,

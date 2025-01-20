@@ -38,8 +38,9 @@ def build_adaptive_llama_from_llama_checkpoint(
         learnt_temperature=False,
         flash_attention=True,
     ):
-
-    llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint)
+    
+    torch_dtype = torch.bfloat16
+    llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
     llama_model_state_dict = llama_model.state_dict()
 
     config_kwargs = {}
@@ -61,7 +62,11 @@ def build_adaptive_llama_from_llama_checkpoint(
     assert num_hidden_layers % 2 == 0
     half_num_hidden_layers = num_hidden_layers // 2
 
+    dtype_orig = torch.get_default_dtype()
+    torch.set_default_dtype(torch.bfloat16)
     adaptive_llama_model = AdaptiveLlamaForCausalLM(config)
+    torch.set_default_dtype(dtype_orig)
+
     adaptive_llama_model_state_dict = adaptive_llama_model.state_dict()
 
     for param_name, param_value in llama_model_state_dict.items():
@@ -80,13 +85,10 @@ def build_adaptive_llama_from_llama_checkpoint(
         adaptive_llama_model_state_dict[param_name] = param_value
 
     adaptive_llama_model.load_state_dict(adaptive_llama_model_state_dict)
-    
-    adaptive_llama_model.to(torch.bfloat16)
 
     for adaptive_down in adaptive_llama_model.model.adaptive_down:
         if isinstance(adaptive_down, AdaptiveFanInHCG):
             adaptive_down.hcg.to(torch.float32)
-
 
     if freeze_lm_backbone:
         for p in adaptive_llama_model.parameters():
