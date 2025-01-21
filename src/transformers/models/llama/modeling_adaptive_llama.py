@@ -191,15 +191,15 @@ class AdaptiveFanInGumbel(nn.Module):
         self.config = config
         self.hidden_size = config.hidden_size
         
-        self.gumbel_tau = 1.0
+        self.gumbel_tau = config.gumbel_tau
 
         self.merging_type = self.config.merging_type
         print("self.merging_type", self.merging_type)
         
         if self.merging_type == 'next_token_merge_mlp':
-            self.fan_in_mlp = nn.Linear(self.hidden_size * 2, 2, bias=False)
+            self.fan_in_mlp = nn.Linear(self.hidden_size * 2, 2, bias=True)
         else:
-            self.fan_in_mlp = nn.Linear(self.hidden_size, 2, bias=False)
+            self.fan_in_mlp = nn.Linear(self.hidden_size, 2, bias=True)
 
         assert config.generate_merges_transform_impl in [ 'python', 'cuda_kernel', 'python_selective_not_merge' ]
         self.generate_merges_transform_impl = config.generate_merges_transform_impl
@@ -208,7 +208,6 @@ class AdaptiveFanInGumbel(nn.Module):
         approximate_batch_size_length = 100
         max_seq_len_buffer = torch.arange(config.max_position_embeddings).unsqueeze(0).repeat(approximate_batch_size_length, 1)
         self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
-
 
     def set_gumbel_tau(self, new_tau):
         self.gumbel_tau = new_tau
@@ -678,7 +677,7 @@ class AdaptiveFanOut(nn.Module):
         # 22 seconds for 10 iterations
         # restored_hidden_states[:, :hidden_states.shape[1]] += hidden_states
         
-        residual_hidden_states = residual_hidden_states.detach()
+        # residual_hidden_states = residual_hidden_states.detach()
         
         if self.projection_enabled:
             residual_hidden_states = residual_hidden_states.to(self.fan_out_linear.weight.dtype)
@@ -744,7 +743,8 @@ class AdaptiveFanOutHCG(nn.Module):
             AdaptiveFanOutOutput: input hidden states
         """
 
-        residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states.detach())
+        residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
+        # residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states.detach()) 
         hidden_states = hidden_states + residual_hidden_states_projection
         return AdaptiveFanOutOutput(hidden_state=hidden_states)
 

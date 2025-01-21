@@ -174,6 +174,7 @@ class LlamaConfig(PretrainedConfig):
         fan_out_type=None,
         hcg_temperature=1.0,
         learnt_temperature=False,
+        gumbel_tau=1.0,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -195,6 +196,8 @@ class LlamaConfig(PretrainedConfig):
         self.fan_out_type = fan_out_type
         self.hcg_temperature = hcg_temperature
         self.learnt_temperature = learnt_temperature
+        
+        self.gumbel_tau = gumbel_tau
 
         assert len(full_unmerge) == num_hidden_layers // 2
         self.full_unmerge = full_unmerge

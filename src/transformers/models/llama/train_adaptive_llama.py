@@ -106,7 +106,7 @@ class SequentialNumbersDataset():
 
 
 class AdaptiveLlamaTrainer(Trainer):
-    def compute_loss(self, model: AdaptiveLlamaForCausalLM, inputs, return_outputs=False, log_metrics=True):
+    def compute_loss(self, model: AdaptiveLlamaForCausalLM, inputs, return_outputs=False, log_metrics=True, log_prefix='debug', force_log=False):
         """
         How the loss is computed by Trainer. By default, all models return the loss in the first element.
 
@@ -194,18 +194,18 @@ class AdaptiveLlamaTrainer(Trainer):
         
         total_tokens = attention_mask.sum().item()
 
-        if log_metrics and self.state.global_step % self.args.logging_steps == 0:
+        if force_log or log_metrics and self.state.global_step % self.args.logging_steps == 0:
             outputs_loss = outputs.loss
             if len(outputs_loss.shape) > 0:
                 outputs_loss = outputs.loss.mean()
 
             log_info = {
-                "debug/straight_loss": outputs_loss.detach().item(),
-                "debug/not_merged_tokens": (total_tokens - sum_merged_tokens),
-                "debug/mean_merged_tokens": sum_merged_tokens,
-                "debug/total_tokens": total_tokens,
-                "debug/merged_tokens_percent": (sum_merged_tokens / (total_tokens + 1e-4)),
-                "debug/ce_merging_loss_sum": ce_merging_loss_sum.item(),
+                f"{log_prefix}/straight_loss": outputs_loss.detach().item(),
+                f"{log_prefix}/not_merged_tokens": (total_tokens - sum_merged_tokens),
+                f"{log_prefix}/mean_merged_tokens": sum_merged_tokens,
+                f"{log_prefix}/total_tokens": total_tokens,
+                f"{log_prefix}/merged_tokens_percent": (sum_merged_tokens / (total_tokens + 1e-4)),
+                f"{log_prefix}/ce_merging_loss_sum": ce_merging_loss_sum.item(),
             }
 
             if model.config.merging_type == 'hcg':
@@ -216,25 +216,27 @@ class AdaptiveLlamaTrainer(Trainer):
                     # [ bs * seq_len ]
                     concrete = concrete.squeeze(2).flatten()
                     concrete_non_masked = concrete[attention_mask]
-                    log_info[f'debug/concrete_mean_{i}'] = concrete_non_masked.mean().item()
-                    log_info[f'debug/concrete_lt_0.1'] = (concrete_non_masked < 0.1).sum().item()
-                    log_info[f'debug/concrete_lt_0.5'] = (concrete_non_masked < 0.5).sum().item()
+                    log_info[f'{log_prefix}/concrete_mean_{i}'] = concrete_non_masked.mean().item()
+                    log_info[f'{log_prefix}/concrete_lt_0.1'] = (concrete_non_masked < 0.1).sum().item()
+                    log_info[f'{log_prefix}/concrete_lt_0.5'] = (concrete_non_masked < 0.5).sum().item()
                     q = torch.tensor([0.1, 0.5, 0.9], device=concrete_non_masked.device)
                     # [ 3, bs ]
                     concrete_quantiles = torch.quantile(concrete_non_masked.float(), q, dim=1, keepdim=False)
                     # [ 3 ]
                     concrete_quantiles_mean = concrete_quantiles.mean(dim=-1)
-                    log_info[f'debug/concrete_q10_mean_{i}'] = concrete_quantiles_mean[0].item()
-                    log_info[f'debug/concrete_q50_mean_{i}'] = concrete_quantiles_mean[1].item()
-                    log_info[f'debug/concrete_q90_mean_{i}'] = concrete_quantiles_mean[2].item()
+                    log_info[f'{log_prefix}/concrete_q10_mean_{i}'] = concrete_quantiles_mean[0].item()
+                    log_info[f'{log_prefix}/concrete_q50_mean_{i}'] = concrete_quantiles_mean[1].item()
+                    log_info[f'{log_prefix}/concrete_q90_mean_{i}'] = concrete_quantiles_mean[2].item()
 
                     if self.args.learnt_temperature:
-                        log_info[f'debug/concrete_{i}_temperature'] = model.model.adaptive_down[i].hcg.temperature.item()
+                        log_info[f'{log_prefix}/concrete_{i}_temperature'] = model.model.adaptive_down[i].hcg.temperature.item()
 
+                for i, adaptive_down in enumerate(model.model.adaptive_down):
+                    if isinstance(adaptive_down, AdaptiveFanInGumbel):
+                        log_info[f'{log_prefix}/gumbel_tau_{i}'] = adaptive_down.gumbel_tau
 
             if outputs_full_unmerge:
-                log_info["debug/full_unmerge_loss"] = outputs_full_unmerge.loss.detach().item(),
-            
+                log_info[f"{log_prefix}/full_unmerge_loss"] = outputs_full_unmerge.loss.detach().item(),
 
             self.log(log_info)
 
@@ -391,7 +393,14 @@ class AdaptiveLlamaTrainer(Trainer):
 
         with torch.no_grad():
             with self.compute_loss_context_manager():
-                loss, outputs = self.compute_loss(model, inputs, return_outputs=True, log_metrics=False)
+                loss, outputs = self.compute_loss(
+                    model,
+                    inputs,
+                    return_outputs=True,
+                    log_metrics=False,
+                    log_prefix='eval_debug',
+                    force_log=True,
+                )
             loss = loss.mean().detach()
 
             logits = outputs.logits
@@ -638,6 +647,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     max_steps_pretrain_fan_modules: int = field(default=2000)
     hcg_temperature: float = field(default=1.0)
     learnt_temperature: bool = field(default=False)
+    lr_scheduler_type: str = field(default='constant')
 
     weight_decay: float = field(default=0.01)
     eval_strategy: str = field(default="steps")
@@ -661,6 +671,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
     concrete_regularization_weight: float = 0.0
     dummy_adaptive_fan_in_layers: Optional[int] = None
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
+    
+    gumbel_tau: float = 2.0
     
     full_unmerge_str: Optional[str] = None
     fan_out_type: Optional[str] = None
@@ -740,6 +752,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
             fan_out_type=training_args.fan_out_type,
             hcg_temperature=training_args.hcg_temperature,
             learnt_temperature=training_args.learnt_temperature,
+            gumbel_tau=training_args.gumbel_tau,
         )
 
         tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
@@ -850,6 +863,9 @@ if __name__ == "__main__":
     # trainer.args.max_steps = -1
     # trainer.args.warmup_steps = 0
 
+    trackers_project_name = os.path.basename(training_args.output_dir)
+    training_args.run_name = trackers_project_name
+
     trainer = AdaptiveLlamaTrainer(
         model,
         processing_class=tokenizer,
@@ -861,7 +877,7 @@ if __name__ == "__main__":
     )
 
     trainer.accelerator.init_trackers(
-        project_name=training_args.output_dir,
+        project_name=trackers_project_name,
     )
 
     # with torch.autograd.set_detect_anomaly(True):
