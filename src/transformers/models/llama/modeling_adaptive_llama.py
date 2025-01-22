@@ -79,14 +79,14 @@ CHECK_WITH_PYTHON = False
 
 @dataclass
 class AdaptiveBaseModelOutputWithPast(BaseModelOutputWithPast):
-    mean_merged_tokens: Optional[int] = None
+    sum_pruned_tokens: Optional[int] = None
     fan_in_merging_maps: Optional[torch.Tensor] = None
     fan_in_merging_logits: Optional[torch.Tensor] = None
     fan_in_merging_logits_attention_mask: Optional[torch.Tensor] = None
 
 @dataclass
 class AdaptiveCausalLMOutputWithPast(CausalLMOutputWithPast):
-    mean_merged_tokens: Optional[torch.Tensor] = None
+    sum_pruned_tokens: Optional[torch.Tensor] = None
     fan_in_merging_maps: Optional[torch.Tensor] = None
     fan_in_merging_logits: Optional[torch.Tensor] = None
     fan_in_merging_logits_attention_mask: Optional[torch.Tensor] = None
@@ -152,10 +152,9 @@ class NoOpFanIn(nn.Module):
         return
 
 
-def scaled_gumbel_softmax(
+def gumbel_softmax(
         logits,
         tau: float = 1.,
-        scale = 1.0,
         hard = False,
         dim: int = -1,
     ):
@@ -169,8 +168,9 @@ def scaled_gumbel_softmax(
         print("gumbels are infinite")
         breakpoint()
 
-    gumbels = (logits + gumbels) / tau  # ~Gumbel(logits,tau)
-    y_soft = gumbels.softmax(dim) * scale
+    gumbels = logits
+    # gumbels = (logits + gumbels) / tau  # ~Gumbel(logits,tau)
+    y_soft = gumbels.softmax(dim)
 
     if hard:
         # Straight through.
@@ -208,7 +208,7 @@ class AdaptiveFanInGumbel(nn.Module):
         approximate_batch_size_length = 100
         max_seq_len_buffer = torch.arange(config.max_position_embeddings).unsqueeze(0).repeat(approximate_batch_size_length, 1)
         self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
-
+    
     def set_gumbel_tau(self, new_tau):
         self.gumbel_tau = new_tau
 
@@ -353,32 +353,23 @@ class AdaptiveFanInGumbel(nn.Module):
 
         # OHE: [ bs, seq_len, 2 ]
         if self.training:
-            merging_map = scaled_gumbel_softmax(merging_log_probas, hard=True, dim=-1, tau=self.gumbel_tau)
-            assert not full_unmerge, 'full_unmerge option is deprecated'
-            # if not full_unmerge:
-            # else:
-            #     merging_map_soft = scaled_gumbel_softmax(merging_log_probas, hard=False, dim=-1, tau=self.gumbel_tau)
+            if not full_unmerge:
+                merging_map = gumbel_softmax(merging_log_probas, hard=True, dim=-1, tau=self.gumbel_tau)
+            else:
+                merging_map_soft = gumbel_softmax(merging_log_probas, hard=False, dim=-1, tau=self.gumbel_tau)
                 
-            #     y_hard = torch.zeros_like(merging_map_soft)
-            #     y_hard[:, :, 1] = 1.0
-            #     merging_map = y_hard - merging_map_soft.detach() + merging_map_soft
-
-            # if merging_map.requires_grad:
-            #     def merging_map_register_hook(grad):
-                    
-            #         count_non_zero_1 = 1 + (grad[:, :, 1] != 0).sum().item()
-            #         count_non_zero_0 = 1 + (grad[:, :, 0] != 0).sum().item()
-
-            #         grad[:, :, 0] /= 2 * count_non_zero_0 / (count_non_zero_1 + count_non_zero_0)
-            #         grad[:, :, 1] /= 2 * count_non_zero_1 / (count_non_zero_1 + count_non_zero_0)
-                    
-            #         return grad
-            #     merging_map.register_hook(merging_map_register_hook)
-            
+                y_hard = torch.zeros_like(merging_map_soft)
+                y_hard[:, :, 1] = 1.0
+                merging_map = y_hard - merging_map_soft.detach() + merging_map_soft
         else:
-            merging_map = torch.zeros_like(merging_log_probas)
-            merging_map[:, :, 0] = (merging_log_probas[:, :, 0] > merging_log_probas[:, :, 1]).to(merging_map.dtype)
-            merging_map[:, :, 1] = 1 - merging_map[:, :, 0]
+            if not full_unmerge:
+                merging_map = torch.zeros_like(merging_log_probas)
+                merging_map[:, :, 0] = (merging_log_probas[:, :, 0] > merging_log_probas[:, :, 1]).to(merging_map.dtype)
+                merging_map[:, :, 1] = 1 - merging_map[:, :, 0]
+            else:
+                merging_map = torch.zeros_like(merging_log_probas)
+                merging_map[:, :, 1] = 1
+
 
         # OHE: [ bs, seq_len, 2 ]
         merging_map[~attention_mask.bool()] = 0
@@ -403,22 +394,26 @@ class AdaptiveFanInGumbel(nn.Module):
         merged_embeddings_transform = merged_embeddings_transform.to(hidden_state.dtype)
 
         # [ bs, new_seq_len, emb_dim ] = [ bs, new_seq_len, seq_len ] @ [ bs, seq_len, emb_dim ]
-        merged_attention_outputs = torch.bmm(merged_embeddings_transform, hidden_state)
-        
+        merged_hidden_states = torch.bmm(merged_embeddings_transform, hidden_state)
+
         # gradients for a first merging
         residual_hidden_state = hidden_state * merging_map[:, :, 0:1]
+        # residual_hidden_state = residual_hidden_state.detach()
 
         # if merging_map.requires_grad:
-        #     def residual_hidden_state_register_hook(grad):
-        #         # breakpoint()
-        #         # grad[:, :, 1] *= 5
-                
+        #     def merged_hidden_states_hook(grad):
+        #         print("merged_hidden_states_hook grad norm:", grad.norm(2))
         #         return grad
 
+        #     def residual_hidden_state_register_hook(grad):
+        #         print("residual_hidden_state grad norm:", grad.norm(2))
+        #         return grad
+
+        #     merged_hidden_states.register_hook(merged_hidden_states_hook)
         #     residual_hidden_state.register_hook(residual_hidden_state_register_hook)
 
         res = AdaptiveFanInOutput(
-            hidden_state=merged_attention_outputs,
+            hidden_state=merged_hidden_states,
             residual_hidden_state=residual_hidden_state,
             attention_mask=merged_attention_mask,
             merged_embeddings_counts=merged_embeddings_counts,
@@ -696,6 +691,12 @@ class AdaptiveFanOut(nn.Module):
         else:
             raise ValueError(f"unknown self.fan_out_implementation={self.fan_out_implementation}")
 
+        # if restored_hidden_states.requires_grad:
+        #     def log_grad_norm(grad):
+        #         print("residuals grad", grad.norm(2))
+        #         return grad
+            
+        #     restored_hidden_states.register_hook(log_grad_norm)
 
         return AdaptiveFanOutOutput(hidden_state=restored_hidden_states)
 
@@ -946,6 +947,20 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
     def set_input_embeddings(self, value):
         self.embed_tokens = value
 
+    def _init_adaptive_layers(self):
+        for adaptive_down in self.adaptive_down:
+            if hasattr(adaptive_down, 'fan_in_mlp'):
+                torch.nn.init.xavier_uniform_(adaptive_down.fan_in_mlp.weight.data)
+                if adaptive_down.fan_in_mlp.bias is not None:
+                    adaptive_down.fan_in_mlp.bias.data.fill_(0)
+
+        for adaptive_down in self.adaptive_up:
+            if hasattr(adaptive_down, 'fan_out_linear'):
+                torch.nn.init.xavier_uniform_(adaptive_down.fan_out_linear.weight.data)
+                if adaptive_down.fan_out_linear.bias is not None:
+                    adaptive_down.fan_out_linear.bias.data.fill_(0)
+        return
+
     @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)
     def forward(
         self,
@@ -1024,6 +1039,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         all_loop_down_position_embeddings = [ ]
         all_loop_down_position_ids = [ ]
         all_loop_down_hidden_states = []
+        all_loop_down_merging_map = [ ]
         
         assert special_embeddings_mask is not None
 
@@ -1089,6 +1105,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             )
             
             all_loop_down_hidden_states.append(adaptive_down_output.residual_hidden_state)
+            all_loop_down_merging_map.append(adaptive_down_output.merging_map)
 
             fan_in_merging_maps.append(adaptive_down_output.merging_map)
             fan_in_merging_logits.append(adaptive_down_output.merging_map_logits)
@@ -1124,9 +1141,8 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         
             # End loop adaptive down
 
-        mean_merged_tokens = sum([ x[x > 1].sum().item() for x in all_loop_down_merged_embeddings_counts if x is not None])
+        sum_pruned_tokens = sum([ x[:, :, 0].sum().item() for x in all_loop_down_merging_map if x is not None])
 
-        
         assert len(all_loop_down_attention_mask) == len(self.layers_up)
         assert len(all_loop_down_merged_embeddings_counts) == len(self.layers_up)
 
@@ -1210,7 +1226,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             past_key_values=next_cache,
             hidden_states=all_hidden_states,
             attentions=all_self_attns,
-            mean_merged_tokens=mean_merged_tokens,
+            sum_pruned_tokens=sum_pruned_tokens,
             fan_in_merging_maps=fan_in_merging_maps,
             fan_in_merging_logits=fan_in_merging_logits,
             fan_in_merging_logits_attention_mask=fan_in_merging_logits_attention_mask,
@@ -1350,6 +1366,10 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         # Initialize weights and apply final processing
         self.post_init()
 
+
+    def _init_adaptive_layers(self):
+        return self.model._init_adaptive_layers()
+
     def get_input_embeddings(self):
         return self.model.embed_tokens
 
@@ -1428,7 +1448,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
+        outputs: AdaptiveBaseModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             special_embeddings_mask=special_embeddings_mask,
@@ -1480,7 +1500,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
             past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
-            mean_merged_tokens=torch.tensor(outputs.mean_merged_tokens, device=logits.device),
+            sum_pruned_tokens=torch.tensor(outputs.sum_pruned_tokens, device=logits.device),
             # fan_in_merging_maps=outputs.fan_in_merging_maps,
             fan_in_merging_logits=outputs.fan_in_merging_logits,
             fan_in_merging_logits_attention_mask=outputs.fan_in_merging_logits_attention_mask,

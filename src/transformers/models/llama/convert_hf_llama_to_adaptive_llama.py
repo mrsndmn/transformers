@@ -104,6 +104,7 @@ def build_adaptive_llama_from_llama_checkpoint(
             
     print("total parameters:", sum(p.numel() for p in adaptive_llama_model.parameters()))
 
+    adaptive_llama_model._init_adaptive_layers()
 
     return adaptive_llama_model
 

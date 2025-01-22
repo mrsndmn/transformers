@@ -140,18 +140,18 @@ class AdaptiveLlamaTrainer(Trainer):
         # [ bs, seq_len, 2 ]
 
         # fan_in_merging_logits_sum = sum(x.sum(dim=[0, 1]) for x in fan_in_merging_logits)
-        outputs_full_unmerge = None
+        outputs_no_pruning = None
         if model.config.full_unmerge is not None and sum(model.config.full_unmerge) > 0:
             model_kwargs['full_unmerge'] = model.config.full_unmerge
-            outputs_full_unmerge = model.forward(**model_kwargs)
+            outputs_no_pruning = model.forward(**model_kwargs)
         
 
         ce_merging_loss_sum = torch.tensor(0.0, device=outputs.loss.device)
         count_merging_losses = 0
-        sum_merged_tokens = 0
+        sum_pruned_tokens = 0
 
         if isinstance(model, AdaptiveLlamaForCausalLM):
-            sum_merged_tokens = outputs.mean_merged_tokens.item()
+            sum_pruned_tokens = outputs.sum_pruned_tokens.item()
             if self.args.ce_merging_loss_weight > 0.0:
                 for i, (fan_in_merging_logits, fan_in_merging_logits_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                     # ce_targets = outputs.fan_in_merging_maps[i][:, :, 1].flatten()
@@ -183,11 +183,17 @@ class AdaptiveLlamaTrainer(Trainer):
                 concrete_regularization += concrete_non_masked.mean()
 
         # loss = outputs.loss
-        loss = outputs.loss + ce_merging_loss_sum * self.args.ce_merging_loss_weight + concrete_regularization * self.args.concrete_regularization_weight
+        pruning_loss = outputs.loss
+        loss_scale = 1 + self.args.ce_merging_loss_weight
+        loss = pruning_loss + ce_merging_loss_sum * self.args.ce_merging_loss_weight + concrete_regularization * self.args.concrete_regularization_weight
         
-        if outputs_full_unmerge is not None:
-            loss += outputs_full_unmerge.loss
-        
+        if outputs_no_pruning is not None:
+            # print("outputs_full_unmerge.loss", outputs_full_unmerge.loss.item())
+            loss += outputs_no_pruning.loss * self.args.full_unmerge_loss_weight
+            loss_scale += self.args.full_unmerge_loss_weight
+
+        loss /= loss_scale
+
         outputs.loss = loss
 
         # assert ~ loss.isnan().any(), 'loss cant be none'
@@ -200,12 +206,12 @@ class AdaptiveLlamaTrainer(Trainer):
                 outputs_loss = outputs.loss.mean()
 
             log_info = {
-                f"{log_prefix}/straight_loss": outputs_loss.detach().item(),
-                f"{log_prefix}/not_merged_tokens": (total_tokens - sum_merged_tokens),
-                f"{log_prefix}/mean_merged_tokens": sum_merged_tokens,
+                f"{log_prefix}/pruning_loss": pruning_loss.detach().item(),
+                f"{log_prefix}/ce_merging_loss": ce_merging_loss_sum.item(),
+                f"{log_prefix}/not_pruned_tokens": (total_tokens - sum_pruned_tokens),
+                f"{log_prefix}/sum_pruned_tokens": sum_pruned_tokens,
                 f"{log_prefix}/total_tokens": total_tokens,
-                f"{log_prefix}/merged_tokens_percent": (sum_merged_tokens / (total_tokens + 1e-4)),
-                f"{log_prefix}/ce_merging_loss_sum": ce_merging_loss_sum.item(),
+                f"{log_prefix}/pruned_tokens_percent": (sum_pruned_tokens / (total_tokens + 1e-4)),
             }
 
             if model.config.merging_type == 'hcg':
@@ -235,8 +241,8 @@ class AdaptiveLlamaTrainer(Trainer):
                     if isinstance(adaptive_down, AdaptiveFanInGumbel):
                         log_info[f'{log_prefix}/gumbel_tau_{i}'] = adaptive_down.gumbel_tau
 
-            if outputs_full_unmerge:
-                log_info[f"{log_prefix}/full_unmerge_loss"] = outputs_full_unmerge.loss.detach().item(),
+            if outputs_no_pruning:
+                log_info[f"{log_prefix}/no_pruning_loss"] = outputs_no_pruning.loss.detach().item()
 
             self.log(log_info)
 
@@ -245,9 +251,6 @@ class AdaptiveLlamaTrainer(Trainer):
     def training_step(self, model: AdaptiveLlamaForCausalLM, *args, **kwargs):
         result = super().training_step(model, *args, **kwargs)
 
-        # if merger_mpl_grad > 5:
-        #     breakpoint()
-        
         base_temperature_value = 1.0
         current_tau = base_temperature_value + abs(math.sin(math.pi * self.state.global_step / 2000)) * (self.args.temperature_schedule_max_value - base_temperature_value)
         
@@ -647,7 +650,9 @@ class AdaptiveTrainingArguments(TrainingArguments):
     max_steps_pretrain_fan_modules: int = field(default=2000)
     hcg_temperature: float = field(default=1.0)
     learnt_temperature: bool = field(default=False)
-    lr_scheduler_type: str = field(default='constant')
+    lr_scheduler_type: str = field(default='constant_with_warmup')
+
+    llama_checkpoint: str = field(default='')
 
     weight_decay: float = field(default=0.01)
     eval_strategy: str = field(default="steps")
@@ -668,6 +673,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     model_type: str = "dummy" # dummy | pretrained | SmolLM-1.7B
     
     ce_merging_loss_weight: float = 0.0
+    full_unmerge_loss_weight: float = 1.0
     concrete_regularization_weight: float = 0.0
     dummy_adaptive_fan_in_layers: Optional[int] = None
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
@@ -687,7 +693,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     fan_out_projection: bool = True
 
 def build_model(training_args: AdaptiveTrainingArguments):
-    tokeniezer = None
+    tokenizer = None
 
     if training_args.model_type == 'dummy':
         num_layers = 2
@@ -715,6 +721,12 @@ def build_model(training_args: AdaptiveTrainingArguments):
         )
 
         model = AdaptiveLlamaForCausalLM(llama_config)
+    elif training_args.model_type == 'pretrained_checkpoint':
+        llama_checkpoint = training_args.llama_checkpoint
+        print("Load model from", llama_checkpoint)
+        model = AdaptiveLlamaForCausalLM.from_pretrained(llama_checkpoint)
+        tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
+        
     elif training_args.model_type == 'pretrained':
         from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
 
@@ -755,17 +767,17 @@ def build_model(training_args: AdaptiveTrainingArguments):
             gumbel_tau=training_args.gumbel_tau,
         )
 
-        tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
+        tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
     elif training_args.model_type == 'SmolLM-1.7B':
         llama_checkpoint = "HuggingFaceTB/SmolLM-1.7B"
         model = LlamaForCausalLM.from_pretrained(llama_checkpoint, )
-        tokeniezer = AutoTokenizer.from_pretrained(llama_checkpoint)
+        tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
     else:
         raise ValueError(f"{training_args.training_dataset} is not supported")
 
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
 
-    return model, tokeniezer
+    return model, tokenizer
 
 
 # pretrained
