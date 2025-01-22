@@ -24,14 +24,14 @@ def run_gumbel_with_unmerge():
     experiment_prefix_base_name = "adaptive_gumbel_unmerge"
 
     gumbel_experiments = [
-        {
-            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1",
-            "full_unmerge_str":                 "1,0,0,0,0,0,0,0,0,0,0,0",
-            "output_dir": f"{experiment_prefix_base_name}_1",
-            "freeze_lm_backbone": "1",
-            "gumbel_tau": "1.0",
-            "full_unmerge_loss_weight": "2.0",
-        },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1",
+        #     "full_unmerge_str":                 "1,0,0,0,0,0,0,0,0,0,0,0",
+        #     "output_dir": f"{experiment_prefix_base_name}_1",
+        #     "freeze_lm_backbone": "1",
+        #     "gumbel_tau": "1.0",
+        #     "full_unmerge_loss_weight": "2.0",
+        # },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,0,1,1,1,1,1,1,1",
             "full_unmerge_str":                 "0,0,0,0,1,0,0,0,0,0,0,0",

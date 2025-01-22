@@ -168,8 +168,7 @@ def gumbel_softmax(
         print("gumbels are infinite")
         breakpoint()
 
-    gumbels = logits
-    # gumbels = (logits + gumbels) / tau  # ~Gumbel(logits,tau)
+    gumbels = (logits + gumbels) / tau  # ~Gumbel(logits,tau)
     y_soft = gumbels.softmax(dim)
 
     if hard:
