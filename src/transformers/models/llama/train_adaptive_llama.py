@@ -679,6 +679,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
     
     gumbel_tau: float = 2.0
+    scale_not_pruned_gradients: float = 0.1
     
     full_unmerge_str: Optional[str] = None
     fan_out_type: Optional[str] = None
@@ -731,6 +732,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
         from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
 
         llama_checkpoint = "HuggingFaceTB/SmolLM-1.7B"
+        # llama_checkpoint = "HuggingFaceTB/SmolLM-135M"
         llama_config = LlamaConfig.from_pretrained(llama_checkpoint)
         num_layers = llama_config.num_hidden_layers
         num_layers_half = num_layers // 2
@@ -765,6 +767,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
             hcg_temperature=training_args.hcg_temperature,
             learnt_temperature=training_args.learnt_temperature,
             gumbel_tau=training_args.gumbel_tau,
+            scale_not_pruned_gradients=training_args.scale_not_pruned_gradients,
         )
 
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)

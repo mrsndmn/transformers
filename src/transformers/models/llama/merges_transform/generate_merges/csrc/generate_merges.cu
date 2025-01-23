@@ -37,7 +37,7 @@ __global__ void generate_merges_transform_kernel(
 
         bool is_token_important = merging_map[batch_i][seq_len_i][1] > merging_map[batch_i][seq_len_i][0];
 
-        if (is_token_important) {
+        if (is_token_important ||  seq_len_i == seq_len - 1) {
             merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
             aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = 1.0;
             new_seq_len_i += 1;
@@ -201,7 +201,7 @@ torch::Tensor fan_out_restore_residuals(
     const dim3 block_size(1, 1, 1);  // One thread per sequence element
     const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
 
-    torch::Tensor restored_hidden_states = torch::detach(residual_hidden_states_projection);
+    torch::Tensor restored_hidden_states = torch::clone(residual_hidden_states_projection);
 
     fan_out_restore_residuals_kernel<<<grid_size, block_size>>>(
         merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
@@ -280,8 +280,8 @@ std::tuple<torch::Tensor, torch::Tensor> backward_fan_out_restore_residuals(
     );
 
     // Error checking
-    // cudaDeviceSynchronize();
-    // check_cuda_errors();
+    cudaDeviceSynchronize();
+    check_cuda_errors();
 
     return std::make_tuple(hidden_states_grad, residual_hidden_states_grad);
 }

@@ -152,21 +152,13 @@ class NoOpFanIn(nn.Module):
         return
 
 
-def gumbel_softmax(
-        logits,
-        tau: float = 1.,
-        hard = False,
-        dim: int = -1,
-    ):
-
-    gumbels = (
-        -torch.empty_like(logits, memory_format=torch.legacy_contiguous_format)
-        .exponential_()
-        .log()
-    )  # ~Gumbel(0,1)
-    if not gumbels.isfinite().all():
-        print("gumbels are infinite")
-        breakpoint()
+def gumbel_softmax(logits: torch.Tensor, tau: float = 1, hard: bool = False, dim: int = -1) -> torch.Tensor:
+    # more stable https://github.com/pytorch/pytorch/issues/41663
+    gumbel_dist = torch.distributions.gumbel.Gumbel(
+        torch.tensor(0.0, device=logits.device, dtype=logits.dtype),
+        torch.tensor(1.0, device=logits.device, dtype=logits.dtype),
+    )
+    gumbels = gumbel_dist.sample(logits.shape)
 
     gumbels = (logits + gumbels) / tau  # ~Gumbel(logits,tau)
     y_soft = gumbels.softmax(dim)
@@ -174,15 +166,46 @@ def gumbel_softmax(
     if hard:
         # Straight through.
         index = y_soft.max(dim, keepdim=True)[1]
-
-        y_hard = torch.zeros_like(
-            logits, memory_format=torch.legacy_contiguous_format
-        ).scatter_(dim, index, 1.0)
+        y_hard = torch.zeros_like(logits, memory_format=torch.legacy_contiguous_format).scatter_(dim, index, 1.0)
         ret = y_hard - y_soft.detach() + y_soft
     else:
+        # Reparametrization trick.
         ret = y_soft
-
     return ret
+
+
+
+# def gumbel_softmax(
+#         logits,
+#         tau: float = 1.,
+#         hard = False,
+#         dim: int = -1,
+#     ):
+
+#     gumbels = (
+#         -torch.empty_like(logits, memory_format=torch.legacy_contiguous_format)
+#         .exponential_()
+#         .log()
+#     )  # ~Gumbel(0,1)
+#     if not gumbels.isfinite().all():
+#         print("gumbels are infinite")
+#         breakpoint()
+
+#     gumbels = (logits + gumbels) / tau  # ~Gumbel(logits,tau)
+#     y_soft = gumbels.softmax(dim)
+
+#     if hard:
+#         # Straight through.
+#         index = y_soft.max(dim, keepdim=True)[1]
+
+#         y_hard = torch.zeros_like(
+#             logits, memory_format=torch.legacy_contiguous_format
+#         ).scatter_(dim, index, 1.0)
+#         ret = y_hard - y_soft.detach() + y_soft
+#     else:
+#         ret = y_soft
+
+#     return ret
 
 class AdaptiveFanInGumbel(nn.Module):
     def __init__(self, config: LlamaConfig):
@@ -193,7 +216,9 @@ class AdaptiveFanInGumbel(nn.Module):
         self.gumbel_tau = config.gumbel_tau
 
         self.merging_type = self.config.merging_type
+        self.scale_not_pruned_gradients = self.config.scale_not_pruned_gradients
         print("self.merging_type", self.merging_type)
+        print("self.scale_not_pruned_gradients", self.scale_not_pruned_gradients)
         
         if self.merging_type == 'next_token_merge_mlp':
             self.fan_in_mlp = nn.Linear(self.hidden_size * 2, 2, bias=True)
@@ -207,6 +232,7 @@ class AdaptiveFanInGumbel(nn.Module):
         approximate_batch_size_length = 100
         max_seq_len_buffer = torch.arange(config.max_position_embeddings).unsqueeze(0).repeat(approximate_batch_size_length, 1)
         self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
+        
     
     def set_gumbel_tau(self, new_tau):
         self.gumbel_tau = new_tau
@@ -275,7 +301,7 @@ class AdaptiveFanInGumbel(nn.Module):
             for seq_len_i in range(0, total_tokens_count):
                 want_merge = merging_map[batch_i, seq_len_i, 1].item() > merging_map[batch_i, seq_len_i, 0].item()
 
-                if want_merge:
+                if want_merge or seq_len_i == total_tokens_count - 1:
                     merged_embeddings_counts[batch_i, new_seq_len_i] += 1
                     aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 1]
                     new_seq_len_i += 1
@@ -369,6 +395,14 @@ class AdaptiveFanInGumbel(nn.Module):
                 merging_map = torch.zeros_like(merging_log_probas)
                 merging_map[:, :, 1] = 1
 
+        scale_not_pruned_gradients = self.scale_not_pruned_gradients
+        def merging_map_hook(grad):
+            grad[:, :, 0] *= scale_not_pruned_gradients
+            
+            return grad
+        
+        if scale_not_pruned_gradients > 0 and merging_map.requires_grad:
+            merging_map.register_hook(merging_map_hook)
 
         # OHE: [ bs, seq_len, 2 ]
         merging_map[~attention_mask.bool()] = 0

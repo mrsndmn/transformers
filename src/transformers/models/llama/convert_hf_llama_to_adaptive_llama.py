@@ -38,6 +38,7 @@ def build_adaptive_llama_from_llama_checkpoint(
         learnt_temperature=False,
         flash_attention=True,
         gumbel_tau=2.0,
+        scale_not_pruned_gradients=0.0,
     ):
     
     torch_dtype = torch.bfloat16
@@ -58,6 +59,7 @@ def build_adaptive_llama_from_llama_checkpoint(
     config.hcg_temperature = hcg_temperature
     config.learnt_temperature = learnt_temperature
     config.gumbel_tau = gumbel_tau
+    config.scale_not_pruned_gradients = scale_not_pruned_gradients
     config._attn_implementation
 
     num_hidden_layers = config.num_hidden_layers
