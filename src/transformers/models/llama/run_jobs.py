@@ -21,104 +21,53 @@ BASE_IMAGE = "cr.ai.cloud.ru/f51af5b1-d43b-4db4-938d-569d7cfffb7a/cuda12.1-torch
 workdir_prefix = "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out"
 
 
-def run_gumbel_with_unmerge():
+def run_hcg_adaptive():
 
-    experiment_prefix_base_name = "adaptive_gumbel"
-
-    gumbel_experiments = [
-        {
-            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1",
-            "full_unmerge_str":                 "1,0,0,0,0,0,0,0,0,0,0,0",
-            "output_dir": f"{experiment_prefix_base_name}_1",
-            "freeze_lm_backbone": "1",
-            "gumbel_tau": "1.0",
-            "full_unmerge_loss_weight": "2.0",
-        },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,0,1,1,1,1,1,1,1",
-            "full_unmerge_str":                 "0,0,0,0,1,0,0,0,0,0,0,0",
-            "output_dir": f"{experiment_prefix_base_name}_5",
-            "freeze_lm_backbone": "1",
-            "gumbel_tau": "1.0",
-            "full_unmerge_loss_weight": "2.0",
-        },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1",
-            "full_unmerge_str":                 "0,0,0,0,0,0,0,0,0,1,0,0",
-            "output_dir": f"{experiment_prefix_base_name}_10",
-            "freeze_lm_backbone": "1",
-            "gumbel_tau": "1.0",
-            "full_unmerge_loss_weight": "2.0",
-        },
-    ]
-
-    for exp in gumbel_experiments:
-        
-        dummy_adaptive_fan_in_layers_str = exp['dummy_adaptive_fan_in_layers_str']
-        output_dir = exp['output_dir']
-        freeze_lm_backbone = exp['freeze_lm_backbone']
-        gumbel_tau = exp['gumbel_tau']
-        full_unmerge_str = exp['full_unmerge_str']
-        full_unmerge_loss_weight = exp['full_unmerge_loss_weight']
-        seed = SEED
-
-        job_w_args = client_lib.Job(
-            base_image=BASE_IMAGE,
-            script=f"{workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy epoch --per_device_train_batch_size 20 --learning_rate 0.0003 --num_train_epochs 1 --seed {seed} --training_dataset smollm-corpus --model_type pretrained --gradient_checkpointing 1 --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --generate_merges_transform_impl cuda_kernel --adam_beta1 0.9 --adam_beta2 0.95 --merging_type attention_output_mlp --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection 1 --logging_steps 100 --warmup_steps 1000 --output_dir {output_dir} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items 50000 --eval_steps 250 --gumbel_tau {gumbel_tau} --weight_decay 0.1 --full_unmerge_loss_weight {full_unmerge_loss_weight}",
-            # flags={
-            #     # "TODO"
-            # },
-            # type='', # =='binary' allows to run bash scripts
-            region=REGION,
-            instance_type=INSTANCE_TYPE,
-            n_workers=N_WORKERS,
-            # conda_env="test_client_lib",
-            processes_per_worker=1,
-            job_desc=f"AA Gumbel: {output_dir}",
-            # stop_timer=600, # в минутах, = 10 часов
-            env_variables={
-                "WANDB_PROJECT": "adaptive_attention",
-                "WANDB_API_KEY": os.environ.get("WANDB_API_KEY", ""), 
-                "WANDB_MODE": "online",
-                "PYTHONPATH": f"{workdir_prefix}/src",
-                "HF_HOME": "/workspace-SR004.nfs2/d.tarasov/.cache/huggingface"
-            },
-        )
-
-        print(output_dir, job_w_args.submit())
-
-    return
-
-def run_gumbel_adaptive():
-
-    experiment_prefix_base_name = "adaptive_gumbel_python"
+    experiment_prefix_base_name = "adaptive_hcg"
 
     gumbel_experiments = [
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_1_lm_freeze_weight_1",
+        #     "freeze_lm_backbone": 1,
+        #     "hcg_loss_weight": 1,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,0,1,1,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_5_lm_freeze_weight_3",
+        #     "freeze_lm_backbone": 1,
+        #     "hcg_loss_weight": 3,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_10_lm_freeze_weight_5",
+        #     "freeze_lm_backbone": 1,
+        #     "hcg_loss_weight": 5,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_1_weight_2",
+        #     "freeze_lm_backbone": 0,
+        #     "hcg_loss_weight": 2,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_1_weight_5",
+        #     "freeze_lm_backbone": 0,
+        #     "hcg_loss_weight": 5,
+        # },
         {
-            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1",
-            "full_unmerge_str":                 "0,0,0,0,0,0,0,0,0,0,0,0",
-            "output_dir": f"{experiment_prefix_base_name}_1",
-            "freeze_lm_backbone": "1",
-            "gumbel_tau": "1.0",
-            "generate_merges_transform_impl": "python",
-            "warmup_steps": 2000,
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_10_weight_5",
+            "freeze_lm_backbone": 0,
+            "hcg_loss_weight": 5,
         },
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,0,1,1,1,1,1,1,1",
-        #     "full_unmerge_str":                 "0,0,0,0,0,0,0,0,0,0,0,0",
-        #     "output_dir": f"{experiment_prefix_base_name}_5",
-        #     "freeze_lm_backbone": "1",
-        #     "generate_merges_transform_impl": "python",
-        #     "warmup_steps": "2000",
-        #     "gumbel_tau": "1.0",
-        # },
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1",
-        #     "full_unmerge_str":                 "0,0,0,0,0,0,0,0,0,0,0,0",
-        #     "output_dir": f"{experiment_prefix_base_name}_10",
-        #     "freeze_lm_backbone": "1",
-        #     "gumbel_tau": "1.0",
-        # },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_10_weight_10",
+            "freeze_lm_backbone": 0,
+            "hcg_loss_weight": 10,
+        },
     ]
 
     for exp in gumbel_experiments:
@@ -128,16 +77,26 @@ def run_gumbel_adaptive():
         output_dir_full_path = os.path.join(workdir_prefix, output_dir)
         
         freeze_lm_backbone = exp['freeze_lm_backbone']
-        gumbel_tau = exp['gumbel_tau']
-        full_unmerge_str = exp['full_unmerge_str']
+        gumbel_tau = exp.get('gumbel_tau', 1.0)
+        
+        full_unmerge_str_default: str = dummy_adaptive_fan_in_layers_str
+        full_unmerge_str_default = full_unmerge_str_default.replace('1', '0') # all zeros
+        full_unmerge_str = exp.get('full_unmerge_str', full_unmerge_str_default)
         full_unmerge_loss_weight = exp.get('full_unmerge_loss_weight', 0.0)
-        warmup_steps = exp.get('warmup_steps', 1000)
-        generate_merges_transform_impl = exp.get('generate_merges_transform_impl', 'cuda_kernel')
-        seed = SEED
 
+        warmup_steps = exp.get('warmup_steps', 2000)
+        generate_merges_transform_impl = exp.get('generate_merges_transform_impl', 'cuda_kernel')
+        select_train_dataset_items = exp.get('select_train_dataset_items', 100000)
+        scale_not_pruned_gradients = exp.get('scale_not_pruned_gradients', 0.0)
+        merging_type = exp.get('merging_type', 'hcg') # attention_output_mlp
+        fan_out_type = exp.get('fan_out_type', 'hcg') # residual_linear_projection
+        hcg_loss_weight = exp.get('hcg_loss_weight', 0.0)
+        
+        seed = SEED
+        
         job_w_args = client_lib.Job(
             base_image=BASE_IMAGE,
-            script=f"{workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy epoch --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size 20 --learning_rate 0.0003 --num_train_epochs 1 --seed {seed} --training_dataset smollm-corpus --model_type pretrained --gradient_checkpointing 1 --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --adam_beta1 0.9 --adam_beta2 0.95 --merging_type attention_output_mlp --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection 1 --logging_steps 100 --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items 100000 --eval_steps 250 --gumbel_tau {gumbel_tau} --weight_decay 0.1 --full_unmerge_loss_weight {full_unmerge_loss_weight}",
+            script=f"{workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy epoch --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size 20 --learning_rate 0.0003 --num_train_epochs 1 --seed {seed} --training_dataset smollm-corpus --model_type pretrained --gradient_checkpointing 1 --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --full_unmerge_loss_weight {full_unmerge_loss_weight} --adam_beta1 0.9 --adam_beta2 0.95 --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection 1 --logging_steps 100 --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --eval_steps 250 --gumbel_tau {gumbel_tau} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight}",
             # flags={
             #     # "TODO"
             # },
@@ -167,4 +126,4 @@ def run_gumbel_adaptive():
 if __name__ == "__main__":
 
     # run_gumbel_with_unmerge()
-    run_gumbel_adaptive()
+    run_hcg_adaptive()

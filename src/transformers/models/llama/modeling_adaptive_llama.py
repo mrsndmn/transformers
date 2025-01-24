@@ -397,7 +397,17 @@ class AdaptiveFanInGumbel(nn.Module):
 
         scale_not_pruned_gradients = self.scale_not_pruned_gradients
         def merging_map_hook(grad):
-            grad[:, :, 0] *= scale_not_pruned_gradients
+            grad_0 = grad[:, :, 0]
+            grad_0_non_zero = (grad_0 != 0).sum()
+            grad_0_norm_l2 = grad_0.norm(2) / grad_0_non_zero
+            grad_1 = grad[:, :, 1]
+            grad_1_non_zero = (grad_1 != 0).sum()
+            grad_1_norm_l2 = grad_1.norm(2) / grad_1_non_zero
+            
+            print("grad_0_norm_l2", grad_0_norm_l2, "grad_1_norm_l2", grad_1_norm_l2)
+
+            if grad_0_norm_l2.item() > grad_1_norm_l2.item():
+                grad[:, :, 0] *= scale_not_pruned_gradients * grad_1_norm_l2 / grad_0_norm_l2
             
             return grad
         
@@ -609,6 +619,12 @@ class AdaptiveFanInHCG(nn.Module):
 
         # [ bs, seq_len, 1 ]
         concrete = self.hcg(log_a, attention_mask=attention_mask)
+        
+        # [ bs, seq_len, 1 ]
+        p_open = self.hcg(log_a, attention_mask)
+        p_open = self.hcg.get_p_open(log_a)
+        p_open[~attention_mask.bool()] = 0
+        p_open[special_embeddings_mask.bool()] = 0
 
         # assert concrete.shape == special_embeddings_mask.shape
         concrete[special_embeddings_mask] = 1.0
@@ -627,7 +643,7 @@ class AdaptiveFanInHCG(nn.Module):
             merged_embeddings_counts=attention_mask,
             special_embeddings_mask=special_embeddings_mask,
             merging_map=None,
-            merging_map_logits=concrete,
+            merging_map_logits=p_open,
         )
 
         return res
@@ -761,7 +777,7 @@ class AdaptiveFanOutHCG(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.fan_out_linear = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
+        self.fan_out_linear = nn.Linear(self.hidden_size, self.hidden_size)
 
     def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
         """Returns base hidden states
@@ -957,7 +973,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             if config.fan_out_type is not None:
                 if config.fan_out_type == 'noop':
                     return NoopAdaptiveFanOut(config)
-                elif config.fan_out_type == 'residual_linear_projection':
+                elif config.fan_out_type == 'hcg':
                     return AdaptiveFanOutHCG(config)
 
             return AdaptiveFanOut(config)

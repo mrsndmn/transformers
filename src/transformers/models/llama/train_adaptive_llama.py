@@ -171,24 +171,28 @@ class AdaptiveLlamaTrainer(Trainer):
                 if count_merging_losses > 0:
                     ce_merging_loss_sum /= count_merging_losses
 
-        concrete_regularization = 0
-        if self.args.concrete_regularization_weight > 0.0 and  model.config.merging_type == 'hcg':
-            for i, concrete in enumerate(outputs.fan_in_merging_logits):
-                if concrete is None:
+        hcg_loss = 0
+        if self.args.hcg_loss_weight > 0.0 and  model.config.merging_type == 'hcg':
+            for i, hcg_p_open in enumerate(outputs.fan_in_merging_logits):
+                if hcg_p_open is None:
                     continue
-                
-                concrete = concrete.squeeze(2).flatten()
-                concrete_non_masked = concrete[attention_mask]
 
-                concrete_regularization += concrete_non_masked.mean()
+                hcg_p_open = hcg_p_open.squeeze(2).flatten()
+                concrete_non_masked = hcg_p_open[attention_mask.flatten().bool()]
+
+                hcg_loss += concrete_non_masked.mean()
 
         # loss = outputs.loss
         pruning_loss = outputs.loss
-        loss_scale = 1 + self.args.ce_merging_loss_weight
-        loss = pruning_loss + ce_merging_loss_sum * self.args.ce_merging_loss_weight + concrete_regularization * self.args.concrete_regularization_weight
+        loss_scale = 1 + self.args.ce_merging_loss_weight + self.args.hcg_loss_weight
+        loss = pruning_loss + ce_merging_loss_sum * self.args.ce_merging_loss_weight + hcg_loss * self.args.hcg_loss_weight
+        
+        # print("pruning_loss", pruning_loss)
+        # print("ce_merging_loss", ce_merging_loss_sum)
+        # print("hcg_loss", hcg_loss)
         
         if outputs_no_pruning is not None:
-            # print("outputs_full_unmerge.loss", outputs_full_unmerge.loss.item())
+            # print("outputs_no_pruning_loss", outputs_no_pruning.loss.item())
             loss += outputs_no_pruning.loss * self.args.full_unmerge_loss_weight
             loss_scale += self.args.full_unmerge_loss_weight
 
@@ -204,9 +208,14 @@ class AdaptiveLlamaTrainer(Trainer):
             outputs_loss = outputs.loss
             if len(outputs_loss.shape) > 0:
                 outputs_loss = outputs.loss.mean()
+                
+            hcg_loss_to_log = hcg_loss
+            if isinstance(hcg_loss_to_log, torch.Tensor):
+                hcg_loss_to_log = hcg_loss_to_log.item()
 
             log_info = {
                 f"{log_prefix}/pruning_loss": pruning_loss.detach().item(),
+                f"{log_prefix}/hcg_loss": hcg_loss_to_log,
                 f"{log_prefix}/ce_merging_loss": ce_merging_loss_sum.item(),
                 f"{log_prefix}/not_pruned_tokens": (total_tokens - sum_pruned_tokens),
                 f"{log_prefix}/sum_pruned_tokens": sum_pruned_tokens,
@@ -215,24 +224,23 @@ class AdaptiveLlamaTrainer(Trainer):
             }
 
             if model.config.merging_type == 'hcg':
-                for i, concrete in enumerate(outputs.fan_in_merging_logits):
-                    if concrete is None:
+                for i, hcg_p_open in enumerate(outputs.fan_in_merging_logits):
+                    if hcg_p_open is None:
                         continue
                     
                     # [ bs * seq_len ]
-                    concrete = concrete.squeeze(2).flatten()
-                    concrete_non_masked = concrete[attention_mask]
+                    hcg_p_open = hcg_p_open.squeeze(2).flatten()
+                    concrete_non_masked = hcg_p_open[attention_mask.flatten().bool()]
                     log_info[f'{log_prefix}/concrete_mean_{i}'] = concrete_non_masked.mean().item()
                     log_info[f'{log_prefix}/concrete_lt_0.1'] = (concrete_non_masked < 0.1).sum().item()
                     log_info[f'{log_prefix}/concrete_lt_0.5'] = (concrete_non_masked < 0.5).sum().item()
                     q = torch.tensor([0.1, 0.5, 0.9], device=concrete_non_masked.device)
-                    # [ 3, bs ]
-                    concrete_quantiles = torch.quantile(concrete_non_masked.float(), q, dim=1, keepdim=False)
                     # [ 3 ]
-                    concrete_quantiles_mean = concrete_quantiles.mean(dim=-1)
-                    log_info[f'{log_prefix}/concrete_q10_mean_{i}'] = concrete_quantiles_mean[0].item()
-                    log_info[f'{log_prefix}/concrete_q50_mean_{i}'] = concrete_quantiles_mean[1].item()
-                    log_info[f'{log_prefix}/concrete_q90_mean_{i}'] = concrete_quantiles_mean[2].item()
+                    concrete_quantiles = torch.quantile(concrete_non_masked.float(), q, dim=0, keepdim=False)
+                    # [ 3 ]
+                    log_info[f'{log_prefix}/concrete_q10_mean_{i}'] = concrete_quantiles[0].item()
+                    log_info[f'{log_prefix}/concrete_q50_mean_{i}'] = concrete_quantiles[1].item()
+                    log_info[f'{log_prefix}/concrete_q90_mean_{i}'] = concrete_quantiles[2].item()
 
                     if self.args.learnt_temperature:
                         log_info[f'{log_prefix}/concrete_{i}_temperature'] = model.model.adaptive_down[i].hcg.temperature.item()
@@ -250,7 +258,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
     def training_step(self, model: AdaptiveLlamaForCausalLM, *args, **kwargs):
         result = super().training_step(model, *args, **kwargs)
-
+        
         base_temperature_value = 1.0
         current_tau = base_temperature_value + abs(math.sin(math.pi * self.state.global_step / 2000)) * (self.args.temperature_schedule_max_value - base_temperature_value)
         
@@ -674,7 +682,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     
     ce_merging_loss_weight: float = 0.0
     full_unmerge_loss_weight: float = 1.0
-    concrete_regularization_weight: float = 0.0
+    hcg_loss_weight: float = 0.0
     dummy_adaptive_fan_in_layers: Optional[int] = None
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
     
@@ -731,8 +739,8 @@ def build_model(training_args: AdaptiveTrainingArguments):
     elif training_args.model_type == 'pretrained':
         from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
 
-        llama_checkpoint = "HuggingFaceTB/SmolLM-1.7B"
-        # llama_checkpoint = "HuggingFaceTB/SmolLM-135M"
+        # llama_checkpoint = "HuggingFaceTB/SmolLM-1.7B"
+        llama_checkpoint = "HuggingFaceTB/SmolLM-135M"
         llama_config = LlamaConfig.from_pretrained(llama_checkpoint)
         num_layers = llama_config.num_hidden_layers
         num_layers_half = num_layers // 2
