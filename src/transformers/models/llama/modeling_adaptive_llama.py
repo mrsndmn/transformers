@@ -1005,15 +1005,33 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
     def _init_adaptive_layers(self):
         for adaptive_down in self.adaptive_down:
             if hasattr(adaptive_down, 'fan_in_mlp'):
-                torch.nn.init.xavier_uniform_(adaptive_down.fan_in_mlp.weight.data)
-                if adaptive_down.fan_in_mlp.bias is not None:
-                    adaptive_down.fan_in_mlp.bias.data.fill_(0)
 
-        for adaptive_down in self.adaptive_up:
-            if hasattr(adaptive_down, 'fan_out_linear'):
-                torch.nn.init.xavier_uniform_(adaptive_down.fan_out_linear.weight.data)
-                if adaptive_down.fan_out_linear.bias is not None:
-                    adaptive_down.fan_out_linear.bias.data.fill_(0)
+                fan_in_mlps = adaptive_down.fan_in_mlp
+                if not isinstance(fan_in_mlps, nn.Sequential):
+                    fan_in_mlps = [ fan_in_mlps ]
+
+                for fan_in_mlp in fan_in_mlps:
+                    if not isinstance(fan_in_mlp, nn.Linear):
+                        continue
+
+                    torch.nn.init.xavier_uniform_(fan_in_mlp.weight.data)
+                    if fan_in_mlp.bias is not None:
+                        fan_in_mlp.bias.data.fill_(0)
+
+        for adaptive_up in self.adaptive_up:
+            if hasattr(adaptive_up, 'fan_out_linear'):
+                fan_out_mlps = adaptive_up.fan_out_linear
+                if not isinstance(fan_out_mlps, nn.Sequential):
+                    fan_out_mlps = [ fan_out_mlps ]
+
+                for fan_out_mlp in fan_out_mlps:
+                    if not isinstance(fan_out_mlp, nn.Linear):
+                        continue
+
+                    torch.nn.init.xavier_uniform_(fan_out_mlp.weight.data)
+                    if fan_out_mlp.bias is not None:
+                        fan_out_mlp.bias.data.fill_(0)
+
         return
 
     @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)

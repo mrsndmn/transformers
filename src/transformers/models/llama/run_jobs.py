@@ -20,74 +20,9 @@ BASE_IMAGE = "cr.ai.cloud.ru/f51af5b1-d43b-4db4-938d-569d7cfffb7a/cuda12.1-torch
 
 workdir_prefix = "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out"
 
-
-def run_hcg_adaptive():
-
-    experiment_prefix_base_name = "adaptive_hcg"
-
-    gumbel_experiments = [
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_1_lm_freeze_weight_1",
-        #     "freeze_lm_backbone": 1,
-        #     "hcg_loss_weight": 1,
-        # },
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,0,1,1,1,1,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_5_lm_freeze_weight_3",
-        #     "freeze_lm_backbone": 1,
-        #     "hcg_loss_weight": 3,
-        # },
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_10_lm_freeze_weight_5",
-        #     "freeze_lm_backbone": 1,
-        #     "hcg_loss_weight": 5,
-        # },
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_1_weight_2",
-        #     "freeze_lm_backbone": 0,
-        #     "hcg_loss_weight": 2,
-        # },
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_1_weight_5",
-        #     "freeze_lm_backbone": 0,
-        #     "hcg_loss_weight": 5,
-        # },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_10_weight_1",
-            "freeze_lm_backbone": 0,
-            "hcg_loss_weight": 1,
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_lm_freeze_weight_5/checkpoint-4995",
-            "model_type": "pretrained_checkpoint",
-            "select_train_dataset_items": 0,
-        },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_10_weight_1.5",
-            "freeze_lm_backbone": 0,
-            "hcg_loss_weight": 1.5,
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_lm_freeze_weight_5/checkpoint-4995",
-            "model_type": "pretrained_checkpoint",
-            "select_train_dataset_items": 0,
-        },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_10_weight_2",
-            "freeze_lm_backbone": 0,
-            "hcg_loss_weight": 2,
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_lm_freeze_weight_5/checkpoint-4995",
-            "model_type": "pretrained_checkpoint",
-            "select_train_dataset_items": 0,
-        },
-        
-    ]
-
-    for exp in gumbel_experiments:
-        
+def run_experiments(experiments):
+    
+    for exp in experiments:
         dummy_adaptive_fan_in_layers_str = exp['dummy_adaptive_fan_in_layers_str']
         output_dir = exp['output_dir']
         output_dir_full_path = os.path.join(workdir_prefix, output_dir)
@@ -109,14 +44,18 @@ def run_hcg_adaptive():
         fan_out_type = exp.get('fan_out_type', 'hcg') # residual_linear_projection
         hcg_loss_weight = exp.get('hcg_loss_weight', 0.0)
         model_type = exp.get('model_type', 'pretrained') # pretrained_checkpoint
-        llama_checkpoint = exp.get('llama_checkpoint', '')
+        llama_checkpoint = exp.get('llama_checkpoint', '""')
         
         
         seed = SEED
+
+        script_str = f"{workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy epoch --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size 20 --learning_rate 0.0003 --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --gradient_checkpointing 1 --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --full_unmerge_loss_weight {full_unmerge_loss_weight} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type linear --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection 1 --logging_steps 100 --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --eval_steps 250 --gumbel_tau {gumbel_tau} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight}"
+        
+        print(f"\n\n{script_str}\n\n")
         
         job_w_args = client_lib.Job(
             base_image=BASE_IMAGE,
-            script=f"{workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy epoch --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size 20 --learning_rate 0.0003 --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --gradient_checkpointing 1 --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --full_unmerge_loss_weight {full_unmerge_loss_weight} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type linear --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection 1 --logging_steps 100 --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --eval_steps 250 --gumbel_tau {gumbel_tau} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight}",
+            script=script_str,
             # flags={
             #     # "TODO"
             # },
@@ -137,7 +76,48 @@ def run_hcg_adaptive():
             },
         )
 
-        print(output_dir, job_w_args.submit())
+        # print(output_dir, job_w_args.submit())
+        print("JOB WAS NOT LAUNCHED")
+
+    return
+
+
+def run_hcg_adaptive_pretrain():
+
+    experiment_prefix_base_name = "adaptive_hcg"
+
+    hcg_experiments = [
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_10_pretrain",
+            "freeze_lm_backbone": 1,
+            "hcg_loss_weight": 1,
+            "select_train_dataset_items": 15000,
+        },
+    ]
+
+    run_experiments(hcg_experiments)
+
+    return
+
+
+def run_hcg_adaptive():
+
+    experiment_prefix_base_name = "adaptive_hcg"
+
+    hcg_experiments = [
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_10_weight_1",
+            "freeze_lm_backbone": 0,
+            "hcg_loss_weight": 1,
+            "model_type": "pretrained_checkpoint",
+            "llama_checkpoint": "./adaptive_hcg_10_pretrain",
+            "select_train_dataset_items": 0,
+        },
+    ]
+
+    run_experiments(hcg_experiments)
 
     return
 
@@ -145,5 +125,5 @@ def run_hcg_adaptive():
 
 if __name__ == "__main__":
 
-    # run_gumbel_with_unmerge()
+    # run_hcg_adaptive_pretrain()
     run_hcg_adaptive()

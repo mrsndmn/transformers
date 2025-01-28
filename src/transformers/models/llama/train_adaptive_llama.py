@@ -263,7 +263,7 @@ class AdaptiveLlamaTrainer(Trainer):
             if self.args.temperature_schedule:
                 extra_log['tau'] = current_tau
 
-            if hasattr(model.model, "adaptive_down"):
+            if False and hasattr(model.model, "adaptive_down"):
                 for i, adown in enumerate(model.model.adaptive_down):
                     if isinstance(adown, (AdaptiveFanInGumbel)):
                         merger_mpl_grad = adown.fan_in_mlp.weight.grad.norm(2).item()
@@ -662,7 +662,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
     eval_strategy: str = field(default="steps")
     eval_steps: int = field(default=500)
     save_strategy: str = field(default="no")
-    save_total_limit: Optional[int] = field(default=2)
+    save_steps: int = 10000
+    save_total_limit: Optional[int] = field(default=1)
     
     push_to_hub: bool = field(default=False)
     optim: str = field(default="adamw_torch")
@@ -736,7 +737,8 @@ def build_model(training_args: AdaptiveTrainingArguments):
         from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
 
         # llama_checkpoint = "HuggingFaceTB/SmolLM-1.7B"
-        llama_checkpoint = "HuggingFaceTB/SmolLM-135M"
+        # llama_checkpoint = "HuggingFaceTB/SmolLM-135M"
+        llama_checkpoint = "HuggingFaceTB/SmolLM-360M"
         llama_config = LlamaConfig.from_pretrained(llama_checkpoint)
         num_layers = llama_config.num_hidden_layers
         num_layers_half = num_layers // 2
@@ -848,6 +850,7 @@ if __name__ == "__main__":
 
             smollm_corpus = smollm_corpus.map(tokenize_function, batched=True)
 
+            print("training_args.select_train_dataset_items", training_args.select_train_dataset_items)
             if training_args.select_train_dataset_items > 0:
                 smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items))
             # smollm_corpus = smollm_corpus.rename_column('special_tokens_mask', 'special_embeddings_mask')
