@@ -58,16 +58,32 @@ def run_hcg_adaptive():
         # },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_10_weight_5",
+            "output_dir": f"{experiment_prefix_base_name}_10_weight_1",
             "freeze_lm_backbone": 0,
-            "hcg_loss_weight": 5,
+            "hcg_loss_weight": 1,
+            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_lm_freeze_weight_5/checkpoint-4995",
+            "model_type": "pretrained_checkpoint",
+            "select_train_dataset_items": 0,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_10_weight_10",
+            "output_dir": f"{experiment_prefix_base_name}_10_weight_1.5",
             "freeze_lm_backbone": 0,
-            "hcg_loss_weight": 10,
+            "hcg_loss_weight": 1.5,
+            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_lm_freeze_weight_5/checkpoint-4995",
+            "model_type": "pretrained_checkpoint",
+            "select_train_dataset_items": 0,
         },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_10_weight_2",
+            "freeze_lm_backbone": 0,
+            "hcg_loss_weight": 2,
+            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_lm_freeze_weight_5/checkpoint-4995",
+            "model_type": "pretrained_checkpoint",
+            "select_train_dataset_items": 0,
+        },
+        
     ]
 
     for exp in gumbel_experiments:
@@ -85,18 +101,22 @@ def run_hcg_adaptive():
         full_unmerge_loss_weight = exp.get('full_unmerge_loss_weight', 0.0)
 
         warmup_steps = exp.get('warmup_steps', 2000)
+        num_train_epochs = exp.get('num_train_epochs', 1)
         generate_merges_transform_impl = exp.get('generate_merges_transform_impl', 'cuda_kernel')
-        select_train_dataset_items = exp.get('select_train_dataset_items', 100000)
+        select_train_dataset_items = exp.get('select_train_dataset_items', 150000)
         scale_not_pruned_gradients = exp.get('scale_not_pruned_gradients', 0.0)
         merging_type = exp.get('merging_type', 'hcg') # attention_output_mlp
         fan_out_type = exp.get('fan_out_type', 'hcg') # residual_linear_projection
         hcg_loss_weight = exp.get('hcg_loss_weight', 0.0)
+        model_type = exp.get('model_type', 'pretrained') # pretrained_checkpoint
+        llama_checkpoint = exp.get('llama_checkpoint', '')
+        
         
         seed = SEED
         
         job_w_args = client_lib.Job(
             base_image=BASE_IMAGE,
-            script=f"{workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy epoch --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size 20 --learning_rate 0.0003 --num_train_epochs 1 --seed {seed} --training_dataset smollm-corpus --model_type pretrained --gradient_checkpointing 1 --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --full_unmerge_loss_weight {full_unmerge_loss_weight} --adam_beta1 0.9 --adam_beta2 0.95 --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection 1 --logging_steps 100 --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --eval_steps 250 --gumbel_tau {gumbel_tau} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight}",
+            script=f"{workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy epoch --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size 20 --learning_rate 0.0003 --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --gradient_checkpointing 1 --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --full_unmerge_loss_weight {full_unmerge_loss_weight} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type linear --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection 1 --logging_steps 100 --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --eval_steps 250 --gumbel_tau {gumbel_tau} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight}",
             # flags={
             #     # "TODO"
             # },

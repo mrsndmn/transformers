@@ -577,7 +577,11 @@ class AdaptiveFanInHCG(nn.Module):
         self.merging_type = self.config.merging_type
         assert self.merging_type == 'hcg'
         
-        self.fan_in_mlp = nn.Linear(self.hidden_size, 1, bias=True)
+        self.fan_in_mlp = nn.Sequential(
+            nn.Linear(self.hidden_size, 128, bias=True),
+            nn.LeakyReLU(),
+            nn.Linear(128, 1, bias=True),   
+        )
 
         approximate_batch_size_length = 100
         max_seq_len_buffer = torch.arange(config.max_position_embeddings).unsqueeze(0).repeat(approximate_batch_size_length, 1)
@@ -777,7 +781,9 @@ class AdaptiveFanOutHCG(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.fan_out_linear = nn.Linear(self.hidden_size, self.hidden_size)
+        self.fan_out_linear = nn.Sequential(
+            nn.Linear(self.hidden_size, self.hidden_size),
+        )
 
     def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
         """Returns base hidden states

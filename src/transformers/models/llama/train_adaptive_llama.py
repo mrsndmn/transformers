@@ -184,7 +184,6 @@ class AdaptiveLlamaTrainer(Trainer):
 
         # loss = outputs.loss
         pruning_loss = outputs.loss
-        loss_scale = 1 + self.args.ce_merging_loss_weight + self.args.hcg_loss_weight
         loss = pruning_loss + ce_merging_loss_sum * self.args.ce_merging_loss_weight + hcg_loss * self.args.hcg_loss_weight
         
         # print("pruning_loss", pruning_loss)
@@ -194,9 +193,6 @@ class AdaptiveLlamaTrainer(Trainer):
         if outputs_no_pruning is not None:
             # print("outputs_no_pruning_loss", outputs_no_pruning.loss.item())
             loss += outputs_no_pruning.loss * self.args.full_unmerge_loss_weight
-            loss_scale += self.args.full_unmerge_loss_weight
-
-        loss /= loss_scale
 
         outputs.loss = loss
 
@@ -687,7 +683,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
     
     gumbel_tau: float = 2.0
-    scale_not_pruned_gradients: float = 0.1
+    scale_not_pruned_gradients: float = 0.0
     
     full_unmerge_str: Optional[str] = None
     fan_out_type: Optional[str] = None
@@ -851,7 +847,9 @@ if __name__ == "__main__":
                 return tokenized_inputs
 
             smollm_corpus = smollm_corpus.map(tokenize_function, batched=True)
-            smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items))
+
+            if training_args.select_train_dataset_items > 0:
+                smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items))
             # smollm_corpus = smollm_corpus.rename_column('special_tokens_mask', 'special_embeddings_mask')
             # print(smollm_corpus[0]['input_ids'])
             # breakpoint()
