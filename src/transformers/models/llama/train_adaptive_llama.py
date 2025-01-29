@@ -192,7 +192,7 @@ class AdaptiveLlamaTrainer(Trainer):
         
         hcg_loss *= self.args.hcg_loss_weight
 
-        if self.args.hcg_loss_weight_adaptive:
+        if self.args.hcg_loss_weight_dynamic:
             hcg_loss *= outputs.loss.detach()
 
         # loss = outputs.loss
@@ -700,7 +700,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     min_ce_merging_loss_value: float = 1.0
     full_unmerge_loss_weight: float = 1.0
     hcg_loss_weight: float = 0.0
-    hcg_loss_weight_adaptive: bool = False
+    hcg_loss_weight_dynamic: bool = False
     dummy_adaptive_fan_in_layers: Optional[int] = None
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
     
