@@ -631,7 +631,7 @@ class AdaptiveFanInHCG(nn.Module):
         p_open[special_embeddings_mask.bool()] = 0
 
         # assert concrete.shape == special_embeddings_mask.shape
-        concrete[special_embeddings_mask] = 1.0
+        concrete[special_embeddings_mask.bool()] = 1.0
         # breakpoint()
 
         hs_dtype = hidden_state.dtype

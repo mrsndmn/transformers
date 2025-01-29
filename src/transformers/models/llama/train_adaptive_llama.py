@@ -4,7 +4,9 @@ import math
 
 import wandb
 
+from torch.nn.utils.rnn import pad_sequence
 import torch
+
 
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInGumbel, AdaptiveFanInGumbel, AdaptiveLlamaForCausalLM, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel, AdaptiveCausalLMOutputWithPast
@@ -89,7 +91,7 @@ class SequentialNumbersDataset():
         labels = [1] + list(range(start_from, start_from + current_length)) + [2] + ([-100] * max_padding)
         attention_mask_length = current_length + 2
         attention_mask = ([1] * attention_mask_length) + ([0] * max_padding)
-        attention_mask = torch.tensor(attention_mask)
+        attention_mask = torch.tensor(attention_mask, dtype=torch.long)
         special_embeddings_mask = torch.zeros_like(attention_mask)
         special_embeddings_mask[0] = 1
         special_embeddings_mask[attention_mask_length - 1] = 1
@@ -97,8 +99,8 @@ class SequentialNumbersDataset():
         assert len(attention_mask) == len(inputs_ids)
 
         return {
-            "input_ids": inputs_ids,
-            "labels": labels,
+            "input_ids": torch.tensor(inputs_ids),
+            "labels": torch.tensor(labels),
             "special_embeddings_mask": special_embeddings_mask,
             "attention_mask": attention_mask,
         }
@@ -171,20 +173,31 @@ class AdaptiveLlamaTrainer(Trainer):
                 if count_merging_losses > 0:
                     ce_merging_loss_sum /= count_merging_losses
 
+        ce_merging_loss_sum *= self.args.ce_merging_loss_weight
+        # print("ce_merging_loss_sum", ce_merging_loss_sum)
+        if ce_merging_loss_sum < self.args.min_ce_merging_loss_value:
+            ce_merging_loss_sum = 0
+
         hcg_loss = 0
         if self.args.hcg_loss_weight > 0.0 and  model.config.merging_type == 'hcg':
             for i, hcg_p_open in enumerate(outputs.fan_in_merging_logits):
                 if hcg_p_open is None:
                     continue
-
+                
+                # [ bs * seq_len ]
                 hcg_p_open = hcg_p_open.squeeze(2).flatten()
                 concrete_non_masked = hcg_p_open[attention_mask.flatten().bool()]
 
                 hcg_loss += concrete_non_masked.mean()
+        
+        hcg_loss *= self.args.hcg_loss_weight
+
+        if self.args.hcg_loss_weight_adaptive:
+            hcg_loss *= outputs.loss.detach()
 
         # loss = outputs.loss
         pruning_loss = outputs.loss
-        loss = pruning_loss + ce_merging_loss_sum * self.args.ce_merging_loss_weight + hcg_loss * self.args.hcg_loss_weight
+        loss = pruning_loss + ce_merging_loss_sum + hcg_loss
         
         # print("pruning_loss", pruning_loss)
         # print("ce_merging_loss", ce_merging_loss_sum)
@@ -209,10 +222,14 @@ class AdaptiveLlamaTrainer(Trainer):
             if isinstance(hcg_loss_to_log, torch.Tensor):
                 hcg_loss_to_log = hcg_loss_to_log.item()
 
+            ce_merging_loss_sum_float = ce_merging_loss_sum
+            if isinstance(ce_merging_loss_sum_float, torch.Tensor):
+                ce_merging_loss_sum_float = ce_merging_loss_sum_float.item()
+
             log_info = {
                 f"{log_prefix}/pruning_loss": pruning_loss.detach().item(),
                 f"{log_prefix}/hcg_loss": hcg_loss_to_log,
-                f"{log_prefix}/ce_merging_loss": ce_merging_loss_sum.item(),
+                f"{log_prefix}/ce_merging_loss": ce_merging_loss_sum_float,
                 f"{log_prefix}/not_pruned_tokens": (total_tokens - sum_pruned_tokens),
                 f"{log_prefix}/sum_pruned_tokens": sum_pruned_tokens,
                 f"{log_prefix}/total_tokens": total_tokens,
@@ -341,13 +358,15 @@ class AdaptiveLlamaTrainer(Trainer):
             **gen_params,
         }
 
-        # model_generation = model.generate(**all_generation_params)
-
-        return {
-            # "generated_ids": model_generation,
+        result = {
             "prefix_ids": prefix_ids,
             "input_ids": inputs['input_ids'],
         }
+
+        if self.args.training_dataset == 'sequential-numbers':
+            result["generated_ids"] = model.generate(**all_generation_params)
+
+        return result
 
     def prediction_step(
         self,
@@ -678,8 +697,10 @@ class AdaptiveTrainingArguments(TrainingArguments):
     model_type: str = "dummy" # dummy | pretrained | SmolLM-1.7B
     
     ce_merging_loss_weight: float = 0.0
+    min_ce_merging_loss_value: float = 1.0
     full_unmerge_loss_weight: float = 1.0
     hcg_loss_weight: float = 0.0
+    hcg_loss_weight_adaptive: bool = False
     dummy_adaptive_fan_in_layers: Optional[int] = None
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
     
@@ -782,7 +803,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
         model = LlamaForCausalLM.from_pretrained(llama_checkpoint, )
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
     else:
-        raise ValueError(f"{training_args.training_dataset} is not supported")
+        raise ValueError(f"{training_args.model_type} is not supported")
 
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
 
@@ -809,6 +830,23 @@ if __name__ == "__main__":
         compute_metrics = ComputeMetrics()
         train_dataset = SequentialNumbersDataset(length=2000, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
         eval_dataset = SequentialNumbersDataset(length=64, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
+
+        def collate_sequential_numbers(elements):
+            
+            input_ids               = pad_sequence([ el['input_ids'] for el in elements ], batch_first=True)
+            labels                  = pad_sequence([ el['labels'] for el in elements ], batch_first=True)
+            attention_mask          = pad_sequence([ el['attention_mask'] for el in elements ], batch_first=True)
+            special_embeddings_mask = pad_sequence([ el['special_embeddings_mask'] for el in elements ], batch_first=True)
+
+            return {
+                "input_ids": input_ids,
+                "labels": labels,
+                "attention_mask": attention_mask,
+                "special_embeddings_mask": special_embeddings_mask,
+            }
+
+        data_collator = collate_sequential_numbers
+
     elif training_args.training_dataset == "smollm-corpus":
 
         tokenizer.pad_token = tokenizer.eos_token
@@ -848,11 +886,12 @@ if __name__ == "__main__":
                 
                 return tokenized_inputs
 
-            smollm_corpus = smollm_corpus.map(tokenize_function, batched=True)
-
             print("training_args.select_train_dataset_items", training_args.select_train_dataset_items)
             if training_args.select_train_dataset_items > 0:
                 smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items))
+
+            smollm_corpus = smollm_corpus.map(tokenize_function, batched=True)
+
             # smollm_corpus = smollm_corpus.rename_column('special_tokens_mask', 'special_embeddings_mask')
             # print(smollm_corpus[0]['input_ids'])
             # breakpoint()
@@ -860,9 +899,13 @@ if __name__ == "__main__":
 
         assert sum(smollm_corpus[0]['special_tokens_mask']) > 0
         
-        smollm_corpus = smollm_corpus.train_test_split(test_size=100, seed=1)
-        train_dataset = smollm_corpus['train']
-        eval_dataset = smollm_corpus['test']
+        if len(smollm_corpus) <= 100:
+            train_dataset = smollm_corpus
+            eval_dataset = smollm_corpus
+        else:
+            smollm_corpus = smollm_corpus.train_test_split(test_size=100, seed=1)
+            train_dataset = smollm_corpus['train']
+            eval_dataset = smollm_corpus['test']
         
         nested_data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
         
