@@ -323,6 +323,7 @@ class AdaptiveFanInGumbel(nn.Module):
         return aggregated_embeddings_transform, merged_embeddings_counts, merged_attention_mask
 
 
+    # @torch.compiler.disable(recursive=True)
     def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, full_unmerge=False) -> AdaptiveFanInOutput:
         """_summary_
 
@@ -587,7 +588,7 @@ class AdaptiveFanInHCG(nn.Module):
         max_seq_len_buffer = torch.arange(config.max_position_embeddings).unsqueeze(0).repeat(approximate_batch_size_length, 1)
         self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
 
-
+    # @torch.compiler.disable(recursive=True)
     def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, full_unmerge=False) -> AdaptiveFanInOutput:
         """_summary_
 
@@ -685,6 +686,7 @@ class AdaptiveFanOut(nn.Module):
 
         return restored_hidden_states
 
+    # @torch.compiler.disable(recursive=True)
     def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
         """Unfolds hidden_states based on merged_embeddings_counts
 
@@ -1035,6 +1037,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         return
 
     @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)
+    # @torch.compiler.disable(recursive=False)
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -1463,6 +1466,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
 
     # @replace_return_docstrings(output_type=AdaptiveCausalLMOutputWithPast, config_class=_CONFIG_FOR_DOC)
     @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)
+    # @torch.compiler.disable(recursive=False)
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -1519,6 +1523,8 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        assert special_embeddings_mask is not None
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs: AdaptiveBaseModelOutputWithPast = self.model(

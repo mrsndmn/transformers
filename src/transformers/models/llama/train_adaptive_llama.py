@@ -58,6 +58,64 @@ import torch
 from typing import Any, Dict
 from typing import List, Optional
 
+@dataclass
+class AdaptiveTrainingArguments(TrainingArguments):
+    output_dir: str = field(default="llama_for_sequential_numbers",)
+    learning_rate: float = field(default=2e-4)
+    warmup_steps: int = field(default=500)
+    per_device_train_batch_size: int = field(default=32)
+    per_device_eval_batch_size: int = field(default=16)
+    num_train_epochs: int = field(default=1)
+    max_steps_pretrain_fan_modules: int = field(default=2000)
+    hcg_temperature: float = field(default=1.0)
+    learnt_temperature: bool = field(default=False)
+    lr_scheduler_type: str = field(default='constant_with_warmup')
+
+    llama_checkpoint: str = field(default='')
+
+    weight_decay: float = field(default=0.01)
+    eval_strategy: str = field(default="steps")
+    eval_steps: int = field(default=500)
+    save_strategy: str = field(default="no")
+    save_steps: int = 10000
+    save_total_limit: Optional[int] = field(default=1)
+    
+    push_to_hub: bool = field(default=False)
+    optim: str = field(default="adamw_torch")
+    report_to: str = field(default="wandb")
+    logging_steps: int = field(default=50)
+    dataloader_drop_last: bool = field(default=True)
+    dataloader_num_workers: int = field(default=0)
+    merging_type: str = field(default="next_token_merge_mlp")
+    freeze_lm_backbone: bool = field(default=False)
+
+    training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
+    model_type: str = "dummy" # dummy | pretrained | SmolLM-1.7B
+    
+    ce_merging_loss_weight: float = 0.0
+    min_ce_merging_loss_value: float = 1.0
+    full_unmerge_loss_weight: float = 1.0
+    hcg_loss_weight: float = 0.0
+    hcg_loss_weight_dynamic: bool = False
+    dummy_adaptive_fan_in_layers: Optional[int] = None
+    dummy_adaptive_fan_in_layers_str: Optional[str] = None
+    
+    gumbel_tau: float = 2.0
+    scale_not_pruned_gradients: float = 0.0
+    
+    full_unmerge_str: Optional[str] = None
+    fan_out_type: Optional[str] = None
+    
+    generate_merges_transform_impl: str = 'cuda_kernel'
+
+    reverse_dummy_adaptive_fan_in_layers: bool = False
+    temperature_schedule: bool = False
+    temperature_schedule_max_value: int = field(default=10)
+    
+    select_train_dataset_items: int = 20000
+    fan_out_projection: bool = True
+
+    with_special_embeddings_mask: bool = True
 
 class ComputeMetrics():
 
@@ -130,7 +188,7 @@ class AdaptiveLlamaTrainer(Trainer):
             "attention_mask": attention_mask,
         }
 
-        if isinstance(model, AdaptiveLlamaForCausalLM) or ( isinstance(model, nn.DataParallel) and isinstance(model.module, AdaptiveLlamaForCausalLM)):
+        if self.args.with_special_embeddings_mask:
             assert special_embeddings_mask is not None
             # assert special_embeddings_mask.sum() > 1
 
@@ -662,62 +720,6 @@ class AdaptiveLlamaTrainer(Trainer):
 
         return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=num_samples)
 
-@dataclass
-class AdaptiveTrainingArguments(TrainingArguments):
-    output_dir: str = field(default="llama_for_sequential_numbers",)
-    learning_rate: float = field(default=2e-4)
-    warmup_steps: int = field(default=500)
-    per_device_train_batch_size: int = field(default=32)
-    per_device_eval_batch_size: int = field(default=16)
-    num_train_epochs: int = field(default=1)
-    max_steps_pretrain_fan_modules: int = field(default=2000)
-    hcg_temperature: float = field(default=1.0)
-    learnt_temperature: bool = field(default=False)
-    lr_scheduler_type: str = field(default='constant_with_warmup')
-
-    llama_checkpoint: str = field(default='')
-
-    weight_decay: float = field(default=0.01)
-    eval_strategy: str = field(default="steps")
-    eval_steps: int = field(default=500)
-    save_strategy: str = field(default="no")
-    save_steps: int = 10000
-    save_total_limit: Optional[int] = field(default=1)
-    
-    push_to_hub: bool = field(default=False)
-    optim: str = field(default="adamw_torch")
-    report_to: str = field(default="wandb")
-    logging_steps: int = field(default=50)
-    dataloader_drop_last: bool = field(default=True)
-    dataloader_num_workers: int = field(default=0)
-    merging_type: str = field(default="next_token_merge_mlp")
-    freeze_lm_backbone: bool = field(default=False)
-
-    training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
-    model_type: str = "dummy" # dummy | pretrained | SmolLM-1.7B
-    
-    ce_merging_loss_weight: float = 0.0
-    min_ce_merging_loss_value: float = 1.0
-    full_unmerge_loss_weight: float = 1.0
-    hcg_loss_weight: float = 0.0
-    hcg_loss_weight_dynamic: bool = False
-    dummy_adaptive_fan_in_layers: Optional[int] = None
-    dummy_adaptive_fan_in_layers_str: Optional[str] = None
-    
-    gumbel_tau: float = 2.0
-    scale_not_pruned_gradients: float = 0.0
-    
-    full_unmerge_str: Optional[str] = None
-    fan_out_type: Optional[str] = None
-    
-    generate_merges_transform_impl: str = 'cuda_kernel'
-
-    reverse_dummy_adaptive_fan_in_layers: bool = False
-    temperature_schedule: bool = False
-    temperature_schedule_max_value: int = field(default=10)
-    
-    select_train_dataset_items: int = 20000
-    fan_out_projection: bool = True
 
 def build_model(training_args: AdaptiveTrainingArguments):
     tokenizer = None
@@ -866,7 +868,7 @@ if __name__ == "__main__":
             smollm_corpus = datasets.Dataset.load_from_disk(disk_dataset_path)
         else:
             # load and tokenize
-            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(1) ]
+            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(10) ]
             smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files)
 
             def tokenize_function(examples):
