@@ -251,7 +251,7 @@ class AdaptiveLlamaTrainer(Trainer):
         hcg_loss *= self.args.hcg_loss_weight
 
         if self.args.hcg_loss_weight_dynamic:
-            hcg_loss *= outputs.loss.detach()
+            hcg_loss /= outputs.loss.detach()
 
         # loss = outputs.loss
         pruning_loss = outputs.loss
