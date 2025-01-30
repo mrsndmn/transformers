@@ -53,7 +53,7 @@ def run_experiments(experiments, job_description_prefix=""):
 
         seed = SEED
 
-        script_str = f"{workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy epoch --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --full_unmerge_loss_weight {full_unmerge_loss_weight} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type linear --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection 1 --logging_steps 50 --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --eval_steps 250 --gumbel_tau {gumbel_tau} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --ce_merging_loss_weight {ce_merging_loss_weight} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --dataloader_num_workers 0 --bf16 1 --torch_compile 1"
+        script_str = f"{workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps 10000 --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --full_unmerge_loss_weight {full_unmerge_loss_weight} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type linear --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection 1 --logging_steps 50 --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --eval_steps 250 --gumbel_tau {gumbel_tau} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --ce_merging_loss_weight {ce_merging_loss_weight} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --dataloader_num_workers 0 --bf16 1 --torch_compile 1"
         
         print(f"\n\n{script_str}\n\n")
         
@@ -133,16 +133,6 @@ def run_hcg_adaptive():
     experiment_prefix_base_name = "adaptive_hcg"
 
     hcg_experiments = [
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_10_dynamic_weight_0.5",
-        #     "freeze_lm_backbone": 0,
-        #     "hcg_loss_weight": 0.5,
-        #     "model_type": "pretrained_checkpoint",
-        #     "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_pretrain",
-        #     "select_train_dataset_items": 0,
-        #     "hcg_loss_weight_dynamic": 1,
-        # },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_10_dynamic_weight_1",
@@ -158,6 +148,16 @@ def run_hcg_adaptive():
             "output_dir": f"{experiment_prefix_base_name}_10_dynamic_weight_1.5",
             "freeze_lm_backbone": 0,
             "hcg_loss_weight": 1.5,
+            "model_type": "pretrained_checkpoint",
+            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_pretrain",
+            "select_train_dataset_items": 0,
+            "hcg_loss_weight_dynamic": 1,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_10_dynamic_weight_3",
+            "freeze_lm_backbone": 0,
+            "hcg_loss_weight": 3,
             "model_type": "pretrained_checkpoint",
             "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_pretrain",
             "select_train_dataset_items": 0,
