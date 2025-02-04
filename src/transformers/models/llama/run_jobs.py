@@ -160,7 +160,7 @@ def run_hcg_adaptive():
         "freeze_lm_backbone": 0,
         "hcg_loss_weight": 5,
         "hcg_loss_weight_dynamic": 1,
-        "select_train_dataset_items": 0,
+        "select_train_dataset_items": 800000,
         "warmup_steps": 2000,
         "model_type": "pretrained_checkpoint",
     }
@@ -168,32 +168,32 @@ def run_hcg_adaptive():
     hcg_experiments = [
         {
             "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_1_pretrain",
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_1_pretrain",
+            "output_dir": f"{experiment_prefix_base_name}_1",
+            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_1_pretrain/checkpoint-496",
             **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_5_pretrain",
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_5_pretrain",
+            "output_dir": f"{experiment_prefix_base_name}_5",
+            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_5_pretrain/checkpoint-2496",
             **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_10_pretrain",
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_pretrain",
+            "output_dir": f"{experiment_prefix_base_name}_10",
+            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_pretrain/checkpoint-496",
             **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1",
-            "output_dir": f"{experiment_prefix_base_name}_15_pretrain",
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_15_pretrain",
+            "output_dir": f"{experiment_prefix_base_name}_15",
+            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_15_pretrain/checkpoint-496",
             **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1",
-            "output_dir": f"{experiment_prefix_base_name}_5-10-15_pretrain",
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_5-10-15_pretrain",
+            "output_dir": f"{experiment_prefix_base_name}_5-10-15",
+            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_5-10-15_pretrain/checkpoint-996",
             **common_params,
         },
     ]
@@ -207,6 +207,5 @@ def run_hcg_adaptive():
 
 if __name__ == "__main__":
 
-    # run_hcg_adaptive()
-    run_hcg_adaptive_pretrain()
-    # run_gumbel_adaptive()
+    run_hcg_adaptive()
+    # run_hcg_adaptive_pretrain()
