@@ -629,7 +629,7 @@ class AdaptiveFanInHCG(nn.Module):
         p_open = self.hcg(log_a, attention_mask)
         p_open = self.hcg.get_p_open(log_a)
         p_open[~attention_mask.bool()] = 0
-        p_open[special_embeddings_mask.bool()] = 0
+        p_open[special_embeddings_mask.bool()] = 1.
 
         # assert concrete.shape == special_embeddings_mask.shape
         concrete[special_embeddings_mask.bool()] = 1.0
@@ -641,11 +641,40 @@ class AdaptiveFanInHCG(nn.Module):
         hidden_state = (concrete * hidden_state).to(hs_dtype)
         residual_hidden_state = ((1 - concrete) * residual_hidden_state).to(rhs_dtype)
 
+        merged_embeddings_counts = attention_mask
+        if not self.training:
+            merging_map = concrete.repeat(1, 1, 2)
+            # This tokens will flow next
+            merging_map[:, :, 1] = (merging_map[:, :, 0] > 0.5) * 1.0
+            # This embeddings will be pruned
+            merging_map[:, :, 0] = (1 - merging_map[:, :, 1])
+
+            # [ bs, new_seq_len, seq_len ] - состоит из нулей и единичек
+            merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = generate_merges_transform(merging_map, attention_mask.bool(), special_embeddings_mask.bool())
+
+            merged_special_embeddings_mask = torch.zeros([batch_size, merged_embeddings_transform.shape[1]], device=hidden_state.device)
+            merged_special_embeddings_mask[:, 0] = 1
+
+            arange_buffer_merged = self.max_seq_len_buffer[:batch_size, :merged_attention_mask.shape[1]]
+            merged_eos_mask = (arange_buffer_merged == merged_attention_mask.sum(dim=-1, keepdim=True).to(torch.long) - 1)
+
+            merged_special_embeddings_mask[merged_eos_mask] = 1
+
+            assert (merged_special_embeddings_mask.sum(-1) == 2).all()
+
+            merged_embeddings_transform = merged_embeddings_transform.to(hidden_state.dtype)
+
+            # [ bs, new_seq_len, emb_dim ] = [ bs, new_seq_len, seq_len ] @ [ bs, seq_len, emb_dim ]
+            hidden_state = torch.bmm(merged_embeddings_transform, hidden_state)
+            attention_mask = merged_attention_mask
+            special_embeddings_mask = merged_special_embeddings_mask
+
+
         res = AdaptiveFanInOutput(
             hidden_state=hidden_state,
             residual_hidden_state=residual_hidden_state,
             attention_mask=attention_mask,
-            merged_embeddings_counts=attention_mask,
+            merged_embeddings_counts=merged_embeddings_counts,
             special_embeddings_mask=special_embeddings_mask,
             merging_map=None,
             merging_map_logits=p_open,
@@ -802,8 +831,12 @@ class AdaptiveFanOutHCG(nn.Module):
         """
 
         residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
-        # residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states.detach()) 
+
+        if not self.training:
+            hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection)
+
         hidden_states = hidden_states + residual_hidden_states_projection
+
         return AdaptiveFanOutOutput(hidden_state=hidden_states)
 
 

@@ -8,7 +8,7 @@ from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCa
 
 
 if __name__ == "__main__":
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--checkpoint",
@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     checkpoint: str = args.checkpoint
-    
+
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     if checkpoint.startswith('HuggingFaceTB'):
@@ -27,9 +27,9 @@ if __name__ == "__main__":
 
     model.to(device)
     model.eval()
-    
+
     tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-    
+
     model_inputs = tokenizer([ '<|im_start|> Who are you?' ], return_tensors='pt')
     model_inputs = model_inputs.to(device)
 
@@ -37,7 +37,7 @@ if __name__ == "__main__":
         special_embeddings_mask = torch.zeros_like(model_inputs['input_ids'])
         special_embeddings_mask[:, 0] = 1
         model_inputs['special_embeddings_mask'] = special_embeddings_mask
-    
+
 
     max_new_tokens = 10
     gen_params = {
@@ -57,7 +57,7 @@ if __name__ == "__main__":
         "no_repeat_ngram_size": 4,
         "num_return_sequences": 1,
     }
-    
+
     with torch.no_grad():
         # out = model.generate(
         #     **model_inputs,
@@ -76,16 +76,39 @@ if __name__ == "__main__":
 
             forward_output = model.forward(**text_inputs)
 
-            token_will_be_passed = forward_output['fan_in_merging_logits'][0].max(dim=-1).indices[0].cpu().numpy().tolist()
-            
-            logits = forward_output['fan_in_merging_logits'][0][0]
-            logits_prune_confidence = logits[:, 0] - logits[:, 1]
-            
+            token_will_be_passed = None
+            fan_in_merging_logits = None
+            for fan_in_merging_logits_i in forward_output['fan_in_merging_logits']:
+                if fan_in_merging_logits_i is None:
+                    continue
+                if model.config.merging_type == 'hcg':
+                    token_will_be_passed = fan_in_merging_logits_i.detach()
+                    token_will_be_passed[token_will_be_passed < 0.5] = 0
+                    token_will_be_passed[token_will_be_passed > 0.5] = 1
+                    token_will_be_passed = token_will_be_passed.long().flatten()
+                else:
+                    token_will_be_passed = fan_in_merging_logits_i.max(dim=-1).indices[0].cpu().numpy().tolist()
+
+                fan_in_merging_logits = fan_in_merging_logits_i
+
+            assert token_will_be_passed is not None
+
+            logits = fan_in_merging_logits[0]
+
+            if model.config.merging_type == 'hcg':
+                logits_prune_confidence = logits[:, 0]
+            else:
+                logits_prune_confidence = logits[:, 0] - logits[:, 1]
+
             print("token_will_be_passed", sum(token_will_be_passed), '/', len(token_will_be_passed))
             input_ids = text_inputs['input_ids'][0].cpu().numpy().tolist()
-            for i, (token_will_be_passed, token_id) in enumerate(zip(token_will_be_passed, input_ids)):
+            for i, (token_will_be_passed_i, token_id) in enumerate(zip(token_will_be_passed, input_ids)):
                 logits_prune_confidence_i = logits_prune_confidence[i]
-                
-                print(token_will_be_passed, f"\t{logits_prune_confidence_i:.2f}", "\t", token_id, "\t", tokenizer.decode(token_id))
+
+                print(token_will_be_passed_i, f"\t{logits_prune_confidence_i:.2f}", "\t", token_id, "\t", tokenizer.decode(token_id))
+
+            print("Original: \t", tokenizer.decode(input_ids))
+            print("Prunied:  \t", tokenizer.decode(torch.tensor(input_ids)[token_will_be_passed.bool().cpu()]))
+
 
     breakpoint()

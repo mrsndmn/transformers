@@ -248,10 +248,13 @@ class AdaptiveLlamaTrainer(Trainer):
 
                 hcg_loss += concrete_non_masked.mean()
         
-        hcg_loss *= self.args.hcg_loss_weight
 
         if self.args.hcg_loss_weight_dynamic:
-            hcg_loss /= outputs.loss.detach()
+            hcg_loss *= self.args.hcg_loss_weight
+            exp_scale = 30 * max(outputs.loss.detach().item() - 1.4, 0)
+            hcg_loss /= torch.exp(torch.tensor(exp_scale, device=outputs.loss.device))
+        else:
+            hcg_loss *= self.args.hcg_loss_weight
 
         # loss = outputs.loss
         pruning_loss = outputs.loss
