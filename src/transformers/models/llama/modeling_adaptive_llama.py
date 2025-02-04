@@ -649,8 +649,11 @@ class AdaptiveFanInHCG(nn.Module):
             # This embeddings will be pruned
             merging_map[:, :, 0] = (1 - merging_map[:, :, 1])
 
+            attention_mask_bool = attention_mask.bool()
+            merging_map[~attention_mask_bool] = 0
+
             # [ bs, new_seq_len, seq_len ] - состоит из нулей и единичек
-            merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = generate_merges_transform(merging_map, attention_mask.bool(), special_embeddings_mask.bool())
+            merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = generate_merges_transform(merging_map, attention_mask_bool, special_embeddings_mask.bool())
 
             merged_special_embeddings_mask = torch.zeros([batch_size, merged_embeddings_transform.shape[1]], device=hidden_state.device)
             merged_special_embeddings_mask[:, 0] = 1

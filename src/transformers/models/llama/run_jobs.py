@@ -112,46 +112,38 @@ def run_hcg_adaptive_pretrain():
 
     experiment_prefix_base_name = "adaptive_hcg"
 
+    common_params = {
+        "freeze_lm_backbone": 1,
+        "hcg_loss_weight": 0.1,
+        "select_train_dataset_items": 80000,
+        "warmup_steps": 1,
+    }
+
     hcg_experiments = [
         {
             "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_1_pretrain",
-            "freeze_lm_backbone": 1,
-            "hcg_loss_weight": 1,
-            "select_train_dataset_items": 16000,
-            "warmup_steps": 1,
+            **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_5_pretrain",
-            "freeze_lm_backbone": 1,
-            "hcg_loss_weight": 1,
-            "select_train_dataset_items": 16000,
-            "warmup_steps": 1,
+            **common_params,
         },
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_10_pretrain",
-        #     "freeze_lm_backbone": 1,
-        #     "hcg_loss_weight": 1,
-        #     "select_train_dataset_items": 16000,
-        #     "warmup_steps": 1,
-        # },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_10_pretrain",
+            **common_params,
+        },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1",
             "output_dir": f"{experiment_prefix_base_name}_15_pretrain",
-            "freeze_lm_backbone": 1,
-            "hcg_loss_weight": 1,
-            "select_train_dataset_items": 16000,
-            "warmup_steps": 1,
+            **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1",
             "output_dir": f"{experiment_prefix_base_name}_5-10-15_pretrain",
-            "freeze_lm_backbone": 1,
-            "hcg_loss_weight": 1,
-            "select_train_dataset_items": 16000,
-            "warmup_steps": 1,
+            **common_params,
         },
     ]
 
@@ -164,36 +156,45 @@ def run_hcg_adaptive():
 
     experiment_prefix_base_name = "adaptive_hcg"
 
+    common_params = {
+        "freeze_lm_backbone": 0,
+        "hcg_loss_weight": 5,
+        "hcg_loss_weight_dynamic": 1,
+        "select_train_dataset_items": 0,
+        "warmup_steps": 2000,
+        "model_type": "pretrained_checkpoint",
+    }
+
     hcg_experiments = [
         {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_10_dynamic_weight_1",
-            "freeze_lm_backbone": 0,
-            "hcg_loss_weight": 1,
-            "model_type": "pretrained_checkpoint",
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_pretrain",
-            "select_train_dataset_items": 0,
-            "hcg_loss_weight_dynamic": 1,
+            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_1_pretrain",
+            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_1_pretrain",
+            **common_params,
         },
         {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_10_dynamic_weight_1.5",
-            "freeze_lm_backbone": 0,
-            "hcg_loss_weight": 1.5,
-            "model_type": "pretrained_checkpoint",
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_pretrain",
-            "select_train_dataset_items": 0,
-            "hcg_loss_weight_dynamic": 1,
+            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_5_pretrain",
+            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_5_pretrain",
+            **common_params,
         },
         {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_10_dynamic_weight_3",
-            "freeze_lm_backbone": 0,
-            "hcg_loss_weight": 3,
-            "model_type": "pretrained_checkpoint",
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_10_pretrain",
             "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_10_pretrain",
-            "select_train_dataset_items": 0,
-            "hcg_loss_weight_dynamic": 1,
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1",
+            "output_dir": f"{experiment_prefix_base_name}_15_pretrain",
+            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_15_pretrain",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1",
+            "output_dir": f"{experiment_prefix_base_name}_5-10-15_pretrain",
+            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_5-10-15_pretrain",
+            **common_params,
         },
     ]
 
@@ -206,6 +207,6 @@ def run_hcg_adaptive():
 
 if __name__ == "__main__":
 
-    run_hcg_adaptive()
-    # run_hcg_adaptive_pretrain()
+    # run_hcg_adaptive()
+    run_hcg_adaptive_pretrain()
     # run_gumbel_adaptive()
