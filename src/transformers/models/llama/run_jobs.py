@@ -108,22 +108,54 @@ def run_gumbel_adaptive():
     return
 
 
-
 def run_hcg_adaptive_pretrain():
 
     experiment_prefix_base_name = "adaptive_hcg"
 
     hcg_experiments = [
         {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_10_pretrain",
+            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_1_pretrain",
             "freeze_lm_backbone": 1,
             "hcg_loss_weight": 1,
-            "select_train_dataset_items": 15000,
+            "select_train_dataset_items": 16000,
+            "warmup_steps": 1,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_5_pretrain",
+            "freeze_lm_backbone": 1,
+            "hcg_loss_weight": 1,
+            "select_train_dataset_items": 16000,
+            "warmup_steps": 1,
+        },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_10_pretrain",
+        #     "freeze_lm_backbone": 1,
+        #     "hcg_loss_weight": 1,
+        #     "select_train_dataset_items": 16000,
+        #     "warmup_steps": 1,
+        # },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1",
+            "output_dir": f"{experiment_prefix_base_name}_15_pretrain",
+            "freeze_lm_backbone": 1,
+            "hcg_loss_weight": 1,
+            "select_train_dataset_items": 16000,
+            "warmup_steps": 1,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1",
+            "output_dir": f"{experiment_prefix_base_name}_5-10-15_pretrain",
+            "freeze_lm_backbone": 1,
+            "hcg_loss_weight": 1,
+            "select_train_dataset_items": 16000,
+            "warmup_steps": 1,
         },
     ]
 
-    run_experiments(hcg_experiments, job_description_prefix="Gumbel Pretrain: ")
+    run_experiments(hcg_experiments, job_description_prefix="HCG Pretrain: ")
 
     return
 
