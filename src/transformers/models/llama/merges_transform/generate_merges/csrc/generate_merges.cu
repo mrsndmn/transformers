@@ -86,8 +86,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> generate_merges_transfor
     );
 
     // Error checking
-    cudaDeviceSynchronize();
-    check_cuda_errors();
+    // cudaDeviceSynchronize();
+    // check_cuda_errors();
 
     return std::make_tuple(aggregated_embeddings_transform, merged_embeddings_counts, merged_attention_mask);
 }
@@ -154,8 +154,8 @@ torch::Tensor batch_repeat_interleave_for_merges_count(
     );
 
     // Error checking
-    cudaDeviceSynchronize();
-    check_cuda_errors();
+    // cudaDeviceSynchronize();
+    // check_cuda_errors();
 
     return grad_merging_map_output;
 }
@@ -211,8 +211,8 @@ torch::Tensor fan_out_restore_residuals(
     );
 
     // Error checking
-    cudaDeviceSynchronize();
-    check_cuda_errors();
+    // cudaDeviceSynchronize();
+    // check_cuda_errors();
 
     return restored_hidden_states;
 }
@@ -280,10 +280,92 @@ std::tuple<torch::Tensor, torch::Tensor> backward_fan_out_restore_residuals(
     );
 
     // Error checking
-    cudaDeviceSynchronize();
-    check_cuda_errors();
+    // cudaDeviceSynchronize();
+    // check_cuda_errors();
 
     return std::make_tuple(hidden_states_grad, residual_hidden_states_grad);
+}
+
+
+__global__ void prune_tokens_concrete_kernel(
+    const torch::PackedTensorAccessor64<float, 3> hidden_state,
+    const torch::PackedTensorAccessor64<bool, 2> concrete_bool,
+    const torch::PackedTensorAccessor64<bool, 2> attention_mask,
+    torch::PackedTensorAccessor64<float, 3> merged_hidden_state,
+    torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
+    torch::PackedTensorAccessor64<bool, 2> merged_attention_mask,
+    int batch_size, int seq_len, int hidden_dim
+) {
+    int batch_i = blockIdx.x; // Batch index
+    // int seq_len_i = threadIdx.x; // Index for the new sequence length
+
+    if (batch_i >= batch_size) {
+        return; // Out of bounds check
+    }
+
+    int new_seq_len_i = 0;
+    for (int seq_len_i = 0; seq_len_i < seq_len; ++seq_len_i) {
+        if (!attention_mask[batch_i][seq_len_i]) {
+            break;
+        }
+
+        bool is_token_important = concrete_bool[batch_i][seq_len_i];
+
+        if (is_token_important ||  seq_len_i == seq_len - 1) {
+            merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
+            merged_attention_mask[batch_i][new_seq_len_i] = true;
+
+            for (int i = 0; i < hidden_dim; ++i) {
+                merged_hidden_state[batch_i][new_seq_len_i][i] = hidden_state[batch_i][seq_len_i][i];
+            }
+
+            new_seq_len_i += 1;
+        } else {
+            merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
+        }
+    }
+}
+
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cuda(
+    const torch::Tensor& hidden_state,            // [ bs, seq_len, hidden_dim ]
+    const torch::Tensor& concrete_bool,           // [ bs, seq_len ]
+    const torch::Tensor& attention_mask          // [ bs, seq_len ]
+) {
+    const int batch_size = concrete_bool.size(0);
+    const int seq_len = concrete_bool.size(1);
+    const int hidden_dim = hidden_state.size(2);
+
+    // Launch the kernel
+    const dim3 block_size(1, 1, 1);  // One thread per sequence element
+    const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
+
+    auto options = concrete_bool.options();
+    auto device = options.device();
+
+    auto merged_embeddings_counts_options = torch::TensorOptions().dtype(torch::kInt64).device(device);
+    auto mask_options = torch::TensorOptions().dtype(torch::kBool).device(device);
+    auto merged_hidden_state_options = torch::TensorOptions().dtype(torch::kFloat32).device(device);
+
+    torch::Tensor merged_hidden_state = torch::zeros({batch_size, seq_len, hidden_dim}, merged_hidden_state_options);
+    torch::Tensor merged_embeddings_counts = torch::zeros({batch_size, seq_len}, merged_embeddings_counts_options);
+    torch::Tensor merged_attention_mask = torch::zeros({batch_size, seq_len}, mask_options);
+
+    prune_tokens_concrete_kernel<<<grid_size, block_size>>>(
+        hidden_state.packed_accessor64<float, 3>(),
+        concrete_bool.packed_accessor64<bool, 2>(),
+        attention_mask.packed_accessor64<bool, 2>(),
+
+        merged_hidden_state.packed_accessor64<float, 3>(),
+        merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
+        merged_attention_mask.packed_accessor64<bool, 2>(),
+        batch_size, seq_len, hidden_dim
+    );
+
+    // Error checking
+    // cudaDeviceSynchronize();
+    // check_cuda_errors();
+
+    return std::make_tuple(merged_hidden_state, merged_embeddings_counts, merged_attention_mask);
 }
 
 
@@ -294,6 +376,7 @@ TORCH_LIBRARY(generate_merges, m) {
     m.def("batch_repeat_interleave_for_merges_count(Tensor a, Tensor b) -> Tensor");
     m.def("fan_out_restore_residuals(Tensor a, Tensor b, Tensor c) -> Tensor");
     m.def("backward_fan_out_restore_residuals(Tensor a, Tensor b) -> (Tensor, Tensor)");
+    m.def("prune_tokens_concrete_cuda(Tensor a, Tensor b, Tensor c) -> (Tensor, Tensor, Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(generate_merges, CUDA, m) {
@@ -301,4 +384,5 @@ TORCH_LIBRARY_IMPL(generate_merges, CUDA, m) {
     m.impl("batch_repeat_interleave_for_merges_count", &batch_repeat_interleave_for_merges_count);
     m.impl("fan_out_restore_residuals", &fan_out_restore_residuals);
     m.impl("backward_fan_out_restore_residuals", &backward_fan_out_restore_residuals);
+    m.impl("prune_tokens_concrete_cuda", &prune_tokens_concrete_cuda);
 }

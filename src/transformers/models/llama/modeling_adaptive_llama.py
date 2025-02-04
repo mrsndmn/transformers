@@ -62,7 +62,7 @@ from .modeling_llama import (
     LlamaSdpaAttention,
 )
 
-from transformers.models.llama.merges_transform.generate_merges import generate_merges_transform, fan_out_restore_residuals
+from transformers.models.llama.merges_transform.generate_merges import generate_merges_transform, fan_out_restore_residuals, prune_tokens_concrete
 
 
 logger = logging.get_logger(__name__)
@@ -643,19 +643,14 @@ class AdaptiveFanInHCG(nn.Module):
 
         merged_embeddings_counts = attention_mask
         if not self.training:
-            merging_map = concrete.repeat(1, 1, 2)
-            # This tokens will flow next
-            merging_map[:, :, 1] = (merging_map[:, :, 0] > 0.5) * 1.0
-            # This embeddings will be pruned
-            merging_map[:, :, 0] = (1 - merging_map[:, :, 1])
+            # [ bs, seq_len ]
+            concrete_bool = (concrete[:, :, 0] > 0.5)
 
-            attention_mask_bool = attention_mask.bool()
-            merging_map[~attention_mask_bool] = 0
+            hidden_state, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(hidden_state, concrete_bool, attention_mask.bool())
 
-            # [ bs, new_seq_len, seq_len ] - состоит из нулей и единичек
-            merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = generate_merges_transform(merging_map, attention_mask_bool, special_embeddings_mask.bool())
+            attention_mask = merged_attention_mask
 
-            merged_special_embeddings_mask = torch.zeros([batch_size, merged_embeddings_transform.shape[1]], device=hidden_state.device)
+            merged_special_embeddings_mask = torch.zeros([batch_size, merged_attention_mask.shape[1]], device=hidden_state.device)
             merged_special_embeddings_mask[:, 0] = 1
 
             arange_buffer_merged = self.max_seq_len_buffer[:batch_size, :merged_attention_mask.shape[1]]
@@ -664,12 +659,6 @@ class AdaptiveFanInHCG(nn.Module):
             merged_special_embeddings_mask[merged_eos_mask] = 1
 
             assert (merged_special_embeddings_mask.sum(-1) == 2).all()
-
-            merged_embeddings_transform = merged_embeddings_transform.to(hidden_state.dtype)
-
-            # [ bs, new_seq_len, emb_dim ] = [ bs, new_seq_len, seq_len ] @ [ bs, seq_len, emb_dim ]
-            hidden_state = torch.bmm(merged_embeddings_transform, hidden_state)
-            attention_mask = merged_attention_mask
             special_embeddings_mask = merged_special_embeddings_mask
 
 

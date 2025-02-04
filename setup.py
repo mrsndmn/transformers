@@ -371,17 +371,7 @@ extras["dev-torch"] = (
     + extras["torch"]
     + extras["sentencepiece"]
     + extras["tokenizers"]
-    + extras["torch-speech"]
-    + extras["vision"]
-    + extras["integrations"]
     + extras["timm"]
-    + extras["torch-vision"]
-    + extras["codecarbon"]
-    + extras["quality"]
-    + extras["ja"]
-    + extras["sklearn"]
-    + extras["modelcreation"]
-    + extras["onnxruntime"]
 )
 extras["dev-tensorflow"] = (
     extras["testing"]

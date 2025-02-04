@@ -7,6 +7,8 @@ from transformers import LlamaConfig, AutoTokenizer, LlamaForCausalLM
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanInHCG
 
 
+from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
+
 def count_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -41,7 +43,14 @@ if __name__ == "__main__":
 
     model = AdaptiveLlamaForCausalLM.from_pretrained(checkpoint)
 
-    llama_model = LlamaForCausalLM.from_pretrained(llama_checkpoint)
+    llama_model = build_adaptive_llama_from_llama_checkpoint(
+        llama_checkpoint = 'HuggingFaceTB/SmolLM-360M',
+        dummy_adaptive_fan_in=[ True ] * model.config.num_hidden_layers,
+        generate_merges_transform_impl='cuda_kernel',
+        fan_out_projection=True,
+        merging_type='hcg',
+        flash_attention=False,
+    )
 
     print("model params:", count_params(model))
     print("llama model params:", count_params(llama_model))
@@ -101,7 +110,7 @@ if __name__ == "__main__":
                     print("duration:", time.time() - start_time)
                     print("tokens per second:", out.shape[-1] / (time.time() - start_time))
         else:
-            for current_model in [llama_model, model]:
+            for i, current_model in enumerate([llama_model, model]):
                 text = "<|im_start|> In today's ever-evolving world, technology has become an integral part of our lives, shaping the way we learn, work, and communicate. The COVID-19 pandemic has only accelerated this trend, forcing educational institutions worldwide to adapt quickly to remote learning models.<|im_end|>"
                 text_inputs = tokenizer([ text ], return_tensors='pt').to('cuda')
 
@@ -112,6 +121,17 @@ if __name__ == "__main__":
                     text_inputs['special_embeddings_mask'] = special_embeddings_mask
 
                 forward_output = current_model.forward(**text_inputs)
+
+                from torch.profiler import profile, record_function, ProfilerActivity
+
+                activities = [ProfilerActivity.CPU, ProfilerActivity.CUDA, ProfilerActivity.XPU]
+                with profile(activities=activities) as prof:
+                # with profile(activities=[ProfilerActivity.CUDA], profile_memory=True) as prof:
+                    with record_function("model_inference"):
+                        forward_output = current_model.forward(**text_inputs)
+
+                prof.export_chrome_trace(f"trace_{i}_{type(current_model)}.json")
+                # print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=20))
 
                 start = time.time()
                 for _ in range(bench_iters):

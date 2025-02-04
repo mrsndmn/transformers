@@ -3,7 +3,7 @@ from torch import Tensor
 
 import time
 
-__all__ = ["generate_merges_transform", "fan_out_restore_residuals"]
+__all__ = ["generate_merges_transform", "fan_out_restore_residuals", "prune_tokens_concrete"]
 
 CHECK_WITH_PYTHON = False
 
@@ -189,4 +189,20 @@ def _setup_context_fan_out_restore_residuals(ctx, inputs, output):
 
 torch.library.register_autograd(
     "generate_merges::fan_out_restore_residuals", _backward_fan_out_restore_residuals, setup_context=_setup_context_fan_out_restore_residuals)
+
+
+def prune_tokens_concrete(
+        hidden_state: Tensor, # [ bs, seq_len, hidden_dim ]
+        concrete_bool: Tensor, # [ bs, seq_len ]
+        attention_mask: Tensor, # [ bs, seq_len ]
+        ):
+
+    hidden_state, merged_embeddings_counts, merged_attention_mask = torch.ops.generate_merges.prune_tokens_concrete_cuda.default(
+        hidden_state,
+        concrete_bool,
+        attention_mask,
+    )
+
+    return hidden_state, merged_embeddings_counts, merged_attention_mask
+
 
