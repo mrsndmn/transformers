@@ -167,10 +167,20 @@ __global__ void fan_out_restore_residuals_kernel(
     int batch_size, int seq_len, int hidden_dim
 ) {
     int batch_i = blockIdx.x; // Batch index
+    int thread_idx = threadIdx.x;
 
     // TODO could be also parallelized by sequence dim!
     if (batch_i >= batch_size) {
         return; // Out of bounds check
+    }
+
+    int hidden_dim_start = thread_idx * 64;
+    if (hidden_dim_start > hidden_dim) {
+        return;
+    }
+    int hidden_dim_end = hidden_dim_start + 64;
+    if (hidden_dim_end > hidden_dim) {
+        hidden_dim_end = hidden_dim;
     }
 
     int restored_seq_len = 0;
@@ -181,7 +191,7 @@ __global__ void fan_out_restore_residuals_kernel(
         }
 
         int restored_idx = int(restored_seq_len + num_repeats - 1);
-        for (int hi = 0; hi < hidden_dim; ++hi) {
+        for (int hi = hidden_dim_start; hi < hidden_dim_end; ++hi) {
             restored_hidden_states[batch_i][restored_idx][hi] = hidden_states[batch_i][seq_len_i][hi];
         }
         restored_seq_len += num_repeats;
@@ -198,7 +208,10 @@ torch::Tensor fan_out_restore_residuals(
     const int hidden_dim = residual_hidden_states_projection.size(2);
 
     // Launch the kernel
-    const dim3 block_size(1, 1, 1);  // One thread per sequence element
+
+    int num_threads = (hidden_dim + 63) / 64;
+
+    const dim3 block_size(num_threads, 1, 1);  // One thread per sequence element
     const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
 
     torch::Tensor restored_hidden_states = torch::clone(residual_hidden_states_projection);
@@ -297,10 +310,19 @@ __global__ void prune_tokens_concrete_kernel(
     int batch_size, int seq_len, int hidden_dim
 ) {
     int batch_i = blockIdx.x; // Batch index
-    // int seq_len_i = threadIdx.x; // Index for the new sequence length
+    int thread_idx = threadIdx.x; // Index for the new sequence length
 
     if (batch_i >= batch_size) {
         return; // Out of bounds check
+    }
+
+    int hidden_dim_start = thread_idx * 64;
+    if (hidden_dim_start > hidden_dim) {
+        return;
+    }
+    int hidden_dim_end = hidden_dim_start + 64;
+    if (hidden_dim_end > hidden_dim) {
+        hidden_dim_end = hidden_dim;
     }
 
     int new_seq_len_i = 0;
@@ -312,16 +334,21 @@ __global__ void prune_tokens_concrete_kernel(
         bool is_token_important = concrete_bool[batch_i][seq_len_i];
 
         if (is_token_important ||  seq_len_i == seq_len - 1) {
-            merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
-            merged_attention_mask[batch_i][new_seq_len_i] = true;
 
-            for (int i = 0; i < hidden_dim; ++i) {
+            if (thread_idx == 0) {
+                merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
+                merged_attention_mask[batch_i][new_seq_len_i] = true;
+            }
+
+            for (int i = hidden_dim_start; i < hidden_dim_end; ++i) {
                 merged_hidden_state[batch_i][new_seq_len_i][i] = hidden_state[batch_i][seq_len_i][i];
             }
 
             new_seq_len_i += 1;
         } else {
-            merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
+            if (thread_idx == 0) {
+                merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
+            }
         }
     }
 }
@@ -336,7 +363,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cu
     const int hidden_dim = hidden_state.size(2);
 
     // Launch the kernel
-    const dim3 block_size(1, 1, 1);  // One thread per sequence element
+    int num_threads = (hidden_dim + 63) / 64;
+    const dim3 block_size(num_threads, 1, 1);  // One thread per sequence element
     const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
 
     auto options = concrete_bool.options();
