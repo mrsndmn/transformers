@@ -30,7 +30,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--generate",
         action='store_true',
-        required=True,
     )
 
     args = parser.parse_args()
@@ -101,7 +100,6 @@ if __name__ == "__main__":
                     print("generation decode:", tokenizer.batch_decode(out))
                     print("duration:", time.time() - start_time)
                     print("tokens per second:", out.shape[-1] / (time.time() - start_time))
-
         else:
             for current_model in [llama_model, model]:
                 text = "<|im_start|> In today's ever-evolving world, technology has become an integral part of our lives, shaping the way we learn, work, and communicate. The COVID-19 pandemic has only accelerated this trend, forcing educational institutions worldwide to adapt quickly to remote learning models.<|im_end|>"
