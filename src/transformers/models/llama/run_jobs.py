@@ -115,7 +115,7 @@ def run_hcg_adaptive_pretrain():
     common_params = {
         "freeze_lm_backbone": 1,
         "hcg_loss_weight": 0.1,
-        "select_train_dataset_items": 80000,
+        "select_train_dataset_items": 32000,
         "warmup_steps": 1,
     }
 

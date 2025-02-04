@@ -236,18 +236,23 @@ class AdaptiveLlamaTrainer(Trainer):
         if ce_merging_loss_sum < self.args.min_ce_merging_loss_value:
             ce_merging_loss_sum = 0
 
+        count_hcg_layers = 0
         hcg_loss = 0
         if self.args.hcg_loss_weight > 0.0 and  model.config.merging_type == 'hcg':
-            for i, hcg_p_open in enumerate(outputs.fan_in_merging_logits):
+            for i, (hcg_p_open, hcg_p_open_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                 if hcg_p_open is None:
                     continue
-                
+
+                count_hcg_layers += 1
                 # [ bs * seq_len ]
                 hcg_p_open = hcg_p_open.squeeze(2).flatten()
-                concrete_non_masked = hcg_p_open[attention_mask.flatten().bool()]
+                concrete_non_masked = hcg_p_open[hcg_p_open_attention_mask.flatten().bool()]
 
                 hcg_loss += concrete_non_masked.mean()
-        
+
+            if count_hcg_layers > 0:
+                hcg_loss /= count_hcg_layers
+
 
         if self.args.hcg_loss_weight_dynamic:
             hcg_loss *= self.args.hcg_loss_weight
@@ -298,13 +303,13 @@ class AdaptiveLlamaTrainer(Trainer):
             }
 
             if model.config.merging_type == 'hcg':
-                for i, hcg_p_open in enumerate(outputs.fan_in_merging_logits):
+                for i, (hcg_p_open, fan_in_merging_logits_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                     if hcg_p_open is None:
                         continue
-                    
+
                     # [ bs * seq_len ]
                     hcg_p_open = hcg_p_open.squeeze(2).flatten()
-                    concrete_non_masked = hcg_p_open[attention_mask.flatten().bool()]
+                    concrete_non_masked = hcg_p_open[fan_in_merging_logits_attention_mask.flatten().bool()]
                     log_info[f'{log_prefix}/concrete_mean_{i}'] = concrete_non_masked.mean().item()
                     log_info[f'{log_prefix}/concrete_lt_0.1'] = (concrete_non_masked < 0.1).sum().item()
                     log_info[f'{log_prefix}/concrete_lt_0.5'] = (concrete_non_masked < 0.5).sum().item()
