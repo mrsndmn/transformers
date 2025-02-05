@@ -43,14 +43,15 @@ if __name__ == "__main__":
 
     model = AdaptiveLlamaForCausalLM.from_pretrained(checkpoint)
 
-    llama_model = build_adaptive_llama_from_llama_checkpoint(
-        llama_checkpoint = 'HuggingFaceTB/SmolLM-360M',
-        dummy_adaptive_fan_in=[ True ] * model.config.num_hidden_layers,
-        generate_merges_transform_impl='cuda_kernel',
-        fan_out_projection=True,
-        merging_type='hcg',
-        flash_attention=False,
-    )
+    llama_model = LlamaForCausalLM.from_pretrained(llama_checkpoint)
+    # llama_model = build_adaptive_llama_from_llama_checkpoint(
+    #     llama_checkpoint = 'HuggingFaceTB/SmolLM-360M',
+    #     dummy_adaptive_fan_in=[ True ] * model.config.num_hidden_layers,
+    #     generate_merges_transform_impl='cuda_kernel',
+    #     fan_out_projection=True,
+    #     merging_type='hcg',
+    #     flash_attention=False,
+    # )
 
     print("model params:", count_params(model))
     print("llama model params:", count_params(llama_model))
