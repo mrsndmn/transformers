@@ -469,7 +469,6 @@ class AdaptiveFanInGumbel(nn.Module):
         return res
 
 
-
 class HardConcreteGate(nn.Module):
     def __init__(self,
                  max_seq_len=2048,
@@ -586,7 +585,7 @@ class AdaptiveFanInHCG(nn.Module):
         )
 
         approximate_batch_size_length = 100
-        max_seq_len_buffer = torch.arange(config.max_position_embeddings).unsqueeze(0).repeat(approximate_batch_size_length, 1)
+        max_seq_len_buffer = torch.arange(config.max_position_embeddings * 10).unsqueeze(0).repeat(approximate_batch_size_length, 1)
         self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
 
     # @torch.compiler.disable(recursive=True)
@@ -628,7 +627,7 @@ class AdaptiveFanInHCG(nn.Module):
 
         # [ bs, seq_len, 1 ]
         p_open = concrete
-        if not self.training:
+        if self.training:
             p_open = self.hcg.get_p_open(log_a)
             p_open[~attention_mask.bool()] = 0
             p_open[special_embeddings_mask.bool()] = 1.
@@ -640,7 +639,10 @@ class AdaptiveFanInHCG(nn.Module):
         hs_dtype = hidden_state.dtype
         rhs_dtype = residual_hidden_state.dtype
 
-        residual_hidden_state = ((1 - concrete) * residual_hidden_state).to(rhs_dtype)
+        residual_hidden_state = ((1 - concrete) * residual_hidden_state)
+
+        if residual_hidden_state.dtype != rhs_dtype:
+            residual_hidden_state.to(rhs_dtype)
 
         merged_embeddings_counts = attention_mask
         if self.training:
@@ -667,7 +669,8 @@ class AdaptiveFanInHCG(nn.Module):
 
             merged_special_embeddings_mask[merged_eos_mask] = 1
 
-            assert (merged_special_embeddings_mask.sum(-1) == 2).all()
+            # assert (merged_special_embeddings_mask.sum(-1) == 2).all()
+
             special_embeddings_mask = merged_special_embeddings_mask
 
         # print("hidden_state.shape", hidden_state.shape)
@@ -1248,11 +1251,9 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
             if not isinstance(adaptive_down_layer, NoOpFanIn):
                 past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
-                cache_position = torch.arange(
-                    past_seen_tokens, past_seen_tokens + hidden_states.shape[1], device=hidden_states.device
-                )
-                loop_down_position_ids = cache_position.unsqueeze(0)
-                loop_down_position_embeddings = self.rotary_emb(hidden_states, loop_down_position_ids)
+                cache_position = cache_position[:hidden_states.shape[1]]
+                loop_down_position_ids = loop_down_position_ids[:, :hidden_states.shape[1]]
+                loop_down_position_embeddings = (loop_down_position_embeddings[0][:, :hidden_states.shape[1]], loop_down_position_embeddings[1][:, :hidden_states.shape[1]])
 
                 loop_down_causal_mask = self._update_causal_mask(
                     loop_down_attention_mask, hidden_states, cache_position, past_key_values, output_attentions

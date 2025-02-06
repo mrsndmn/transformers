@@ -417,6 +417,66 @@ __global__ void inplace_merge_pruned_tokens(
     }
 }
 
+void collapse_blocks(
+    torch::Tensor seq_len_blocks_lengths,
+    torch::Tensor merged_hidden_state,
+    torch::Tensor merged_embeddings_counts,
+    torch::Tensor merged_attention_mask
+) {
+
+    int seq_len = merged_hidden_state.size(1);
+    int batch_size = merged_hidden_state.size(0);
+
+    int seq_len_pow2 = 1;
+    int seq_len_pow2_exp = 1;
+    while(seq_len_pow2 < seq_len) {
+        seq_len_pow2 = seq_len_pow2 << 1;
+        seq_len_pow2_exp += 1;
+    }
+
+    int init_seq_len_threads_len = seq_len_blocks_lengths.size(1);
+
+    for (int batch_i = 0; batch_i < batch_size; ++batch_i) {
+        // todo process each batch in separate cuda stream
+
+        for (int divide_and_conquer_i = 1; divide_and_conquer_i < seq_len_pow2_exp; ++divide_and_conquer_i) {
+            int block_size = SEQ_LEN_BLOCK_SIZE * divide_and_conquer_i;
+            int seq_len_len = seq_len_pow2 / (1 << (divide_and_conquer_i - 1));
+            if (seq_len_len > init_seq_len_threads_len) {
+                seq_len_len = init_seq_len_threads_len;
+            }
+
+            // torch::Tensor merged_hidden_state_clone = torch::detach(merged_hidden_state);
+            // torch::Tensor merged_embeddings_counts_clone = torch::detach(merged_embeddings_counts);
+            // torch::Tensor merged_attention_mask_clone = torch::detach(merged_attention_mask);
+
+            for (int seq_len_blocks_i = 0; seq_len_blocks_i < seq_len_len - 1; seq_len_blocks_i += 2) {
+                if (seq_len_blocks_i + 1 >= seq_len_len) {
+                    // Neighbour block is out of range
+                    seq_len_blocks_lengths[batch_i][int(seq_len_blocks_i / 2)] = seq_len_blocks_lengths[batch_i][seq_len_blocks_i];
+                    break;
+                }
+
+                int64_t block_seq_len = seq_len_blocks_lengths[batch_i][seq_len_blocks_i].item<int64_t>();
+                int64_t next_block_seq_len = seq_len_blocks_lengths[batch_i][seq_len_blocks_i+1].item<int64_t>();
+
+                int new_block_seq_len_start = block_size * seq_len_blocks_i + block_seq_len;
+                int new_block_seq_len_end = new_block_seq_len_start + next_block_seq_len;
+
+                int next_block_seq_len_start = block_size * (seq_len_blocks_i + 1);
+                int next_block_seq_len_end = next_block_seq_len_start + next_block_seq_len;
+
+                // merged_hidden_state.slice(0, batch_i, batch_i + 1).slice(1, new_block_seq_len_start, new_block_seq_len_end)       = merged_hidden_state_clone.slice(0, batch_i, batch_i + 1).slice(1, next_block_seq_len_start, next_block_seq_len_end);
+                // merged_embeddings_counts.slice(0, batch_i, batch_i + 1).slice(1, new_block_seq_len_start, new_block_seq_len_end)  = merged_embeddings_counts_clone.slice(0, batch_i, batch_i + 1).slice(1, next_block_seq_len_start, next_block_seq_len_end);
+                // merged_attention_mask.slice(0, batch_i, batch_i + 1).slice(1, new_block_seq_len_start, new_block_seq_len_end)     = merged_attention_mask_clone.slice(0, batch_i, batch_i + 1).slice(1, next_block_seq_len_start, next_block_seq_len_end);
+
+                int new_seq_len = block_seq_len + next_block_seq_len;
+                seq_len_blocks_lengths[batch_i][int(seq_len_blocks_i / 2)] = new_seq_len;
+            }
+        }
+    }
+}
+
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cuda(
     const torch::Tensor& hidden_state,            // [ bs, seq_len, hidden_dim ]
     const torch::Tensor& concrete_bool,           // [ bs, seq_len ]
@@ -465,24 +525,12 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cu
     // todo разделяй и влавствуй
     seq_len_blocks_lengths = seq_len_blocks_lengths.to(torch::kCPU);
 
-    for (int batch_i = 0; batch_i < batch_size; ++batch_i) {
-        int new_seq_len = 0;
-        for (int seq_len_blocks_i = 0; seq_len_blocks_i < seq_len_threads; ++seq_len_blocks_i) {
-            int64_t block_seq_len = seq_len_blocks_lengths[batch_i][seq_len_blocks_i].item<int64_t>();
-
-            int block_seq_len_start = SEQ_LEN_BLOCK_SIZE * seq_len_blocks_i;
-            int block_seq_len_end = block_seq_len_start + block_seq_len;
-            if (block_seq_len_end > seq_len) {
-                block_seq_len_end = seq_len;
-            }
-
-            merged_hidden_state.slice(0, batch_i, batch_i + 1).slice(1, new_seq_len, new_seq_len+block_seq_len)        = merged_hidden_state.slice(0, batch_i, batch_i + 1).slice(1, block_seq_len_start, block_seq_len_end);
-            merged_embeddings_counts.slice(0, batch_i, batch_i + 1).slice(1, new_seq_len, new_seq_len+block_seq_len)   = merged_embeddings_counts.slice(0, batch_i, batch_i + 1).slice(1, block_seq_len_start, block_seq_len_end);
-            merged_attention_mask.slice(0, batch_i, batch_i + 1).slice(1, new_seq_len, new_seq_len+block_seq_len)      = merged_attention_mask.slice(0, batch_i, batch_i + 1).slice(1, block_seq_len_start, block_seq_len_end);
-
-            new_seq_len += block_seq_len;
-        }
-    }
+    collapse_blocks(
+        seq_len_blocks_lengths,
+        merged_hidden_state,
+        merged_embeddings_counts,
+        merged_attention_mask
+    );
 
     // const dim3 merge_block_size(num_threads, 1, 1);  // One thread per hidden_dim_span
     // const dim3 merge_grid_size(batch_size, 1, 1);   // One block per batch element

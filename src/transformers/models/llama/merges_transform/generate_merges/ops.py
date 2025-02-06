@@ -196,12 +196,17 @@ def prune_tokens_concrete(
         concrete_bool: Tensor, # [ bs, seq_len ]
         attention_mask: Tensor, # [ bs, seq_len ]
         ):
+    
+    hidden_state_dtype = hidden_state.dtype
+    hidden_state = hidden_state.to(torch.float32)
 
     hidden_state, merged_embeddings_counts, merged_attention_mask = torch.ops.generate_merges.prune_tokens_concrete_cuda.default(
         hidden_state,
         concrete_bool,
         attention_mask,
     )
+
+    hidden_state = hidden_state.to(hidden_state_dtype)
 
     return hidden_state, merged_embeddings_counts, merged_attention_mask
 
