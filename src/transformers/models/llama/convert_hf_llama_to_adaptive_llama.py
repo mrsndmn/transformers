@@ -40,7 +40,7 @@ def build_adaptive_llama_from_llama_checkpoint(
         gumbel_tau=2.0,
         scale_not_pruned_gradients=0.0,
     ):
-    
+
     torch_dtype = torch.bfloat16
     llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
     llama_model_state_dict = llama_model.state_dict()

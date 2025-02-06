@@ -162,15 +162,16 @@ torch::Tensor batch_repeat_interleave_for_merges_count(
 
 __global__ void fan_out_restore_residuals_kernel(
     const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
+    const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_sumsum,
     const torch::PackedTensorAccessor64<float, 3> hidden_states,
     torch::PackedTensorAccessor64<float, 3> restored_hidden_states,
     int batch_size, int seq_len, int hidden_dim
 ) {
     int batch_i = blockIdx.x; // Batch index
+    int seq_len_i = blockIdx.y; // Sequence index
     int thread_idx = threadIdx.x;
 
-    // TODO could be also parallelized by sequence dim!
-    if (batch_i >= batch_size) {
+    if (batch_i >= batch_size || seq_len_i >= seq_len) {
         return; // Out of bounds check
     }
 
@@ -183,18 +184,15 @@ __global__ void fan_out_restore_residuals_kernel(
         hidden_dim_end = hidden_dim;
     }
 
-    int restored_seq_len = 0;
-    for (int seq_len_i = 0; seq_len_i < seq_len; ++seq_len_i) {
-        auto num_repeats = merged_embeddings_counts[batch_i][seq_len_i];
-        if (num_repeats == 0) {
-            break;
-        }
+    auto num_repeats = merged_embeddings_counts[batch_i][seq_len_i];
+    if (num_repeats == 0) {
+        return;
+    }
 
-        int restored_idx = int(restored_seq_len + num_repeats - 1);
-        for (int hi = hidden_dim_start; hi < hidden_dim_end; ++hi) {
-            restored_hidden_states[batch_i][restored_idx][hi] = hidden_states[batch_i][seq_len_i][hi];
-        }
-        restored_seq_len += num_repeats;
+    auto restored_idx = merged_embeddings_sumsum[batch_i][seq_len_i];
+
+    for (int hi = hidden_dim_start; hi < hidden_dim_end; ++hi) {
+        restored_hidden_states[batch_i][restored_idx][hi] = hidden_states[batch_i][seq_len_i][hi];
     }
 }
 
@@ -212,12 +210,15 @@ torch::Tensor fan_out_restore_residuals(
     int num_threads = (hidden_dim + 63) / 64;
 
     const dim3 block_size(num_threads, 1, 1);  // One thread per sequence element
-    const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
+    const dim3 grid_size(batch_size, seq_len, 1);   // One block per batch element
 
     torch::Tensor restored_hidden_states = torch::clone(residual_hidden_states_projection);
 
+    torch::Tensor merged_embeddings_sumsum = torch::cumsum(merged_embeddings_counts, 1);
+
     fan_out_restore_residuals_kernel<<<grid_size, block_size>>>(
         merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
+        merged_embeddings_sumsum.packed_accessor64<int64_t, 2>(),
         hidden_states.packed_accessor64<float, 3>(),
         restored_hidden_states.packed_accessor64<float, 3>(),
         batch_size, seq_len, hidden_dim
@@ -307,6 +308,7 @@ __global__ void prune_tokens_concrete_kernel(
     torch::PackedTensorAccessor64<float, 3> merged_hidden_state,
     torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
     torch::PackedTensorAccessor64<bool, 2> merged_attention_mask,
+    torch::PackedTensorAccessor64<int64_t, 1> new_seq_lengths,
     int batch_size, int seq_len, int hidden_dim
 ) {
     int batch_i = blockIdx.x; // Batch index
@@ -351,6 +353,11 @@ __global__ void prune_tokens_concrete_kernel(
             }
         }
     }
+
+    if (thread_idx == 0) {
+        new_seq_lengths[batch_i] = new_seq_len_i;
+    }
+
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cuda(
@@ -378,6 +385,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cu
     torch::Tensor merged_embeddings_counts = torch::zeros({batch_size, seq_len}, merged_embeddings_counts_options);
     torch::Tensor merged_attention_mask = torch::zeros({batch_size, seq_len}, mask_options);
 
+    torch::Tensor new_seq_lengths = torch::zeros({batch_size}, merged_embeddings_counts_options);
+
     prune_tokens_concrete_kernel<<<grid_size, block_size>>>(
         hidden_state.packed_accessor64<float, 3>(),
         concrete_bool.packed_accessor64<bool, 2>(),
@@ -386,14 +395,23 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cu
         merged_hidden_state.packed_accessor64<float, 3>(),
         merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
         merged_attention_mask.packed_accessor64<bool, 2>(),
+        new_seq_lengths.packed_accessor64<int64_t, 1>(),
+
         batch_size, seq_len, hidden_dim
     );
+
+    int64_t max_seq_len = new_seq_lengths.max().item<int64_t>();
+
+    namespace index = torch::indexing;
+    torch::Tensor sliced_merged_hidden_state = merged_hidden_state.index({index::Slice(), index::Slice(0, max_seq_len), index::Slice()});
+    torch::Tensor sliced_merged_embeddings_counts = merged_embeddings_counts.index({index::Slice(), index::Slice(0, max_seq_len)});
+    torch::Tensor sliced_merged_attention_mask = merged_attention_mask.index({index::Slice(), index::Slice(0, max_seq_len)});
 
     // Error checking
     // cudaDeviceSynchronize();
     // check_cuda_errors();
 
-    return std::make_tuple(merged_hidden_state, merged_embeddings_counts, merged_attention_mask);
+    return std::make_tuple(sliced_merged_hidden_state, sliced_merged_embeddings_counts, sliced_merged_attention_mask);
 }
 
 
