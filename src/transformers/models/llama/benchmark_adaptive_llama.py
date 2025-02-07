@@ -25,9 +25,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--bench_iters",
-        default=100,
+        default=10,
         type=int,
-        required=True,
     )
     parser.add_argument(
         "--generate",
@@ -47,47 +46,16 @@ if __name__ == "__main__":
 
     bench_dtype = torch.bfloat16
 
-    # model = AdaptiveLlamaForCausalLM.from_pretrained(
-    #     checkpoint,
-    #     torch_dtype=bench_dtype,
-    #     attn_implementation='flash_attention_2',
-    # )
-
     llama_model = LlamaForCausalLM.from_pretrained(
         llama_checkpoint,
         torch_dtype=bench_dtype,
-        attn_implementation='flash_attention_2',
+        # attn_implementation='flash_attention_2',
     )
-    # llama_model = build_adaptive_llama_from_llama_checkpoint(
-    #     llama_checkpoint = 'HuggingFaceTB/SmolLM-360M',
-    #     dummy_adaptive_fan_in=[ True ] * model.config.num_hidden_layers,
-    #     generate_merges_transform_impl='cuda_kernel',
-    #     fan_out_projection=True,
-    #     merging_type='hcg',
-    #     flash_attention=False,
-    # )
 
-    # print("remove 4'th and 9'th adaptive module due to inefficiency")
-    from transformers.models.llama.modeling_adaptive_llama import NoOpFanIn, NoopAdaptiveFanOut, AdaptiveFanInHCG
-    # model.config.max_position_embeddings = 102400
-    # torch.set_default_dtype(bench_dtype)
-    # adaptive_down_backup = model.model.adaptive_down[9]
-    # new_adaptive_inc_ctx = AdaptiveFanInHCG(model.config)
-    # incompatible_keys = new_adaptive_inc_ctx.load_state_dict(adaptive_down_backup.state_dict())
-    # print("new_adaptive_inc_ctx incompatible_keys", incompatible_keys)
-    # # breakpoint()
-    # model.model.adaptive_down[9] = new_adaptive_inc_ctx
-    # # model.model.adaptive_up[4] = NoopAdaptiveFanOut(model.config)
-    # # model.model.adaptive_down[9] = NoOpFanIn(model.config)
-    # # model.model.adaptive_up[9] = NoopAdaptiveFanOut(model.config)
-
-    config = LlamaConfig.from_pretrained(checkpoint, torch_dtype=bench_dtype, attn_implementation='flash_attention_2',)
-    config.merging_type = 'attention_output_mlp'
-    config.generate_merges_transform_impl = 'cuda_kernel'
-
-    torch.set_default_dtype(bench_dtype)
-    model = AdaptiveLlamaForCausalLM(
-        config,
+    model = AdaptiveLlamaForCausalLM.from_pretrained(
+        checkpoint,
+        torch_dtype=bench_dtype,
+        # attn_implementation='flash_attention_2',
     )
 
     model.to(device)
@@ -107,7 +75,8 @@ if __name__ == "__main__":
 
     with torch.no_grad():
         if args.generate:
-            for current_model in [llama_model, model]:
+            print("go generate")
+            for current_model in tqdm([model, llama_model]):
 
                 model_inputs = tokenizer([ '<|im_start|> Who are you?' ], return_tensors='pt')
                 model_inputs = model_inputs.to(device)
@@ -117,8 +86,7 @@ if __name__ == "__main__":
                     special_embeddings_mask[:, 0] = 1
                     model_inputs['special_embeddings_mask'] = special_embeddings_mask
 
-
-                max_new_tokens = 100
+                max_new_tokens = 10
                 gen_params = {
                     "do_sample": False,
                     "min_new_tokens": 1,
@@ -138,19 +106,19 @@ if __name__ == "__main__":
                 }
 
                 with torch.no_grad():
-                    out = current_model.generate(
-                        **model_inputs,
-                        **gen_params,
-                    )
                     start_time = time.time()
                     out = current_model.generate(
                         **model_inputs,
                         **gen_params,
                     )
                     print("model", type(current_model))
-                    print("generation decode:", tokenizer.batch_decode(out))
                     print("duration:", time.time() - start_time)
                     print("tokens per second:", out.shape[-1] / (time.time() - start_time))
+                    print("generation decode:", tokenizer.batch_decode(out))
+
+                    if isinstance(current_model, AdaptiveLlamaForCausalLM):
+                        print("pruned tokens")
+                
         else:
 
             import matplotlib.pyplot as plt
@@ -194,6 +162,7 @@ if __name__ == "__main__":
                         print(prof.key_averages().table(sort_by="self_cuda_memory_usage", row_limit=20))
 
                     start = time.time()
+                    print("bench_iters", bench_iters)
                     for _ in range(bench_iters):
                         forward_output = current_model.forward(**text_inputs)
 

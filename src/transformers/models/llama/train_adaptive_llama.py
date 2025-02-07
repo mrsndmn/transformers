@@ -175,7 +175,8 @@ class AdaptiveLlamaTrainer(Trainer):
 
         labels = inputs.get('labels', None)
         if labels is None:
-            labels = inputs['input_ids']
+            labels = inputs['input_ids'].clone()
+            inputs['input_ids'][inputs['input_ids'] == self.tokenizer.pad_token_id] = -100
 
         special_embeddings_mask = inputs.get('special_embeddings_mask')
         if special_embeddings_mask is None:
@@ -193,7 +194,7 @@ class AdaptiveLlamaTrainer(Trainer):
             # assert special_embeddings_mask.sum() > 1
 
             model_kwargs["special_embeddings_mask"] = special_embeddings_mask
-            
+
             assert special_embeddings_mask.shape == attention_mask.shape
 
         outputs = model.forward(**model_kwargs)
@@ -221,6 +222,14 @@ class AdaptiveLlamaTrainer(Trainer):
                 ce_targets = torch.zeros([ fan_in_merging_logits.shape[0] ], device=fan_in_merging_logits.device, dtype=torch.long)
                 ce_targets[fan_in_merging_logits_attention_mask.flatten().bool() == False] = -100
                 ce_merging_loss_sum += torch.nn.functional.cross_entropy(fan_in_merging_logits, ce_targets, label_smoothing=0.1)
+
+                def debug_grad(grad):
+                    print(grad)
+                    breakpoint()
+                    return grad
+
+                ce_merging_loss_sum.register_hook(debug_grad)
+
                 count_merging_losses+=1
                 # breakpoint()
                 # print("fan_in_merging_logits", fan_in_merging_logits[:2])

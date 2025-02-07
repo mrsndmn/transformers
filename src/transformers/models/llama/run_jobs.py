@@ -20,7 +20,7 @@ BASE_IMAGE = "cr.ai.cloud.ru/f51af5b1-d43b-4db4-938d-569d7cfffb7a/cuda12.1-torch
 
 workdir_prefix = "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out"
 
-def run_experiments(experiments, job_description_prefix=""):
+def run_experiments(experiments, job_description_prefix="", dry=False):
     
     for exp in experiments:
         dummy_adaptive_fan_in_layers_str = exp['dummy_adaptive_fan_in_layers_str']
@@ -56,9 +56,9 @@ def run_experiments(experiments, job_description_prefix=""):
         seed = SEED
 
         script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --full_unmerge_loss_weight {full_unmerge_loss_weight} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type linear --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection 1 --logging_steps 50 --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --eval_steps 250 --gumbel_tau {gumbel_tau} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --ce_merging_loss_weight {ce_merging_loss_weight} --gumbel_loss_weight_dynamic {gumbel_loss_weight_dynamic} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --dataloader_num_workers 0 --bf16 1 --torch_compile 1"
-        
+
         print(f"\n\n{script_str}\n\n")
-        
+
         job_w_args = client_lib.Job(
             base_image=BASE_IMAGE,
             script=script_str,
@@ -75,27 +75,27 @@ def run_experiments(experiments, job_description_prefix=""):
             # stop_timer=600, # в минутах, = 10 часов
             env_variables={
                 "WANDB_PROJECT": "adaptive_attention",
-                "WANDB_API_KEY": os.environ.get("WANDB_API_KEY", ""), 
+                "WANDB_API_KEY": os.environ.get("WANDB_API_KEY", ""),
                 "WANDB_MODE": "online",
                 "PYTHONPATH": f"{workdir_prefix}/src",
                 "HF_HOME": "/workspace-SR004.nfs2/d.tarasov/.cache/huggingface"
             },
         )
 
-        # print(output_dir, job_w_args.submit())
-        print("JOB WAS NOT LAUNCHED")
+        if dry:
+            print("JOB WAS NOT LAUNCHED")
+        else:
+            print(output_dir, job_w_args.submit())
 
     return
 
 
-def run_gumbel_adaptive():
+def run_gumbel_adaptive(**kwargs):
 
     experiment_prefix_base_name = "adaptive_gumbel"
 
     common_params = {
         "freeze_lm_backbone": 0,
-        "ce_merging_loss_weight": 5,
-        "hcg_loss_weight_dynamic": 1,
         "select_train_dataset_items": 800000,
         "warmup_steps": 2000,
         "model_type": "pretrained_checkpoint",
@@ -105,28 +105,73 @@ def run_gumbel_adaptive():
     }
 
     gumbel_experiments = [
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8",
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_gumbel_pretrain_8/checkpoint-996/",
-            **common_params,
-        },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8",
+        #     "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_gumbel_pretrain_8/checkpoint-996/",
+        #     "ce_merging_loss_weight": 5,
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8_w3",
+        #     "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_gumbel_pretrain_8/checkpoint-996/",
+        #     "ce_merging_loss_weight": 3,
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8_w1.5",
+        #     "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_gumbel_pretrain_8/checkpoint-996/",
+        #     "ce_merging_loss_weight": 1.5,
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8_w1",
+        #     "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_gumbel_pretrain_8/checkpoint-996/",
+        #     "ce_merging_loss_weight": 1,
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8_w0.5",
+        #     "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_gumbel_pretrain_8/checkpoint-996/",
+        #     "ce_merging_loss_weight": 0.5,
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8_w0.1",
+        #     "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_gumbel_pretrain_8/checkpoint-996/",
+        #     "ce_merging_loss_weight": 0.1,
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8_w0",
+        #     "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_gumbel_pretrain_8/checkpoint-996/",
+        #     "ce_merging_loss_weight": 0,
+        #     **common_params,
+        # },
     ]
 
-    run_experiments(gumbel_experiments)
+    run_experiments(gumbel_experiments, job_description_prefix="Gumbel: ", **kwargs)
 
 
     return
 
 
-def run_gumbel_adaptive_pretrain():
+def run_gumbel_adaptive_pretrain(**kwargs):
 
     experiment_prefix_base_name = "adaptive_gumbel_pretrain"
 
     common_params = {
         "freeze_lm_backbone": 1,
-        "hcg_loss_weight": 0.1,
-        "select_train_dataset_items": 32000,
+        "hcg_loss_weight": 0.0,
+        "ce_merging_loss_weight": 0.0,
+        "gumbel_loss_weight_dynamic": 0,
+        "select_train_dataset_items": 128000,
         "warmup_steps": 1,
         "merging_type": 'attention_output_mlp',
         "fan_out_type": "gumbel"
@@ -140,13 +185,13 @@ def run_gumbel_adaptive_pretrain():
         },
     ]
 
-    run_experiments(gumbel_experiments, job_description_prefix="Gumbel Pretrain: ")
+    run_experiments(gumbel_experiments, job_description_prefix="Gumbel Pretrain: ", **kwargs)
 
     return
 
 
 
-def run_hcg_adaptive_pretrain():
+def run_hcg_adaptive_pretrain(**kwargs):
 
     experiment_prefix_base_name = "adaptive_hcg_pretrain"
 
@@ -185,12 +230,12 @@ def run_hcg_adaptive_pretrain():
         },
     ]
 
-    run_experiments(hcg_experiments, job_description_prefix="HCG Pretrain: ")
+    run_experiments(hcg_experiments, job_description_prefix="HCG Pretrain: ", **kwargs)
 
     return
 
 
-def run_hcg_adaptive():
+def run_hcg_adaptive(**kwargs):
 
     experiment_prefix_base_name = "adaptive_hcg"
 
@@ -236,19 +281,23 @@ def run_hcg_adaptive():
         },
     ]
 
-    run_experiments(hcg_experiments, job_description_prefix="HCG: ")
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
 
     return
 
 
 
-
 if __name__ == "__main__":
 
+    import sys
+
+    dry = len(sys.argv) > 1 and sys.argv[1] == 'dry'
+    print("dry", dry)
+
     # HCG
-    # run_hcg_adaptive()
-    # run_hcg_adaptive_pretrain()
+    # run_hcg_adaptive(dry=dry)
+    # run_hcg_adaptive_pretrain(dry=dry)
 
     # Gumbel
-    run_gumbel_adaptive_pretrain()
-    run_gumbel_adaptive()
+    run_gumbel_adaptive_pretrain(dry=dry)
+    # run_gumbel_adaptive(dry=dry)

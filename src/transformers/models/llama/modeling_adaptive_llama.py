@@ -388,10 +388,12 @@ class AdaptiveFanInGumbel(nn.Module):
                 y_hard[:, :, 1] = 1.0
                 merging_map = y_hard - merging_map_soft.detach() + merging_map_soft
         else:
+            # eval
             if not full_unmerge:
                 merging_map = torch.zeros_like(merging_log_probas)
                 merging_map[:, :, 0] = (merging_log_probas[:, :, 0] > merging_log_probas[:, :, 1]).to(merging_map.dtype)
                 merging_map[:, :, 1] = 1 - merging_map[:, :, 0]
+                # print("merging_map", merging_map[:, :, 1])
             else:
                 merging_map = torch.zeros_like(merging_log_probas)
                 merging_map[:, :, 1] = 1
@@ -415,10 +417,12 @@ class AdaptiveFanInGumbel(nn.Module):
         # if scale_not_pruned_gradients > 0 and merging_map.requires_grad:
         #     merging_map.register_hook(merging_map_hook)
 
+        # print("special_embeddings_mask", special_embeddings_mask)
+
         # OHE: [ bs, seq_len, 2 ]
         merging_map[~attention_mask.bool()] = 0
         merging_map[special_embeddings_mask.bool()] = torch.tensor([0., 1.], dtype=merging_map.dtype, device=merging_map.device)
-        
+
         if self.max_seq_len_buffer.shape[0] < attention_mask.shape[0]:
             self.max_seq_len_buffer.data = self.max_seq_len_buffer.data[:1].repeat(attention_mask.shape[0], 1)
 
@@ -455,6 +459,8 @@ class AdaptiveFanInGumbel(nn.Module):
 
         #     merged_hidden_states.register_hook(merged_hidden_states_hook)
         #     residual_hidden_state.register_hook(residual_hidden_state_register_hook)
+
+        # breakpoint()
 
         res = AdaptiveFanInOutput(
             hidden_state=merged_hidden_states,
