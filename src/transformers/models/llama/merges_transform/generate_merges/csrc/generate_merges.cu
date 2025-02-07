@@ -162,7 +162,7 @@ torch::Tensor batch_repeat_interleave_for_merges_count(
 
 __global__ void fan_out_restore_residuals_kernel(
     const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
-    const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_sumsum,
+    const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_cumsum,
     const torch::PackedTensorAccessor64<float, 3> hidden_states,
     torch::PackedTensorAccessor64<float, 3> restored_hidden_states,
     int batch_size, int seq_len, int hidden_dim
@@ -189,7 +189,7 @@ __global__ void fan_out_restore_residuals_kernel(
         return;
     }
 
-    auto restored_idx = merged_embeddings_sumsum[batch_i][seq_len_i];
+    auto restored_idx = merged_embeddings_cumsum[batch_i][seq_len_i] - 1;
 
     for (int hi = hidden_dim_start; hi < hidden_dim_end; ++hi) {
         restored_hidden_states[batch_i][restored_idx][hi] = hidden_states[batch_i][seq_len_i][hi];
@@ -214,11 +214,11 @@ torch::Tensor fan_out_restore_residuals(
 
     torch::Tensor restored_hidden_states = torch::clone(residual_hidden_states_projection);
 
-    torch::Tensor merged_embeddings_sumsum = torch::cumsum(merged_embeddings_counts, 1);
+    torch::Tensor merged_embeddings_cumsum = torch::cumsum(merged_embeddings_counts, 1);
 
     fan_out_restore_residuals_kernel<<<grid_size, block_size>>>(
         merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
-        merged_embeddings_sumsum.packed_accessor64<int64_t, 2>(),
+        merged_embeddings_cumsum.packed_accessor64<int64_t, 2>(),
         hidden_states.packed_accessor64<float, 3>(),
         restored_hidden_states.packed_accessor64<float, 3>(),
         batch_size, seq_len, hidden_dim
@@ -446,9 +446,9 @@ void collapse_blocks(
                 seq_len_len = init_seq_len_threads_len;
             }
 
-            // torch::Tensor merged_hidden_state_clone = torch::detach(merged_hidden_state);
-            // torch::Tensor merged_embeddings_counts_clone = torch::detach(merged_embeddings_counts);
-            // torch::Tensor merged_attention_mask_clone = torch::detach(merged_attention_mask);
+            torch::Tensor merged_hidden_state_clone = torch::detach(merged_hidden_state);
+            torch::Tensor merged_embeddings_counts_clone = torch::detach(merged_embeddings_counts);
+            torch::Tensor merged_attention_mask_clone = torch::detach(merged_attention_mask);
 
             for (int seq_len_blocks_i = 0; seq_len_blocks_i < seq_len_len - 1; seq_len_blocks_i += 2) {
                 if (seq_len_blocks_i + 1 >= seq_len_len) {
@@ -466,9 +466,9 @@ void collapse_blocks(
                 int next_block_seq_len_start = block_size * (seq_len_blocks_i + 1);
                 int next_block_seq_len_end = next_block_seq_len_start + next_block_seq_len;
 
-                // merged_hidden_state.slice(0, batch_i, batch_i + 1).slice(1, new_block_seq_len_start, new_block_seq_len_end)       = merged_hidden_state_clone.slice(0, batch_i, batch_i + 1).slice(1, next_block_seq_len_start, next_block_seq_len_end);
-                // merged_embeddings_counts.slice(0, batch_i, batch_i + 1).slice(1, new_block_seq_len_start, new_block_seq_len_end)  = merged_embeddings_counts_clone.slice(0, batch_i, batch_i + 1).slice(1, next_block_seq_len_start, next_block_seq_len_end);
-                // merged_attention_mask.slice(0, batch_i, batch_i + 1).slice(1, new_block_seq_len_start, new_block_seq_len_end)     = merged_attention_mask_clone.slice(0, batch_i, batch_i + 1).slice(1, next_block_seq_len_start, next_block_seq_len_end);
+                merged_hidden_state.slice(0, batch_i, batch_i + 1).slice(1, new_block_seq_len_start, new_block_seq_len_end)       = merged_hidden_state_clone.slice(0, batch_i, batch_i + 1).slice(1, next_block_seq_len_start, next_block_seq_len_end);
+                merged_embeddings_counts.slice(0, batch_i, batch_i + 1).slice(1, new_block_seq_len_start, new_block_seq_len_end)  = merged_embeddings_counts_clone.slice(0, batch_i, batch_i + 1).slice(1, next_block_seq_len_start, next_block_seq_len_end);
+                merged_attention_mask.slice(0, batch_i, batch_i + 1).slice(1, new_block_seq_len_start, new_block_seq_len_end)     = merged_attention_mask_clone.slice(0, batch_i, batch_i + 1).slice(1, next_block_seq_len_start, next_block_seq_len_end);
 
                 int new_seq_len = block_seq_len + next_block_seq_len;
                 seq_len_blocks_lengths[batch_i][int(seq_len_blocks_i / 2)] = new_seq_len;
