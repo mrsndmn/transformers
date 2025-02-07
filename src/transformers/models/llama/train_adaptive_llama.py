@@ -93,10 +93,10 @@ class AdaptiveTrainingArguments(TrainingArguments):
     model_type: str = "dummy" # dummy | pretrained | SmolLM-1.7B
     
     ce_merging_loss_weight: float = 0.0
-    min_ce_merging_loss_value: float = 1.0
     full_unmerge_loss_weight: float = 1.0
     hcg_loss_weight: float = 0.0
     hcg_loss_weight_dynamic: bool = False
+    gumbel_loss_weight_dynamic: bool = False
     dummy_adaptive_fan_in_layers: Optional[int] = None
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
     
@@ -210,31 +210,32 @@ class AdaptiveLlamaTrainer(Trainer):
         count_merging_losses = 0
         sum_pruned_tokens = 0
 
-        if isinstance(model, AdaptiveLlamaForCausalLM):
-            sum_pruned_tokens = outputs.sum_pruned_tokens.item()
-            if self.args.ce_merging_loss_weight > 0.0:
-                for i, (fan_in_merging_logits, fan_in_merging_logits_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
-                    # ce_targets = outputs.fan_in_merging_maps[i][:, :, 1].flatten()
-                    if fan_in_merging_logits is None:
-                        continue
+        sum_pruned_tokens = outputs.sum_pruned_tokens.item()
+        if self.args.ce_merging_loss_weight > 0.0:
+            for i, (fan_in_merging_logits, fan_in_merging_logits_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
+                # ce_targets = outputs.fan_in_merging_maps[i][:, :, 1].flatten()
+                if fan_in_merging_logits is None:
+                    continue
 
-                    fan_in_merging_logits = fan_in_merging_logits.flatten(0, 1)
-                    ce_targets = torch.ones([ fan_in_merging_logits.shape[0] ], device=fan_in_merging_logits.device, dtype=torch.long)
-                    ce_targets[fan_in_merging_logits_attention_mask.flatten().bool() == False] = -100
-                    ce_merging_loss_sum += torch.nn.functional.cross_entropy(fan_in_merging_logits, ce_targets)
-                    count_merging_losses+=1
-                    # breakpoint()
-                    # print("fan_in_merging_logits", fan_in_merging_logits[:2])
-                    # print("ce_merging_loss_sum", i, ce_merging_loss_sum)
-                        # print(fan_in_merging_logits[:10])
-                
-                if count_merging_losses > 0:
-                    ce_merging_loss_sum /= count_merging_losses
+                fan_in_merging_logits = fan_in_merging_logits.flatten(0, 1)
+                ce_targets = torch.zeros([ fan_in_merging_logits.shape[0] ], device=fan_in_merging_logits.device, dtype=torch.long)
+                ce_targets[fan_in_merging_logits_attention_mask.flatten().bool() == False] = -100
+                ce_merging_loss_sum += torch.nn.functional.cross_entropy(fan_in_merging_logits, ce_targets, label_smoothing=0.1)
+                count_merging_losses+=1
+                # breakpoint()
+                # print("fan_in_merging_logits", fan_in_merging_logits[:2])
+                # print("ce_merging_loss_sum", i, ce_merging_loss_sum)
+                    # print(fan_in_merging_logits[:10])
+
+            if count_merging_losses > 0:
+                ce_merging_loss_sum /= count_merging_losses
 
         ce_merging_loss_sum *= self.args.ce_merging_loss_weight
-        # print("ce_merging_loss_sum", ce_merging_loss_sum)
-        if ce_merging_loss_sum < self.args.min_ce_merging_loss_value:
-            ce_merging_loss_sum = 0
+
+        if self.args.gumbel_loss_weight_dynamic:
+            exp_scale = 30 * max(outputs.loss.detach().item() - 1.8, 0)
+            ce_merging_loss_sum /= torch.exp(torch.tensor(exp_scale, device=outputs.loss.device))
+
 
         count_hcg_layers = 0
         hcg_loss = 0
@@ -252,7 +253,6 @@ class AdaptiveLlamaTrainer(Trainer):
 
             if count_hcg_layers > 0:
                 hcg_loss /= count_hcg_layers
-
 
         if self.args.hcg_loss_weight_dynamic:
             hcg_loss *= self.args.hcg_loss_weight
@@ -865,7 +865,7 @@ if __name__ == "__main__":
         #     single=f"{tokenizer.bos_token} $A {tokenizer.eos_token}",
         #     special_tokens=[(tokenizer.bos_token, tokenizer.bos_token_id), (tokenizer.eos_token, tokenizer.eos_token_id)],
         # )
-        
+
         im_start_token_id = 1
         im_end_token_id = 2
 
