@@ -40,15 +40,11 @@ __global__ void generate_merges_transform_kernel(
         if (is_token_important ||  seq_len_i == seq_len - 1) {
             merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
             aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = 1.0;
+            merged_attention_mask[batch_i][new_seq_len_i] = true;
             new_seq_len_i += 1;
         } else {
             merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
         }
-    }
-
-    // Update the merged_attention_mask for the current batch
-    for (int i = 0; i < new_seq_len_i; ++i) {
-        merged_attention_mask[batch_i][i] = true;
     }
 }
 
