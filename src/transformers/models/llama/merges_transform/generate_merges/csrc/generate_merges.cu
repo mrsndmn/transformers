@@ -37,7 +37,7 @@ __global__ void generate_merges_transform_kernel(
 
         bool is_token_important = merging_map[batch_i][seq_len_i][1] > merging_map[batch_i][seq_len_i][0];
 
-        if (is_token_important ||  seq_len_i == seq_len - 1) {
+        if (is_token_important) {
             merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
             aggregated_embeddings_transform[batch_i][new_seq_len_i][seq_len_i] = 1.0;
             merged_attention_mask[batch_i][new_seq_len_i] = true;
@@ -182,7 +182,8 @@ __global__ void fan_out_restore_residuals_kernel(
 torch::Tensor fan_out_restore_residuals(
     const torch::Tensor& merged_embeddings_counts,
     const torch::Tensor& hidden_states,
-    const torch::Tensor& residual_hidden_states_projection
+    const torch::Tensor& residual_hidden_states_projection,
+    const torch::Tensor& residual_hidden_states_attention_mask
 ) {
     const int batch_size = merged_embeddings_counts.size(0);
     const int seq_len = merged_embeddings_counts.size(1);
@@ -218,6 +219,7 @@ torch::Tensor fan_out_restore_residuals(
 __global__ void backward_fan_out_straight_kernel(
     const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
     const torch::PackedTensorAccessor64<float, 3> restored_hidden_states_grad,
+    const torch::PackedTensorAccessor64<int64_t, 1> restored_hidden_states_seq_lengths,
     torch::PackedTensorAccessor64<float, 3> hidden_states_grad,
     torch::PackedTensorAccessor64<float, 3> residual_hidden_states_grad,
     int batch_size, int seq_len, int hidden_dim
@@ -251,11 +253,22 @@ __global__ void backward_fan_out_straight_kernel(
 
         output_seq_len_i += num_repeats;
     }
+
+    // if last tokens were skipped
+    // we need to copy gradients for them
+    int output_seq_len_total = restored_hidden_states_seq_lengths[batch_i];
+    for (int residuals_grad_i = output_seq_len_i; residuals_grad_i < output_seq_len_total; ++residuals_grad_i) {
+        for (int hi = 0; hi < hidden_dim; ++hi) {
+            residual_hidden_states_grad[batch_i][residuals_grad_i][hi] = restored_hidden_states_grad[batch_i][residuals_grad_i][hi];
+        }
+    }
+
 }
 
 std::tuple<torch::Tensor, torch::Tensor> backward_fan_out_restore_residuals(
     const torch::Tensor& merged_embeddings_counts,
-    const torch::Tensor& restored_hidden_states_grad
+    const torch::Tensor& restored_hidden_states_grad,
+    const torch::Tensor& restored_hidden_states_seq_lengths // [ bs ]
 ) {
     const int batch_size = merged_embeddings_counts.size(0);
     const int seq_len = merged_embeddings_counts.size(1);
@@ -271,6 +284,7 @@ std::tuple<torch::Tensor, torch::Tensor> backward_fan_out_restore_residuals(
     backward_fan_out_straight_kernel<<<grid_size, block_size>>>(
         merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
         restored_hidden_states_grad.packed_accessor64<float, 3>(),
+        restored_hidden_states_seq_lengths.packed_accessor64<int64_t, 1>(),
         hidden_states_grad.packed_accessor64<float, 3>(),
         residual_hidden_states_grad.packed_accessor64<float, 3>(),
         batch_size, seq_len, hidden_dim
@@ -551,8 +565,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {}
 TORCH_LIBRARY(generate_merges, m) {
     m.def("generate_merges_transform(Tensor a, Tensor b, Tensor c) -> (Tensor, Tensor, Tensor)");
     m.def("batch_repeat_interleave_for_merges_count(Tensor a, Tensor b) -> Tensor");
-    m.def("fan_out_restore_residuals(Tensor a, Tensor b, Tensor c) -> Tensor");
-    m.def("backward_fan_out_restore_residuals(Tensor a, Tensor b) -> (Tensor, Tensor)");
+    m.def("fan_out_restore_residuals(Tensor a, Tensor b, Tensor c, Tensor d) -> Tensor");
+    m.def("backward_fan_out_restore_residuals(Tensor a, Tensor b, Tensor c) -> (Tensor, Tensor)");
     m.def("prune_tokens_concrete_cuda(Tensor a, Tensor b, Tensor c) -> (Tensor, Tensor, Tensor)");
 }
 

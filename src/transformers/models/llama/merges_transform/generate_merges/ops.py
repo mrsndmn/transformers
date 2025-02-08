@@ -130,6 +130,7 @@ def fan_out_restore_residuals(
         merged_embeddings_counts: Tensor, # [ bs, seq_len ]
         hidden_states: Tensor, # [ bs, new_seq_len, hidden_dim ]
         residual_hidden_states: Tensor, # [ bs, seq_len, hidden_dim ]
+        residual_hidden_states_attention_mask: Tensor, # [ bs, seq_len ]
         ) -> Tensor:
 
     torch._check(len(merged_embeddings_counts.shape) == 2)
@@ -148,8 +149,9 @@ def fan_out_restore_residuals(
         merged_embeddings_counts,
         hidden_states,
         residual_hidden_states,
+        residual_hidden_states_attention_mask,
     )
-    
+
     restored_hidden_states = restored_hidden_states.to(orig_dtype)
 
     return restored_hidden_states
@@ -158,14 +160,20 @@ def fan_out_restore_residuals(
 def _backward_fan_out_restore_residuals(ctx, restored_hidden_states_grad):
     # restored_hidden_states_grad ~ [ bs, seq_len, hidden_dim ]
     
-    (merged_embeddings_counts,) = ctx.saved_tensors
-    
+    (merged_embeddings_counts, residual_hidden_states_attention_mask) = ctx.saved_tensors
+        # [ bs ]
+    restored_hidden_states_seq_lengths = residual_hidden_states_attention_mask.sum(dim=-1)
+
+    print("restored_hidden_states_seq_lengths", restored_hidden_states_seq_lengths)
+    print("merged_embeddings_counts", merged_embeddings_counts)
+
     hidden_states_grad = None
     residual_hidden_states_grad = None
     if ctx.needs_input_grad[1] or ctx.needs_input_grad[2]:
         hidden_states_grad, residual_hidden_states_grad = torch.ops.generate_merges.backward_fan_out_restore_residuals.default(
             merged_embeddings_counts,
             restored_hidden_states_grad,
+            restored_hidden_states_seq_lengths,
         )
         
         # print("_backward_fan_out_restore_residuals hidden_states_grad", hidden_states_grad)
@@ -175,18 +183,18 @@ def _backward_fan_out_restore_residuals(ctx, restored_hidden_states_grad):
     assert residual_hidden_states_grad is not None
     assert residual_hidden_states_grad.shape == restored_hidden_states_grad.shape
     
-    return None, hidden_states_grad, residual_hidden_states_grad
+    return None, hidden_states_grad, residual_hidden_states_grad, None
 
 
 def _setup_context_fan_out_restore_residuals(ctx, inputs, output):
-    merged_embeddings_counts, hidden_states, residual_hidden_states = inputs
+    merged_embeddings_counts, hidden_states, residual_hidden_states, residual_hidden_states_attention_mask = inputs
 
     # if ctx.needs_input_grad[1]:
     #     saved_merging_map = merging_map
     # if ctx.needs_input_grad[2]:
     #     saved_merging_map = merging_map
 
-    ctx.save_for_backward(merged_embeddings_counts)
+    ctx.save_for_backward(merged_embeddings_counts, residual_hidden_states_attention_mask)
 
 
 torch.library.register_autograd(

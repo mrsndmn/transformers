@@ -782,7 +782,7 @@ class AdaptiveFanOut(nn.Module):
         if self.fan_out_implementation in ('python',):
             restored_hidden_states = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
         elif self.fan_out_implementation in ('cuda_kernel'):
-            restored_hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection)
+            restored_hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection, residual_attention_mask)
             if CHECK_WITH_PYTHON:
                 restored_hidden_states_py = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
                 assert (restored_hidden_states_py == restored_hidden_states).all()
@@ -840,7 +840,7 @@ class AdaptiveFanOutHCG(nn.Module):
         residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
 
         if not self.training:
-            hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection)
+            hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection, residual_attention_mask)
 
         hidden_states = hidden_states + residual_hidden_states_projection
 
