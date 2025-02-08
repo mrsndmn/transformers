@@ -755,10 +755,6 @@ class AdaptiveFanOut(nn.Module):
             AdaptiveFanOutOutput: unfolded hidden states
         """
 
-        # attention_mask ~ [ batch_size, new_seq_len ]
-        # merged_embeddings_counts ~ [ batch_size, new_seq_len ]
-        
-
         # if DEBUG:
         assert hidden_states.shape[1] == attention_mask.shape[1], 'seq len mismatch'
         assert hidden_states.shape[1] == merged_embeddings_counts.shape[1], 'seq len mismatch'
@@ -775,13 +771,7 @@ class AdaptiveFanOut(nn.Module):
 
         assert seq_len >= new_seq_len, 'residual seq len cant be less then input_embeddings seq_len'
 
-        # 84 sec for 10 iterations
         restored_hidden_states = None
-
-        # 22 seconds for 10 iterations
-        # restored_hidden_states[:, :hidden_states.shape[1]] += hidden_states
-
-        # residual_hidden_states = residual_hidden_states.detach()
 
         if self.projection_enabled:
             residual_hidden_states = residual_hidden_states.to(self.fan_out_linear.weight.dtype)
@@ -791,21 +781,13 @@ class AdaptiveFanOut(nn.Module):
 
         if self.fan_out_implementation in ('python',):
             restored_hidden_states = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
-        elif self.fan_out_implementation in ('cuda_kernel', 'python_selective_not_merge'):
+        elif self.fan_out_implementation in ('cuda_kernel'):
             restored_hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection)
             if CHECK_WITH_PYTHON:
                 restored_hidden_states_py = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
                 assert (restored_hidden_states_py == restored_hidden_states).all()
-
         else:
             raise ValueError(f"unknown self.fan_out_implementation={self.fan_out_implementation}")
-
-        # if restored_hidden_states.requires_grad:
-        #     def log_grad_norm(grad):
-        #         print("residuals grad", grad.norm(2))
-        #         return grad
-
-        #     restored_hidden_states.register_hook(log_grad_norm)
 
         return AdaptiveFanOutOutput(hidden_state=restored_hidden_states)
 
