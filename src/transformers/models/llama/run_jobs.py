@@ -74,6 +74,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
             job_desc=f"{job_description_prefix}{output_dir}",
             # stop_timer=600, # в минутах, = 10 часов
             env_variables={
+                "PATH": "/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/user/conda/bin",
                 "WANDB_PROJECT": "adaptive_attention",
                 "WANDB_API_KEY": os.environ.get("WANDB_API_KEY", ""),
                 "WANDB_MODE": "online",
@@ -171,18 +172,28 @@ def run_gumbel_adaptive_pretrain(**kwargs):
         "hcg_loss_weight": 0.0,
         "ce_merging_loss_weight": 0.0,
         "gumbel_loss_weight_dynamic": 0,
-        "select_train_dataset_items": 128000,
-        "warmup_steps": 1,
+        "select_train_dataset_items": 0,
+        "warmup_steps": 2000,
         "merging_type": 'attention_output_mlp',
         "fan_out_type": "gumbel"
     }
 
     gumbel_experiments = [
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8",
-            **common_params,
-        },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_4",
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8",
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_12",
+        #     **common_params,
+        # },
     ]
 
     run_experiments(gumbel_experiments, job_description_prefix="Gumbel Pretrain: ", **kwargs)

@@ -113,23 +113,10 @@ __global__ void batch_repeat_interleave_for_merges_count_kernel(
             break;
         }
 
-        if (current_repeats_num == 1) {
-            merging_map_output[batch_i][output_seq_len_i][0] = grad_merging_map[batch_i][seq_len_i][0];
-            merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
-            ++output_seq_len_i;            
-        } else {
-            // TODO! Test cover
-            output_seq_len_i = output_seq_len_i + current_repeats_num - 1;
-            merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
-            ++output_seq_len_i;
-            
-            for (int repeats_i = 0; repeats_i < current_repeats_num; ++repeats_i) {
-                // merging_map_output[batch_i][output_seq_len_i][0] = 0;
-                merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
-                ++output_seq_len_i;
-            }
-        }
-
+        output_seq_len_i = output_seq_len_i + current_repeats_num - 1;
+        merging_map_output[batch_i][output_seq_len_i][0] = grad_merging_map[batch_i][seq_len_i][0];
+        merging_map_output[batch_i][output_seq_len_i][1] = grad_merging_map[batch_i][seq_len_i][1];
+        ++output_seq_len_i;
     }
 }
 
@@ -446,9 +433,9 @@ void collapse_blocks(
                 seq_len_len = init_seq_len_threads_len;
             }
 
-            torch::Tensor merged_hidden_state_clone = torch::detach(merged_hidden_state);
-            torch::Tensor merged_embeddings_counts_clone = torch::detach(merged_embeddings_counts);
-            torch::Tensor merged_attention_mask_clone = torch::detach(merged_attention_mask);
+            torch::Tensor merged_hidden_state_clone = torch::clone(merged_hidden_state);
+            torch::Tensor merged_embeddings_counts_clone = torch::clone(merged_embeddings_counts);
+            torch::Tensor merged_attention_mask_clone = torch::clone(merged_attention_mask);
 
             for (int seq_len_blocks_i = 0; seq_len_blocks_i < seq_len_len - 1; seq_len_blocks_i += 2) {
                 if (seq_len_blocks_i + 1 >= seq_len_len) {

@@ -65,18 +65,18 @@ def _backward_generate_merges_transform(ctx, output_merging_map_grad, merged_emb
     # output_merging_map_grad
     output_merging_map_grad_zeroed = output_merging_map_grad
     output_merging_map_grad_zeroed[~output_transform_matrix.bool()] = 0
-    
+
     # expected to be [ bs, seq_len, 2 ]
     grad_merging_map_output = None
     if ctx.needs_input_grad[0]:
         # [ bs, seq_len, 2 ]
-        mask_template = torch.ones_like(saved_merging_map)
-        mask_template[merged_embeddings_counts != 1] = torch.tensor([0.0, 1.0], dtype=mask_template.dtype, device=mask_template.device)
-        mask_template[merged_embeddings_counts == 1] = torch.tensor([0.0, 1.0], dtype=mask_template.dtype, device=mask_template.device)
-        mask_for_grads = torch.ops.generate_merges.batch_repeat_interleave_for_merges_count.default(mask_template, merged_embeddings_counts)
+        # mask_template = torch.ones_like(saved_merging_map)
+        # mask_template[merged_embeddings_counts != 1] = torch.tensor([0.0, 1.0], dtype=mask_template.dtype, device=mask_template.device)
+        # mask_template[merged_embeddings_counts == 1] = torch.tensor([0.0, 1.0], dtype=mask_template.dtype, device=mask_template.device)
+        # mask_for_grads = torch.ops.generate_merges.batch_repeat_interleave_for_merges_count.default(mask_template, merged_embeddings_counts)
 
-        grad_merging_map_output = mask_for_grads * output_merging_map_grad_zeroed.sum(1).unsqueeze(-1)
-        # breakpoint()
+        grad_merging_map_output = torch.zeros_like(saved_merging_map)
+        grad_merging_map_output[:, :, 1] = output_merging_map_grad_zeroed.sum(1)
 
         # if CHECK_WITH_PYTHON:
         #     grad_merging_map_output_py = torch.zeros_like(grad_merging_map)
@@ -103,6 +103,8 @@ def _backward_generate_merges_transform(ctx, output_merging_map_grad, merged_emb
         #     # grad_merging_map_output = grad_merging_map_output_py
         #     # print("grad_merging_map_output", grad_merging_map_output)
         #     # breakpoint()
+
+    # print("grad_merging_map_output[0, :10]\n", grad_merging_map_output[0, :10])
 
     return grad_merging_map_output, None, None
 

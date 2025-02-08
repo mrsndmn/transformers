@@ -343,15 +343,20 @@ class AdaptiveFanInGumbel(nn.Module):
 
         # attention_mask ~ [ bs, seq_len ]
         assert hidden_state.shape[:2] == attention_mask.shape
-        assert special_embeddings_mask is not None
         assert attention_mask is not None
+
+        if special_embeddings_mask is None:
+            special_embeddings_mask = torch.zeros([hidden_state.shape[0], hidden_state.shape[1]], device=hidden_state.device)
+            special_embeddings_mask[:, 0] = 1
+
+        assert special_embeddings_mask is not None
         assert special_embeddings_mask.shape == attention_mask.shape
 
         batch_size = hidden_state.shape[0]
         seq_len = hidden_state.shape[1]
         hidden_dim = hidden_state.shape[2]
         assert seq_len <= self.config.max_position_embeddings
-        
+
         if self.merging_type == 'next_token_merge_mlp':
             merging_mask_stub = torch.zeros([batch_size, 1, hidden_dim * 2], device=hidden_state.device, dtype=hidden_state.dtype)
 
@@ -376,27 +381,20 @@ class AdaptiveFanInGumbel(nn.Module):
         else:
             raise ValueError(f"unknown self.merging_type: {self.merging_type}")
 
-
         # OHE: [ bs, seq_len, 2 ]
         if self.training:
-            if not full_unmerge:
-                merging_map = gumbel_softmax(merging_log_probas, hard=True, dim=-1, tau=self.gumbel_tau)
-            else:
-                merging_map_soft = gumbel_softmax(merging_log_probas, hard=False, dim=-1, tau=self.gumbel_tau)
-
-                y_hard = torch.zeros_like(merging_map_soft)
-                y_hard[:, :, 1] = 1.0
-                merging_map = y_hard - merging_map_soft.detach() + merging_map_soft
+            merging_map = gumbel_softmax(merging_log_probas, hard=True, dim=-1, tau=self.gumbel_tau)
         else:
-            # eval
-            if not full_unmerge:
-                merging_map = torch.zeros_like(merging_log_probas)
-                merging_map[:, :, 0] = (merging_log_probas[:, :, 0] > merging_log_probas[:, :, 1]).to(merging_map.dtype)
-                merging_map[:, :, 1] = 1 - merging_map[:, :, 0]
-                # print("merging_map", merging_map[:, :, 1])
-            else:
-                merging_map = torch.zeros_like(merging_log_probas)
-                merging_map[:, :, 1] = 1
+            merging_map = torch.zeros_like(merging_log_probas)
+            merging_map[:, :, 0] = (merging_log_probas[:, :, 0] > merging_log_probas[:, :, 1]).to(merging_map.dtype)
+            merging_map[:, :, 1] = 1 - merging_map[:, :, 0]
+
+        # def debug_hook(grad):
+        #     print("merging_map[0, :10]", merging_map[0, :10])
+        #     print("grad[0, :10]\n", grad[0, :10])
+        #     breakpoint()
+        #     return grad
+        # merging_map.register_hook(debug_hook)
 
         # scale_not_pruned_gradients = self.scale_not_pruned_gradients
         # def merging_map_hook(grad):
@@ -1586,6 +1584,13 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        if special_embeddings_mask is None:
+            special_embeddings_mask = torch.zeros([input_ids.shape[0], input_ids.shape[1]], device=input_ids.device)
+            special_embeddings_mask[:, 0] = 1
+
+        if attention_mask is None:
+            attention_mask = torch.ones_like(input_ids, dtype=torch.long)
 
         assert special_embeddings_mask is not None
 

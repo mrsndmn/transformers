@@ -836,6 +836,9 @@ def build_model(training_args: AdaptiveTrainingArguments):
 # WANDB_MODE=online PYTHONPATH=/Users/d.tarasov/workspace/transformers/src:./src ~/miniconda3/envs/audio/bin/python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --per_device_train_batch_size 32 --num_train_epochs 10 --seed 1001
 if __name__ == "__main__":
 
+    import subprocess
+    subprocess.check_output(['nvidia-smi'])
+
 
     hf_parser = transformers.HfArgumentParser(AdaptiveTrainingArguments)
     (training_args,) = hf_parser.parse_args_into_dataclasses()
