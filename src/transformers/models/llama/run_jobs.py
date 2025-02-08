@@ -173,31 +173,21 @@ def run_gumbel_adaptive_pretrain(**kwargs):
         "hcg_loss_weight": 0.0,
         "ce_merging_loss_weight": 0.0,
         "gumbel_loss_weight_dynamic": 0,
-        "select_train_dataset_items": 0,
+        "select_train_dataset_items": 800000,
         "warmup_steps": 2000,
         "merging_type": 'attention_output_mlp',
         "fan_out_type": "gumbel"
     }
 
     gumbel_experiments = [
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_4",
-        #     **common_params,
-        # },
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_8",
-        #     **common_params,
-        # },
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_12",
-        #     **common_params,
-        # },
         {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_12_nofoutproj",
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_8",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_8_nofoutproj",
             "fan_out_projection": "0",
             **common_params,
         },

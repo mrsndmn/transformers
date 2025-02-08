@@ -164,8 +164,8 @@ def _backward_fan_out_restore_residuals(ctx, restored_hidden_states_grad):
         # [ bs ]
     restored_hidden_states_seq_lengths = residual_hidden_states_attention_mask.sum(dim=-1)
 
-    print("restored_hidden_states_seq_lengths", restored_hidden_states_seq_lengths)
-    print("merged_embeddings_counts", merged_embeddings_counts)
+    # print("restored_hidden_states_seq_lengths", restored_hidden_states_seq_lengths)
+    # print("merged_embeddings_counts", merged_embeddings_counts)
 
     hidden_states_grad = None
     residual_hidden_states_grad = None

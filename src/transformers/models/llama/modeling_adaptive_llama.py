@@ -372,6 +372,14 @@ class AdaptiveFanInGumbel(nn.Module):
                 merging_log_probas = self.fan_in_mlp(attn_output_pairs)
         elif self.merging_type == 'attention_output_mlp':
             if merging_log_probas is None:
+                # def bp(grad):
+                #     strself = str(self)
+                #     # print("self", )
+                #     breakpoint()
+                #     return grad
+                # if self.training:
+                #     hidden_state.requires_grad = True
+                #     hidden_state.register_hook(bp)
                 merging_log_probas = self.fan_in_mlp(hidden_state)
         elif self.merging_type == 'no_merging':
             merging_log_probas = torch.zeros([batch_size, seq_len, 2], device=hidden_state.device)
@@ -384,6 +392,20 @@ class AdaptiveFanInGumbel(nn.Module):
         # OHE: [ bs, seq_len, 2 ]
         if self.training:
             merging_map = gumbel_softmax(merging_log_probas, hard=True, dim=-1, tau=self.gumbel_tau)
+            # if merging_map.requires_grad:
+            #     def scale_gradients_by_count_of_non_zero_tokens(grad):
+            #         # grad ~ [ bs, seq_len, 2 ]
+            #         # [ 2 ]
+            #         grad_non_zero = (grad != 0).sum(dim=[0, 1])
+            #         grad_clone = grad.clone()
+            #         print("grad before", grad_clone.abs().sum(dim=[0, 1]))
+            #         grad_clone[:, :, 0] /= (grad_non_zero[0] + 1) / ((grad_non_zero.sum() + 1) / 2)
+            #         # grad_clone[:, :, 0] *= 2
+            #         grad_clone[:, :, 1] /= (grad_non_zero[1] + 1) / ((grad_non_zero.sum() + 1) / 2)
+            #         # grad_clone[:, :, 1] *= 100
+            #         print("grad after", grad_clone.abs().sum(dim=[0, 1]))
+            #         return grad_clone
+            #     merging_map.register_hook(scale_gradients_by_count_of_non_zero_tokens)
         else:
             merging_map = torch.zeros_like(merging_log_probas)
             merging_map[:, :, 0] = (merging_log_probas[:, :, 0] > merging_log_probas[:, :, 1]).to(merging_map.dtype)
@@ -444,7 +466,7 @@ class AdaptiveFanInGumbel(nn.Module):
 
         # gradients for a first merging
         residual_hidden_state = hidden_state * merging_map[:, :, 0:1]
-        # residual_hidden_state = residual_hidden_state.detach()
+        residual_hidden_state = residual_hidden_state.detach()
 
         # if merging_map.requires_grad:
         #     def merged_hidden_states_hook(grad):
