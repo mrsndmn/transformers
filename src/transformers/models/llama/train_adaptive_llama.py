@@ -268,7 +268,8 @@ class AdaptiveLlamaTrainer(Trainer):
 
         total_tokens = attention_mask.sum().item()
         if self.args.hcg_loss_weight_dynamic:
-            if (sum_pruned_tokens / total_tokens) < self.args.sparsity_level:
+            # print("sum_pruned_tokens / total_tokens", sum_pruned_tokens / total_tokens)
+            if outputs.loss < 1.5:
                 hcg_loss *= self.args.hcg_loss_weight
             else:
                 hcg_loss = 0
