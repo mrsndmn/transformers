@@ -176,6 +176,7 @@ class LlamaConfig(PretrainedConfig):
         learnt_temperature=False,
         gumbel_tau=1.0,
         scale_not_pruned_gradients=0.0,
+        force_skip_tokens_percent=0.0,
         **kwargs,
     ):
         self.vocab_size = vocab_size

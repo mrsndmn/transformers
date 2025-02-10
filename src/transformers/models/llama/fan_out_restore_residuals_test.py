@@ -81,3 +81,88 @@ def test_skip_last_tokens():
     assert (grad_init[:, 2:] == residual_hidden_states_projection.grad[:, 2:]).all()
 
     breakpoint()
+
+
+def test_prune_tokens_concrete():
+
+    batch_size = 1
+    seq_len = 7
+    hidden_dim = 64
+
+    device = 'cuda'
+
+    hidden_state = torch.rand([ batch_size, seq_len, hidden_dim ], device=device)
+    concrete_bool = torch.tensor([[ 1, 1, 1, 1, 1, 1, 1 ]], dtype=torch.bool, device=device)
+    attention_mask = torch.ones_like(concrete_bool)
+
+    merged_hidden_state, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(
+        hidden_state,
+        concrete_bool,
+        attention_mask,
+    )
+
+    assert (hidden_state == merged_hidden_state).all()
+    assert (merged_embeddings_counts == attention_mask.long()).all()
+    assert (merged_attention_mask == attention_mask).all()
+
+    return
+
+def test_prune_tokens_concrete_middle():
+
+    batch_size = 1
+    seq_len = 7
+    hidden_dim = 64
+
+    device = 'cuda'
+
+    hidden_state = torch.rand([ batch_size, seq_len, hidden_dim ], device=device)
+    concrete_bool = torch.tensor([[ 1, 1, 1, 1, 0, 0, 1 ]], dtype=torch.bool, device=device)
+    attention_mask = torch.ones_like(concrete_bool)
+
+    merged_hidden_state, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(
+        hidden_state,
+        concrete_bool,
+        attention_mask,
+    )
+
+    expected_merged_emb_counts = torch.tensor([[ 1, 1, 1, 1, 3 ]], dtype=torch.long, device=device)
+    expected_attention_mask = torch.ones_like(expected_merged_emb_counts)
+
+    assert merged_hidden_state.shape[1] == 5
+    assert (hidden_state[:, :4] == merged_hidden_state[:, :4]).all()
+    assert (hidden_state[:, -1:] == merged_hidden_state[:, -1:]).all()
+
+    assert (merged_embeddings_counts == expected_merged_emb_counts).all()
+    assert (merged_attention_mask == expected_attention_mask).all()
+
+    return
+
+
+def test_prune_tokens_concrete_end():
+
+    batch_size = 1
+    seq_len = 7
+    hidden_dim = 64
+
+    device = 'cuda'
+
+    hidden_state = torch.rand([ batch_size, seq_len, hidden_dim ], device=device)
+    concrete_bool = torch.tensor([[ 1, 1, 1, 1, 0, 0, 0 ]], dtype=torch.bool, device=device)
+    attention_mask = torch.ones_like(concrete_bool)
+
+    merged_hidden_state, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(
+        hidden_state,
+        concrete_bool,
+        attention_mask,
+    )
+
+    expected_merged_emb_counts = torch.tensor([[ 1, 1, 1, 1 ]], dtype=torch.long, device=device)
+    expected_attention_mask = torch.ones_like(expected_merged_emb_counts)
+
+    assert merged_hidden_state.shape[1] == 4
+    assert (hidden_state[:, :4] == merged_hidden_state[:, :4]).all()
+
+    assert (merged_embeddings_counts == expected_merged_emb_counts).all()
+    assert (merged_attention_mask == expected_attention_mask).all()
+
+    return

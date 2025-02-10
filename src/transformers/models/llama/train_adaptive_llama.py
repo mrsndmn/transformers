@@ -96,6 +96,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     full_unmerge_loss_weight: float = 1.0
     hcg_loss_weight: float = 0.0
     hcg_loss_weight_dynamic: bool = False
+    sparsity_level: float = 1.0
     gumbel_loss_weight_dynamic: bool = False
     dummy_adaptive_fan_in_layers: Optional[int] = None
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
@@ -211,7 +212,6 @@ class AdaptiveLlamaTrainer(Trainer):
         count_merging_losses = 0
         sum_pruned_tokens = 0
 
-        sum_pruned_tokens = outputs.sum_pruned_tokens.item()
         if self.args.ce_merging_loss_weight > 0.0:
             for i, (fan_in_merging_logits, fan_in_merging_logits_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                 # ce_targets = outputs.fan_in_merging_maps[i][:, :, 1].flatten()
@@ -223,12 +223,11 @@ class AdaptiveLlamaTrainer(Trainer):
                 ce_targets[fan_in_merging_logits_attention_mask.flatten().bool() == False] = -100
                 ce_merging_loss_sum += torch.nn.functional.cross_entropy(fan_in_merging_logits, ce_targets, label_smoothing=0.1)
 
-                def debug_grad(grad):
-                    print(grad)
-                    breakpoint()
-                    return grad
-
-                ce_merging_loss_sum.register_hook(debug_grad)
+                # def debug_grad(grad):
+                #     print(grad)
+                #     breakpoint()
+                #     return grad
+                # ce_merging_loss_sum.register_hook(debug_grad)
 
                 count_merging_losses+=1
                 # breakpoint()
@@ -248,6 +247,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
         count_hcg_layers = 0
         hcg_loss = 0
+        sum_pruned_tokens = 0
         if self.args.hcg_loss_weight > 0.0 and  model.config.merging_type == 'hcg':
             for i, (hcg_p_open, hcg_p_open_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                 if hcg_p_open is None:
@@ -260,20 +260,25 @@ class AdaptiveLlamaTrainer(Trainer):
 
                 hcg_loss += concrete_non_masked.mean()
 
+            sum_pruned_tokens = sum([ x[:, :, 0].sum().item() for x in outputs.fan_in_merging_logits if x is not None])
+
+
             if count_hcg_layers > 0:
                 hcg_loss /= count_hcg_layers
 
+        total_tokens = attention_mask.sum().item()
         if self.args.hcg_loss_weight_dynamic:
-            hcg_loss *= self.args.hcg_loss_weight
-            exp_scale = 30 * max(outputs.loss.detach().item() - 1.4, 0)
-            hcg_loss /= torch.exp(torch.tensor(exp_scale, device=outputs.loss.device))
+            if (sum_pruned_tokens / total_tokens) < self.args.sparsity_level:
+                hcg_loss *= self.args.hcg_loss_weight
+            else:
+                hcg_loss = 0
         else:
             hcg_loss *= self.args.hcg_loss_weight
 
         # loss = outputs.loss
         pruning_loss = outputs.loss
         loss = pruning_loss + ce_merging_loss_sum + hcg_loss
-        
+
         # print("pruning_loss", pruning_loss)
         # print("ce_merging_loss", ce_merging_loss_sum)
         # print("hcg_loss", hcg_loss)
@@ -285,8 +290,6 @@ class AdaptiveLlamaTrainer(Trainer):
         outputs.loss = loss
 
         # assert ~ loss.isnan().any(), 'loss cant be none'
-        
-        total_tokens = attention_mask.sum().item()
 
         if force_log or log_metrics and self.state.global_step % self.args.logging_steps == 0:
             outputs_loss = outputs.loss
@@ -305,10 +308,10 @@ class AdaptiveLlamaTrainer(Trainer):
                 f"{log_prefix}/pruning_loss": pruning_loss.detach().item(),
                 f"{log_prefix}/hcg_loss": hcg_loss_to_log,
                 f"{log_prefix}/ce_merging_loss": ce_merging_loss_sum_float,
-                f"{log_prefix}/not_pruned_tokens": (total_tokens - sum_pruned_tokens),
-                f"{log_prefix}/sum_pruned_tokens": sum_pruned_tokens,
+                f"{log_prefix}/sum_pruned_tokens": (total_tokens - sum_pruned_tokens),
+                f"{log_prefix}/not_pruned_tokens": sum_pruned_tokens,
                 f"{log_prefix}/total_tokens": total_tokens,
-                f"{log_prefix}/pruned_tokens_percent": (sum_pruned_tokens / (total_tokens + 1e-4)),
+                f"{log_prefix}/not_pruned_tokens_percent": (sum_pruned_tokens / (total_tokens + 1e-4)),
             }
 
             if model.config.merging_type == 'hcg':
@@ -320,9 +323,11 @@ class AdaptiveLlamaTrainer(Trainer):
                     hcg_p_open = hcg_p_open.squeeze(2).flatten()
                     concrete_non_masked = hcg_p_open[fan_in_merging_logits_attention_mask.flatten().bool()]
                     log_info[f'{log_prefix}/concrete_mean_{i}'] = concrete_non_masked.mean().item()
+                    log_info[f'{log_prefix}/concrete_lt_0.01'] = (concrete_non_masked < 0.01).sum().item()
                     log_info[f'{log_prefix}/concrete_lt_0.1'] = (concrete_non_masked < 0.1).sum().item()
                     log_info[f'{log_prefix}/concrete_lt_0.5'] = (concrete_non_masked < 0.5).sum().item()
                     q = torch.tensor([0.1, 0.5, 0.9], device=concrete_non_masked.device)
+
                     # [ 3 ]
                     concrete_quantiles = torch.quantile(concrete_non_masked.float(), q, dim=0, keepdim=False)
                     # [ 3 ]
@@ -770,7 +775,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
     elif training_args.model_type == 'pretrained_checkpoint':
         llama_checkpoint = training_args.llama_checkpoint
         print("Load model from", llama_checkpoint)
-        model = AdaptiveLlamaForCausalLM.from_pretrained(llama_checkpoint)
+        model = AdaptiveLlamaForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch.bfloat16)
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
         
     elif training_args.model_type == 'pretrained':

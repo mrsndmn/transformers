@@ -87,7 +87,7 @@ if __name__ == "__main__":
                     token_will_be_passed[token_will_be_passed > 0.5] = 1
                     token_will_be_passed = token_will_be_passed.long().flatten()
                 else:
-                    token_will_be_passed = fan_in_merging_logits_i.max(dim=-1).indices[0].cpu().numpy().tolist()
+                    token_will_be_passed = fan_in_merging_logits_i.max(dim=-1).indices[0]
 
                 fan_in_merging_logits = fan_in_merging_logits_i
 
@@ -108,7 +108,7 @@ if __name__ == "__main__":
                 print(token_will_be_passed_i, f"\t{logits_prune_confidence_i:.2f}", "\t", token_id, "\t", tokenizer.decode(token_id))
 
             print("Original: \t", tokenizer.decode(input_ids))
-            print("Prunied:  \t", tokenizer.decode(torch.tensor(input_ids)[token_will_be_passed.bool().cpu()]))
+            print("Pruned:  \t", tokenizer.decode(torch.tensor(input_ids)[token_will_be_passed.bool().cpu()]))
 
 
     breakpoint()

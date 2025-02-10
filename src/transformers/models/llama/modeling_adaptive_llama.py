@@ -466,7 +466,7 @@ class AdaptiveFanInGumbel(nn.Module):
 
         # gradients for a first merging
         residual_hidden_state = hidden_state * merging_map[:, :, 0:1]
-        residual_hidden_state = residual_hidden_state.detach()
+        # residual_hidden_state = residual_hidden_state.detach()
 
         # if merging_map.requires_grad:
         #     def merged_hidden_states_hook(grad):
@@ -549,28 +549,14 @@ class HardConcreteGate(nn.Module):
 
             assert self.random_buffer.dtype == torch.float32
 
-            random_buffer_log = (self.random_buffer + 1e-5).log()[:, :seq_len]
-            one_minus_rand_log = (1 - self.random_buffer + 1e-5).log()[:, :seq_len]
+            random_buffer_log = (self.random_buffer).log()[:, :seq_len]
+            one_minus_rand_log = (1 - self.random_buffer).log()[:, :seq_len]
 
             # avoid nan gradients in backward for learned temperature
             temperature_scale = (attention_mask * self.temperature).unsqueeze(-1) + 1e-6
-            # breakpoint()
-            # def db_hook(grad):
-                # grad[ attention_mask == 0 ] = 0
-                # if grad.isnan().sum() > 0:
-                #     print(self, 'attention_mask.shape', attention_mask.shape, temperature_scale.shape, (random_buffer_log - one_minus_rand_log + log_a).shape)
-                #     grad[ grad.isnan() ] = 0
-                #     breakpoint()
 
-                # Scale grad for faster temperature convergence
-                # grad *= 50
-                # return grad
+            log_a = torch.clip(log_a, min=-7, max=7)
 
-            # if temperature_scale.requires_grad:
-            #     temperature_scale.register_hook(db_hook)
-            
-            # print("log_a min", log_a.min().item(), "log_a max", log_a.max().item(), "log_a mean", log_a.mean().item())
-            # log_a = torch.clip(log_a, min=-4, max=4)
             sigmoid_arg = (random_buffer_log - one_minus_rand_log + log_a) / temperature_scale
             concrete = self.activation(sigmoid_arg)
         else:
@@ -651,6 +637,9 @@ class AdaptiveFanInHCG(nn.Module):
 
         # [ bs, seq_len, 1 ]
         concrete = self.hcg(log_a, attention_mask=attention_mask)
+        # if self.training: #  and self.config.force_skip_tokens_percent > 0.0:
+        #     # force X% of tokens to be pruned
+        #     concrete[torch.rand_like(concrete) < 0.1] = 0
 
         # [ bs, seq_len, 1 ]
         p_open = concrete
@@ -666,7 +655,7 @@ class AdaptiveFanInHCG(nn.Module):
         hs_dtype = hidden_state.dtype
         rhs_dtype = residual_hidden_state.dtype
 
-        print("concrete", concrete)
+        # print("concrete", concrete)
 
         residual_hidden_state = ((1 - concrete) * residual_hidden_state)
 
@@ -677,7 +666,7 @@ class AdaptiveFanInHCG(nn.Module):
 
         merged_embeddings_counts = attention_mask
 
-        if self.training:
+        if True or self.training:
             attention_mask_dtype = attention_mask.dtype
             attention_mask = (attention_mask * concrete.squeeze(-1)).to(attention_mask_dtype)
 
@@ -717,8 +706,8 @@ class AdaptiveFanInHCG(nn.Module):
         assert hidden_state.dtype == torch.bfloat16
         assert residual_hidden_state.dtype == torch.bfloat16
 
-        print("hidden_state         ", hidden_state.mean(dim=-1))
-        print("residual_hidden_state", residual_hidden_state.mean(dim=-1))
+        # print("hidden_state         ", hidden_state.mean(dim=-1))
+        # print("residual_hidden_state", residual_hidden_state.mean(dim=-1))
 
         res = AdaptiveFanInOutput(
             hidden_state=hidden_state,
@@ -1282,7 +1271,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
             # End loop adaptive down
 
-        sum_pruned_tokens = sum([ x[:, :, 0].sum().item() for x in all_loop_down_merging_map if x is not None])
+        sum_pruned_tokens = 0
 
         assert len(all_loop_down_attention_mask) == len(self.layers_up)
         assert len(all_loop_down_merged_embeddings_counts) == len(self.layers_up)

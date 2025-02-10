@@ -343,8 +343,7 @@ __global__ void prune_tokens_concrete_kernel(
 
         bool is_token_important = concrete_bool[batch_i][seq_len_i];
 
-        if (is_token_important ||  seq_len_i == seq_len - 1) {
-
+        if (is_token_important) {
             if (thread_idx == 0) {
                 merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
                 merged_attention_mask[batch_i][new_seq_len_i] = true;
@@ -477,7 +476,7 @@ void collapse_blocks(
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cuda(
     const torch::Tensor& hidden_state,            // [ bs, seq_len, hidden_dim ]
     const torch::Tensor& concrete_bool,           // [ bs, seq_len ]
-    const torch::Tensor& attention_mask          // [ bs, seq_len ]
+    const torch::Tensor& attention_mask           // [ bs, seq_len ]
 ) {
     const int batch_size = concrete_bool.size(0);
     const int seq_len = concrete_bool.size(1);

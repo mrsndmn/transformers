@@ -73,12 +73,12 @@ def eval_gumbel_adaptive_pretrain(**kwargs):
         #     "output_dir": f"exps_evaluation/adaptive_gumbel_pretrain_12-checkpoint-15k",
         # },
         {
-            "pretrained_model": f"./adaptive_gumbel_pretrain_12/_backup_checkpoint-20000",
-            "output_dir": f"exps_evaluation/adaptive_gumbel_pretrain_12-checkpoint-20k",
+            "pretrained_model": f"./adaptive_gumbel_pretrain_8/_back_checkpoint-24996",
+            "output_dir": f"exps_evaluation/adaptive_gumbel_pretrain_8-checkpoint-25k",
         },
         {
-            "pretrained_model": f"./adaptive_gumbel_pretrain_8/_backup_checkpoint-5000",
-            "output_dir": f"exps_evaluation/adaptive_gumbel_pretrain_8-checkpoint-5k",
+            "pretrained_model": f"./adaptive_gumbel_pretrain_8_nofoutproj/_back_checkpoint-24996/",
+            "output_dir": f"exps_evaluation/adaptive_gumbel_pretrain_8_nofoutproj-checkpoint-25k",
         },
     ]
 
@@ -96,5 +96,5 @@ if __name__ == "__main__":
     print("dry", dry)
 
     # Gumbel
-    eval_gumbel_adaptive_pretrain(dry=dry)
+    # eval_gumbel_adaptive_pretrain(dry=dry)
     # run_gumbel_adaptive(dry=dry)
