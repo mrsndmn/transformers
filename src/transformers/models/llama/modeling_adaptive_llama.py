@@ -673,8 +673,14 @@ class AdaptiveFanInHCG(nn.Module):
         # OHE: [ bs, seq_len, 1 ]
         log_a = self.fan_in_mlp(hidden_state)
 
-        # [ bs, seq_len, 1 ]
-        concrete = self.hcg(log_a, attention_mask=attention_mask)
+        if self.config.concrete_random_mask_proba is not None and self.config.concrete_random_mask_proba > 0:
+            # [ bs, seq_len, 1 ]
+            concrete = torch.ones_like(log_a)
+            concrete_random_mask = torch.rand(log_a.shape, device=log_a.device) < self.config.concrete_random_mask_proba
+            concrete[concrete_random_mask] = 0.0
+        else:
+            # [ bs, seq_len, 1 ]
+            concrete = self.hcg(log_a, attention_mask=attention_mask)
         # if self.training: #  and self.config.force_skip_tokens_percent > 0.0:
         #     # force X% of tokens to be pruned
         #     concrete[torch.rand_like(concrete) < 0.1] = 0
@@ -690,9 +696,6 @@ class AdaptiveFanInHCG(nn.Module):
         concrete[special_embeddings_mask.bool()] = 1.0
         # breakpoint()
 
-        if self.config.concrete_random_mask_proba is not None and self.config.concrete_random_mask_proba > 0:
-            concrete_random_mask = torch.rand(concrete.shape, device=concrete.device) < (1.0 - self.config.concrete_random_mask_proba)
-            concrete[concrete_random_mask] = 0.0
 
         hs_dtype = hidden_state.dtype
         rhs_dtype = residual_hidden_state.dtype
