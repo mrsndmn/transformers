@@ -100,6 +100,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     gumbel_loss_weight_dynamic: bool = False
     dummy_adaptive_fan_in_layers: Optional[int] = None
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
+    concrete_random_mask_proba: Optional[float] = None
     
     gumbel_tau: float = 2.0
     scale_not_pruned_gradients: float = 0.0
@@ -820,6 +821,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
             learnt_temperature=training_args.learnt_temperature,
             gumbel_tau=training_args.gumbel_tau,
             scale_not_pruned_gradients=training_args.scale_not_pruned_gradients,
+            concrete_random_mask_proba=training_args.concrete_random_mask_proba,
         )
 
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)

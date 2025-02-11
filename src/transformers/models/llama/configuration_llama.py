@@ -177,6 +177,7 @@ class LlamaConfig(PretrainedConfig):
         gumbel_tau=1.0,
         scale_not_pruned_gradients=0.0,
         force_skip_tokens_percent=0.0,
+        concrete_random_mask_proba=0.0,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -192,6 +193,8 @@ class LlamaConfig(PretrainedConfig):
         
         assert len(self.dummy_adaptive_fan_in) == (num_hidden_layers // 2)
         
+        self.concrete_random_mask_proba = concrete_random_mask_proba
+
         if full_unmerge is None:
             full_unmerge = [ False ] * (num_hidden_layers // 2)
         

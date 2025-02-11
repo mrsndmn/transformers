@@ -579,6 +579,44 @@ class HardConcreteGate(nn.Module):
         return concrete
 
 
+def reorder_mask_for_concrete(concrete, hidden_state, attention_mask):
+    concrete_bool = concrete.cpu().bool()
+    seq_lengths = attention_mask.sum(dim=-1).cpu()
+    new_seq_lengths = torch.zeros([ concrete_bool.shape[0] ], device='cpu', dtype=torch.long)
+
+    reordered_indexes = torch.zeros_like(concrete_bool, dtype=torch.long, device='cpu')
+    merged_embeddings_counts = torch.zeros([concrete_bool.shape[0], concrete_bool.shape[1]], dtype=torch.long, device='cpu')
+    for batch_i in range(concrete_bool.shape[0]):
+        current_seq_len = 0
+        current_merged_embeddings = 0
+        for seq_len_i in range(seq_lengths[batch_i].item()):
+            if concrete_bool[batch_i, seq_len_i]:
+                reordered_indexes[batch_i, current_seq_len] = seq_len_i
+                merged_embeddings_counts[batch_i, current_seq_len] = current_merged_embeddings + 1
+                current_seq_len += 1
+                current_merged_embeddings = 0
+            else:
+                current_merged_embeddings += 1
+
+        new_seq_lengths[batch_i] = current_seq_len
+
+    max_seq_len = new_seq_lengths.max().item()
+    # print("new_seq_lengths", new_seq_lengths)
+    # print("reordered_indexes", reordered_indexes)
+    reordered_indexes_cuda = reordered_indexes.to(hidden_state.device)
+    reordered_indexes_cuda = reordered_indexes_cuda.expand(-1, -1, hidden_state.size(-1))
+    assert reordered_indexes_cuda.shape == hidden_state.shape
+
+    hidden_state_m = torch.gather(hidden_state, dim=1, index=reordered_indexes_cuda)
+
+    mast_template = torch.arange(max_seq_len, device=hidden_state.device).unsqueeze(0).repeat(hidden_state.shape[0], 1)
+    new_attention_mask = (mast_template < new_seq_lengths.unsqueeze(-1).to(hidden_state.device)).to(torch.long)
+
+    hidden_state_m = hidden_state_m[:, :max_seq_len]
+    merged_embeddings_counts = merged_embeddings_counts[:, :max_seq_len].to(hidden_state.device)
+
+    return hidden_state_m, merged_embeddings_counts, new_attention_mask
+
 class AdaptiveFanInHCG(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
@@ -652,6 +690,10 @@ class AdaptiveFanInHCG(nn.Module):
         concrete[special_embeddings_mask.bool()] = 1.0
         # breakpoint()
 
+        if self.config.concrete_random_mask_proba is not None and self.config.concrete_random_mask_proba > 0:
+            concrete_random_mask = torch.rand(concrete.shape, device=concrete.device) < (1.0 - self.config.concrete_random_mask_proba)
+            concrete[concrete_random_mask] = 0.0
+
         hs_dtype = hidden_state.dtype
         rhs_dtype = residual_hidden_state.dtype
 
@@ -683,23 +725,20 @@ class AdaptiveFanInHCG(nn.Module):
             # if True or self.training:
             attention_mask_dtype = attention_mask.dtype
             concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
+            # concrete_bool = torch.rand(concrete_bool.shape, device=concrete_bool.device) < 0.8
+            # concrete_bool[:, 0] = True
 
             # [ bs, seq_len ]
             hidden_state = (concrete * hidden_state).to(hs_dtype)
             if hidden_state.dtype != hs_dtype:
                 hidden_state = hidden_state.to(hs_dtype)
 
+            # [ bs, seq_len ]
+            # concrete_bool_cpu = concrete_bool.detach().cpu()
+            # hidden_state_m, merged_embeddings_counts, merged_attention_mask = reorder_mask_for_concrete(concrete=concrete, hidden_state=hidden_state, attention_mask=attention_mask)
             hidden_state_m, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(hidden_state, concrete_bool, attention_mask.bool())
-            # if (~(concrete[:, :, 0] > PRUNE_PERCENT)).sum().item() > 0:
-            #     breakpoint()
 
             hidden_state = hidden_state_m
-            # max_attention_mask_len = merged_attention_mask.sum(dim=-1).max()
-
-            # merged_attention_mask = merged_attention_mask[:, :max_attention_mask_len]
-            # hidden_state = hidden_state[:, :max_attention_mask_len]
-            # merged_embeddings_counts = merged_embeddings_counts[:, :max_attention_mask_len]
-
             attention_mask = merged_attention_mask
 
             merged_special_embeddings_mask = torch.zeros([batch_size, merged_attention_mask.shape[1]], device=hidden_state.device)
@@ -1207,6 +1246,8 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             all_loop_down_position_embeddings.append(loop_down_position_embeddings)
             all_loop_down_residual_attention_mask.append(loop_down_attention_mask)
             all_loop_down_position_ids.append(loop_down_position_ids)
+            
+            # print("i", i, "hidden_states", hidden_states.shape,)
 
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
@@ -1300,6 +1341,8 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         for i, decoder_layer in enumerate(self.layers_up):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
+
+            # print("i", i, "hidden_states", hidden_states.shape,)
 
             adaptive_up_layer: AdaptiveFanOut = self.adaptive_up[i]
             loop_up_attention_mask = all_loop_down_attention_mask.pop(-1)

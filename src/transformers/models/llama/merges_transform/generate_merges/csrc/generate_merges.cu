@@ -348,10 +348,17 @@ __global__ void prune_tokens_concrete_kernel(
 
         if (is_token_important) {
             if (thread_idx == 0) {
+                // concrete_bool = [ t, t, f, f, t, t, t ]
+                // merged_embeddings_counts = [ 1, 1, 3, 1, 1, 0 ]
+
                 merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
                 merged_attention_mask[batch_i][new_seq_len_i] = true;
             }
-
+            // [ bs, sl1, h ]
+            // [ emd1, emd2, emd3 ... ]
+            // 
+            // [ bs, sl2, h ]
+            // [ emd1, emd2, emd3 ... ]
             for (int i = hidden_dim_start; i < hidden_dim_end; ++i) {
                 merged_hidden_state[batch_i][new_seq_len_i][i] = hidden_state[batch_i][seq_len_i][i];
             }
@@ -434,6 +441,24 @@ void collapse_blocks(
     }
 
     int init_seq_len_threads_len = seq_len_blocks_lengths.size(1);
+
+    // torch.cat [ [ i, 64, 512 ].slice, [ i, 64, 512 ].slice, [ i, 64, 512 ].slice ]
+
+    // TODO Попробовать с перестановкой интдексов
+    // [
+    //   [ | 1, 1, 0, 0, 0 | 1, 1, 1, 0, 0 | ] 
+    //   [ | 1, 1, 1, 0, 0 | 1, 1, 1, 1, 0 | ]
+    // ]
+
+    // [ b1, b2, b3, b4, b5, b6, b7, b8 ]
+    // [ b12, b3, b4, b5, b6, b7, b8 ]
+    // [ b123, b4, b5, b6, b7, b8 ]
+    // [ b1234, b5, b6, b7, b8 ]
+
+    // [ b1, b2, b3, b4, b5, b6, b7, b8 ]
+    // [ b12, b34, b56, b78 ]
+    // [ b1234, b5678 ]
+    // [ b12345678 ]
 
     for (int batch_i = 0; batch_i < batch_size; ++batch_i) {
         // todo process each batch in separate cuda stream

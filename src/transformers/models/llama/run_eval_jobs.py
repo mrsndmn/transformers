@@ -90,8 +90,12 @@ def eval_gumbel_adaptive_pretrain(**kwargs):
 def eval_hcg_adaptive_pretrain(**kwargs):
 
     hcg_experiments = [
+        # {
+        #     "pretrained_model": f"./adaptive_hcg_8_maintain_loss_nofanoutproj/checkpoint-24996",
+        #     "output_dir": f"exps_evaluation/adaptive_hcg_8_maintain_loss_nofanoutproj-checkpoint-25k",
+        # },
         {
-            "pretrained_model": f"./adaptive_hcg_8_maintain_loss_nofanoutproj/checkpoint-24996",
+            "pretrained_model": "./adaptive_hcg_8_maintain_loss_nofanoutproj/checkpoint-24996",
             "output_dir": f"exps_evaluation/adaptive_hcg_8_maintain_loss_nofanoutproj-checkpoint-25k",
         },
     ]

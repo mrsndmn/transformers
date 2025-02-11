@@ -4,7 +4,7 @@ import argparse
 import torch
 
 from transformers import LlamaConfig, AutoTokenizer, LlamaForCausalLM
-from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanInHCG
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanInHCG, reorder_mask_for_concrete
 
 
 from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
@@ -75,10 +75,17 @@ def test_prune_tokens_concrete():
         attention_mask,
     )
 
+    concrete_bool_cpu = concrete_bool.detach().cpu().unsqueeze(-1)
+    hidden_state_m_py, merged_embeddings_counts_py, merged_attention_mask_py = reorder_mask_for_concrete(concrete=concrete_bool_cpu, hidden_state=hidden_state, attention_mask=attention_mask)
+
     assert (hidden_state_m[:, :50] == hidden_state[:, :50]).all()
     assert (hidden_state_m[:, 50:] == hidden_state[:, 130:]).all()
 
     assert merged_embeddings_counts.sum().item() == 780
-    assert attention_mask.sum().item() = 700
+    assert merged_attention_mask.sum().item() == 700
+
+    assert (hidden_state_m_py == hidden_state_m).all()
+    assert (merged_embeddings_counts_py == merged_embeddings_counts).all()
+    assert (merged_attention_mask_py == merged_attention_mask).all()
 
     breakpoint()

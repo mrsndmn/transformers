@@ -56,9 +56,11 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         save_steps = exp.get('save_steps', 1000)
         torch_compile = exp.get('torch_compile', 1)
 
+        concrete_random_mask_proba = exp.get('concrete_random_mask_proba', '')
+
         seed = SEED
 
-        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --full_unmerge_loss_weight {full_unmerge_loss_weight} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type cosine --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection {fan_out_projection} --logging_steps 50 --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --eval_steps 250 --gumbel_tau {gumbel_tau} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --ce_merging_loss_weight {ce_merging_loss_weight} --gumbel_loss_weight_dynamic {gumbel_loss_weight_dynamic} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --dataloader_num_workers 0 --bf16 1 --torch_compile {torch_compile} --sparsity_level {sparsity_level}"
+        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --full_unmerge_loss_weight {full_unmerge_loss_weight} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type cosine --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection {fan_out_projection} --logging_steps 50 --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --eval_steps 250 --gumbel_tau {gumbel_tau} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --ce_merging_loss_weight {ce_merging_loss_weight} --gumbel_loss_weight_dynamic {gumbel_loss_weight_dynamic} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --dataloader_num_workers 0 --bf16 1 --torch_compile {torch_compile} --sparsity_level {sparsity_level} --concrete_random_mask_proba {concrete_random_mask_proba}"
 
         print(f"\n\n{script_str}\n\n")
 
@@ -280,6 +282,35 @@ def run_hcg_adaptive(**kwargs):
     return
 
 
+def run_hcg_random_sampling(**kwargs):
+
+    experiment_prefix_base_name = "random_hcg"
+
+    common_params = {
+        "freeze_lm_backbone": 0,
+        "select_train_dataset_items": 800000,
+        "warmup_steps": 2000,
+        "model_type": "pretrained",
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": 1,
+        "hcg_loss_weight": 0,
+    }
+
+    hcg_experiments = [
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_8_random0.2",
+            "fan_out_projection": "0",
+            "concrete_random_mask_proba": 0.2,
+            **common_params,
+        },
+    ]
+
+    run_experiments(hcg_experiments, job_description_prefix="Rand: ", **kwargs)
+
+    return
+
+
 
 if __name__ == "__main__":
 
@@ -289,8 +320,11 @@ if __name__ == "__main__":
     print("dry", dry)
 
     # HCG
-    run_hcg_adaptive(dry=dry)
+    # run_hcg_adaptive(dry=dry)
     # run_hcg_adaptive_pretrain(dry=dry)
+
+    # Random
+    run_hcg_random_sampling(dry=dry)
 
     # Gumbel
     # run_gumbel_adaptive_pretrain(dry=dry)
