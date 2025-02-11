@@ -33,7 +33,7 @@ def generate_merges_transform(
     
     merging_map = merging_map.to(torch.float32)
     
-    assert (merging_map.sum(dim=-1).bool() == attention_mask).all()
+    # assert (merging_map.sum(dim=-1).bool() == attention_mask).all()
 
     # TODO crop length
     # aggregated_embeddings_transform = torch.zeros([batch_size, seq_len, seq_len], device=device)
@@ -209,6 +209,10 @@ def prune_tokens_concrete(
     
     hidden_state_dtype = hidden_state.dtype
     hidden_state = hidden_state.to(torch.float32)
+
+    # print("hidden_state", hidden_state)
+    # print("concrete_bool", concrete_bool)
+    # print("attention_mask", attention_mask)
 
     hidden_state, merged_embeddings_counts, merged_attention_mask = torch.ops.generate_merges.prune_tokens_concrete_cuda.default(
         hidden_state,

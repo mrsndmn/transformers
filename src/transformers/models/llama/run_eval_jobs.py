@@ -87,6 +87,20 @@ def eval_gumbel_adaptive_pretrain(**kwargs):
     return
 
 
+def eval_hcg_adaptive_pretrain(**kwargs):
+
+    hcg_experiments = [
+        {
+            "pretrained_model": f"./adaptive_hcg_8_maintain_loss_nofanoutproj/checkpoint-24996",
+            "output_dir": f"exps_evaluation/adaptive_hcg_8_maintain_loss_nofanoutproj-checkpoint-25k",
+        },
+    ]
+
+    run_eval_experiments(hcg_experiments, job_description_prefix="Eval Gumbel Adaptive: ", **kwargs)
+
+    return
+
+
 
 if __name__ == "__main__":
 
@@ -98,3 +112,5 @@ if __name__ == "__main__":
     # Gumbel
     # eval_gumbel_adaptive_pretrain(dry=dry)
     # run_gumbel_adaptive(dry=dry)
+
+    eval_hcg_adaptive_pretrain(dry=dry)
