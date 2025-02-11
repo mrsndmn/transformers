@@ -94,9 +94,13 @@ def eval_hcg_adaptive_pretrain(**kwargs):
         #     "pretrained_model": f"./adaptive_hcg_8_maintain_loss_nofanoutproj/checkpoint-24996",
         #     "output_dir": f"exps_evaluation/adaptive_hcg_8_maintain_loss_nofanoutproj-checkpoint-25k",
         # },
+        # {
+        #     "pretrained_model": "./adaptive_hcg_8_maintain_loss_nofanoutproj/checkpoint-24996",
+        #     "output_dir": f"exps_evaluation/adaptive_hcg_8_maintain_loss_nofanoutproj-checkpoint-25k",
+        # },
         {
-            "pretrained_model": "./adaptive_hcg_8_maintain_loss_nofanoutproj/checkpoint-24996",
-            "output_dir": f"exps_evaluation/adaptive_hcg_8_maintain_loss_nofanoutproj-checkpoint-25k",
+            "pretrained_model": "./random_hcg_8_random0.2/checkpoint-16000/",
+            "output_dir": f"exps_evaluation/random_hcg_8_random0.2-checkpoint-16k",
         },
     ]
 

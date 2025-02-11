@@ -760,8 +760,9 @@ class AdaptiveFanInHCG(nn.Module):
         # print("attention_mask.shape", attention_mask.shape)
         # print("merged_embeddings_counts", merged_embeddings_counts.shape)
         # assert hidden_state.shape[1] == attention_mask.shape[1]
-        assert hidden_state.dtype == torch.bfloat16
-        assert residual_hidden_state.dtype == torch.bfloat16
+
+        # assert hidden_state.dtype == torch.bfloat16
+        # assert residual_hidden_state.dtype == torch.bfloat16
 
         # print("hidden_state         ", hidden_state.mean(dim=-1))
         # print("residual_hidden_state", residual_hidden_state.mean(dim=-1))

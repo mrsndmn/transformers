@@ -56,7 +56,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         save_steps = exp.get('save_steps', 1000)
         torch_compile = exp.get('torch_compile', 1)
 
-        concrete_random_mask_proba = exp.get('concrete_random_mask_proba', '')
+        concrete_random_mask_proba = exp.get('concrete_random_mask_proba', '0')
 
         seed = SEED
 
@@ -220,61 +220,33 @@ def run_hcg_adaptive(**kwargs):
         "freeze_lm_backbone": 0,
         "select_train_dataset_items": 800000,
         "warmup_steps": 2000,
-        "model_type": "pretrained_checkpoint",
         "torch_compile": 1,
         "hcg_loss_weight_dynamic": 1,
-        "hcg_loss_weight": 10,
     }
 
     hcg_experiments = [
+        # Fan out projection
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_sl0.25_nofoutproj",
-            "fan_out_projection": "0",
-            "sparsity_level": 0.25,
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_8_nofoutproj_good_init/_backup_checkpoint-996/",
+            "output_dir": f"{experiment_prefix_base_name}_8_w1",
+            "fan_out_projection": "1",
+            "hcg_loss_weight": 1,
             **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_sl0.5_nofoutproj",
-            "fan_out_projection": "0",
-            "sparsity_level": 0.5,
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_8_nofoutproj_good_init/_backup_checkpoint-996/",
+            "output_dir": f"{experiment_prefix_base_name}_8_w2",
+            "fan_out_projection": "1",
+            "hcg_loss_weight": 2,
             **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_sl0.75_nofoutproj",
-            "fan_out_projection": "0",
-            "sparsity_level": 0.75,
-            "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_8_nofoutproj_good_init/_backup_checkpoint-996/",
+            "output_dir": f"{experiment_prefix_base_name}_8_w3",
+            "fan_out_projection": "1",
+            "hcg_loss_weight": 3,
             **common_params,
         },
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_8_w4",
-        #     "fan_out_projection": "0",
-        #     "hcg_loss_weight": 4,
-        #     "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_pretrain_8/checkpoint-996/",
-        #     **common_params,
-        # },
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_8_w6",
-        #     "fan_out_projection": "0",
-        #     "hcg_loss_weight": 6,
-        #     "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_pretrain_8/checkpoint-996/",
-        #     **common_params,
-        # },
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_8_w8",
-        #     "fan_out_projection": "0",
-        #     "hcg_loss_weight": 8,
-        #     "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_pretrain_8/checkpoint-996/",
-        #     **common_params,
-        # }
     ]
 
     run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
@@ -320,11 +292,11 @@ if __name__ == "__main__":
     print("dry", dry)
 
     # HCG
-    # run_hcg_adaptive(dry=dry)
+    run_hcg_adaptive(dry=dry)
     # run_hcg_adaptive_pretrain(dry=dry)
 
     # Random
-    run_hcg_random_sampling(dry=dry)
+    # run_hcg_random_sampling(dry=dry)
 
     # Gumbel
     # run_gumbel_adaptive_pretrain(dry=dry)
