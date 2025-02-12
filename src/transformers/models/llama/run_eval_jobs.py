@@ -98,13 +98,29 @@ def eval_hcg_adaptive_pretrain(**kwargs):
         #     "pretrained_model": "./adaptive_hcg_8_maintain_loss_nofanoutproj/checkpoint-24996",
         #     "output_dir": f"exps_evaluation/adaptive_hcg_8_maintain_loss_nofanoutproj-checkpoint-25k",
         # },
+        # {
+        #     "pretrained_model": "./random_hcg_8_random0.2/checkpoint-16000/",
+        #     "output_dir": f"exps_evaluation/random_hcg_8_random0.2-checkpoint-16k",
+        # },
+        # {
+        #     "pretrained_model": "./adaptive_hcg_8_w10/checkpoint-24996/",
+        #     "output_dir": f"exps_evaluation/adaptive_hcg_8_w10-checkpoint-25k",
+        # },
+        # {
+        #     "pretrained_model": "HuggingFaceTB/SmolLM-1.7B",
+        #     "output_dir": f"exps_evaluation/HuggingFaceTB-SmolLM-1.7B",
+        # },
         {
-            "pretrained_model": "./random_hcg_8_random0.2/checkpoint-16000/",
-            "output_dir": f"exps_evaluation/random_hcg_8_random0.2-checkpoint-16k",
+            "pretrained_model": "./adaptive_hcg_1.7B_4_w10_nofanoutproj_1.7B/_back_checkpoint-15000/",
+            "output_dir": f"exps_evaluation/adaptive_hcg_1.7B_4_w10_nofanoutproj_1.7B-_back_checkpoint-15000/",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_1.7B_4_w10_1.7B/_back_checkpoint-14000/",
+            "output_dir": f"exps_evaluation/adaptive_hcg_1.7B_4_w10_1.7B-_back_checkpoint-14000/",
         },
     ]
 
-    run_eval_experiments(hcg_experiments, job_description_prefix="Eval Gumbel Adaptive: ", **kwargs)
+    run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
 
     return
 

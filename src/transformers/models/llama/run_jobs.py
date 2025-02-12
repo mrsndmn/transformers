@@ -96,155 +96,48 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
     return
 
 
-def run_gumbel_adaptive(**kwargs):
+def run_hcg_smollm360M_pretrain(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_gumbel"
-
-    common_params = {
-        "freeze_lm_backbone": 0,
-        "select_train_dataset_items": 800000,
-        "warmup_steps": 2000,
-        "model_type": "pretrained_checkpoint",
-        "merging_type": 'attention_output_mlp',
-        "fan_out_type": "gumbel",
-        "gumbel_loss_weight_dynamic": 0,
-    }
-
-    gumbel_experiments = [
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_8",
-        #     "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_gumbel_pretrain_8/_back_checkpoint-24996/",
-        #     "ce_merging_loss_weight": 0,
-        #     **common_params,
-        # },
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_8_nofoutproj",
-        #     "fan_out_projection": "0",
-        #     "llama_checkpoint": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_gumbel_pretrain_8_nofoutproj/_back_checkpoint-24996/",
-        #     "ce_merging_loss_weight": 0,
-        #     **common_params,
-        # },
-    ]
-
-    run_experiments(gumbel_experiments, job_description_prefix="Gumbel: ", **kwargs)
-
-
-    return
-
-
-def run_gumbel_adaptive_pretrain(**kwargs):
-
-    experiment_prefix_base_name = "adaptive_gumbel_pretrain"
+    experiment_prefix_base_name = "adaptive_hcg_360M_pretrain"
 
     common_params = {
         "freeze_lm_backbone": 1,
-        "hcg_loss_weight": 0.0,
-        "ce_merging_loss_weight": 0.0,
-        "gumbel_loss_weight_dynamic": 0,
-        "select_train_dataset_items": 800000,
-        "warmup_steps": 2000,
-        "merging_type": 'attention_output_mlp',
-        "fan_out_type": "gumbel"
-    }
-
-    gumbel_experiments = [
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8",
-            **common_params,
-        },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_nofoutproj",
-            "fan_out_projection": "0",
-            **common_params,
-        },
-    ]
-
-    run_experiments(gumbel_experiments, job_description_prefix="Gumbel Pretrain: ", **kwargs)
-
-    return
-
-
-
-def run_hcg_adaptive_pretrain(**kwargs):
-
-    experiment_prefix_base_name = "adaptive_hcg_pretrain"
-
-    common_params = {
-        "freeze_lm_backbone": 1,
-        "hcg_loss_weight": 0.0,
         "select_train_dataset_items": 32000,
-        "warmup_steps": 1,
-    }
-
-    hcg_experiments = [
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_nofoutproj",
-            "fan_out_projection": "0",
-            **common_params,
-        },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8",
-            **common_params,
-        },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_nofoutproj_w0.1",
-            "fan_out_projection": "0",
-            "hcg_loss_weight": 0.1,
-            **common_params,
-        },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_w0.1",
-            "hcg_loss_weight": 0.1,
-            **common_params,
-        },
-    ]
-
-    run_experiments(hcg_experiments, job_description_prefix="HCG Pretrain: ", **kwargs)
-
-    return
-
-
-def run_hcg_adaptive(**kwargs):
-
-    experiment_prefix_base_name = "adaptive_hcg"
-
-    common_params = {
-        "freeze_lm_backbone": 0,
-        "select_train_dataset_items": 800000,
-        "warmup_steps": 2000,
+        "per_device_train_batch_size": 16,
+        "llama_checkpoint": "HuggingFaceTB/SmolLM-360M",
+        "warmup_steps": 100,
         "torch_compile": 1,
-        "hcg_loss_weight_dynamic": 1,
+        "hcg_loss_weight_dynamic": "1",
+        "hcg_loss_weight": 10,
+        "lm_loss_max_value": 1.0,
+        "fan_out_projection": "1",
     }
 
     hcg_experiments = [
         # Fan out projection
         {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_w1",
-            "fan_out_projection": "1",
-            "hcg_loss_weight": 1,
+            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_1",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_2",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_4",
             **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_w2",
-            "fan_out_projection": "1",
-            "hcg_loss_weight": 2,
+            "output_dir": f"{experiment_prefix_base_name}_8",
             **common_params,
         },
         {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_w3",
-            "fan_out_projection": "1",
-            "hcg_loss_weight": 3,
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_12",
             **common_params,
         },
     ]
@@ -252,6 +145,140 @@ def run_hcg_adaptive(**kwargs):
     run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
 
     return
+
+
+def run_hcg_smollm1dot7B_pretrain(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_1.7B_pretrain"
+
+    common_params = {
+        "freeze_lm_backbone": 1,
+        "select_train_dataset_items": 32000,
+        "per_device_train_batch_size": 16,
+        "llama_checkpoint": "HuggingFaceTB/SmolLM-1.7B",
+        "warmup_steps": 100,
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": "1",
+        "hcg_loss_weight": 10,
+        "lm_loss_max_value": 1.0,
+        "fan_out_projection": "1",
+    }
+
+    hcg_experiments = [
+        # Fan out projection
+        {
+            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_1",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,0,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_2",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_4",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_8",
+            **common_params,
+        },
+    ]
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
+
+def run_hcg_adaptive_smollm1dot7B(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_1.7B"
+
+    common_params = {
+        "freeze_lm_backbone": 0,
+        "select_train_dataset_items": 800000,
+        "per_device_train_batch_size": 16,
+        "llama_checkpoint": "HuggingFaceTB/SmolLM-1.7B",
+        "warmup_steps": 2000,
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": "1",
+        "lm_loss_max_value": 1.0,
+    }
+
+    hcg_experiments = [
+        # Fan out projection
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_4_w10_nofanoutproj_1.7B",
+        #     "fan_out_projection": "0",
+        #     "hcg_loss_weight": 10,
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_4_w10_1.7B",
+        #     "fan_out_projection": "1",
+        #     "hcg_loss_weight": 10,
+        #     **common_params,
+        # },
+    ]
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
+
+def run_hcg_smollm1dot7B_layers_iterate(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_1.7B_layersi"
+
+    common_params = {
+        "freeze_lm_backbone": 0,
+        "select_train_dataset_items": 800000,
+        "per_device_train_batch_size": 16,
+        "warmup_steps": 2000,
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": "1",
+        "hcg_loss_weight": 10,
+        "lm_loss_max_value": 1.1,
+        "fan_out_projection": "1",
+    }
+
+    hcg_experiments = [
+        # Fan out projection
+        {
+            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_1",
+            "llama_checkpoint": "adaptive_hcg_1.7B_pretrain_1/checkpoint-1993",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,0,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_2",
+            "llama_checkpoint": "adaptive_hcg_1.7B_pretrain_2/checkpoint-1993",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_4",
+            "llama_checkpoint": "adaptive_hcg_1.7B_pretrain_4/checkpoint-1993",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_8",
+            "llama_checkpoint": "adaptive_hcg_1.7B_pretrain_8/checkpoint-1993",
+            **common_params,
+        },
+    ]
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
 
 
 def run_hcg_random_sampling(**kwargs):
@@ -269,9 +296,16 @@ def run_hcg_random_sampling(**kwargs):
     }
 
     hcg_experiments = [
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8_random0.2",
+        #     "fan_out_projection": "0",
+        #     "concrete_random_mask_proba": 0.2,
+        #     **common_params,
+        # },
         {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_random0.2",
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_4_random0.2_1.7B",
             "fan_out_projection": "0",
             "concrete_random_mask_proba": 0.2,
             **common_params,
@@ -292,10 +326,17 @@ if __name__ == "__main__":
     print("dry", dry)
 
     # HCG
-    run_hcg_adaptive(dry=dry)
+    # run_hcg_adaptive(dry=dry)
     # run_hcg_adaptive_pretrain(dry=dry)
 
+    run_hcg_smollm360M_pretrain(dry=dry)
+
+    # run_hcg_smollm1dot7B_pretrain(dry=dry)
+    # run_hcg_adaptive_smollm1dot7B(dry=dry)
+    # run_hcg_adaptive_smollm1dot7B_pretrain(dry=dry)
+
     # Random
+    # run_hcg_random_sampling(dry=dry)
     # run_hcg_random_sampling(dry=dry)
 
     # Gumbel

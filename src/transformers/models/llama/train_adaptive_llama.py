@@ -96,6 +96,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     full_unmerge_loss_weight: float = 1.0
     hcg_loss_weight: float = 0.0
     hcg_loss_weight_dynamic: bool = False
+    lm_loss_max_value: float = 1.5
     sparsity_level: float = 1.0
     gumbel_loss_weight_dynamic: bool = False
     dummy_adaptive_fan_in_layers: Optional[int] = None
@@ -270,7 +271,7 @@ class AdaptiveLlamaTrainer(Trainer):
         total_tokens = attention_mask.sum().item()
         if self.args.hcg_loss_weight_dynamic:
             # print("sum_pruned_tokens / total_tokens", sum_pruned_tokens / total_tokens)
-            if outputs.loss < 1.5:
+            if outputs.loss < self.args.lm_loss_max_value:
                 hcg_loss *= self.args.hcg_loss_weight
             else:
                 hcg_loss = 0
@@ -785,7 +786,9 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
         # llama_checkpoint = "HuggingFaceTB/SmolLM-1.7B"
         # llama_checkpoint = "HuggingFaceTB/SmolLM-135M"
-        llama_checkpoint = "HuggingFaceTB/SmolLM-360M"
+        llama_checkpoint = training_args.llama_checkpoint
+        if llama_checkpoint is None or llama_checkpoint == "":
+            llama_checkpoint = "HuggingFaceTB/SmolLM-360M"
         llama_config = LlamaConfig.from_pretrained(llama_checkpoint)
         num_layers = llama_config.num_hidden_layers
         num_layers_half = num_layers // 2
