@@ -28,7 +28,7 @@ def run_eval_experiments(experiments, job_description_prefix="eval", dry=False):
 
         pretrained_model = exp['pretrained_model']
         output_dir = exp['output_dir']
-        script_str = f'bash -c \'cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 64 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|trivia_qa|0|1,custom|arc:easy|0|1,custom|arc:challenge|0|1,custom|piqa|0|1,custom|hellaswag|0|1"\''
+        script_str = f'bash -c \'cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 64 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|trivia_qa|0|1,custom|arc:easy|0|1,custom|arc:challenge|0|1,custom|piqa|0|1"\''
 
         print(f"\n\n{script_str}\n\n")
 
@@ -122,6 +122,11 @@ def eval_hcg_adaptive_pretrain(**kwargs):
         #     "pretrained_model": "./adaptive_hcg_1.7B_4_w10_1.7B/_back_checkpoint-14000/",
         #     "output_dir": f"exps_evaluation/adaptive_hcg_1.7B_4_w10_1.7B-_back_checkpoint-14000/",
         # },
+
+        # adaptive_hcg_1.7B_layersi_2/_bad_max_loss_1.5_checkpoint-19000
+        # adaptive_hcg_1.7B_layersi_8/_bad_max_loss_1.5_checkpoint-19000
+        # adaptive_hcg_1.7B_layersi_4/_bad_max_loss_1.5_checkpoint-19000
+
     ]
 
     run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
