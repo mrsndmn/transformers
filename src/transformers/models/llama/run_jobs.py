@@ -231,13 +231,69 @@ def run_hcg_adaptive_smollm1dot7B(**kwargs):
     return
 
 
+def run_hcg_smollm360M_layers_iterate(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_360M_layersi"
+
+    common_params = {
+        "freeze_lm_backbone": 0,
+        "select_train_dataset_items": 800000,
+        "per_device_train_batch_size": 32,
+        "warmup_steps": 2000,
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": "1",
+        "hcg_loss_weight": 10,
+        "lm_loss_max_value": 1.1,
+        "fan_out_projection": "1",
+    }
+
+    hcg_experiments = [
+        # Fan out projection
+        {
+            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_1",
+            "llama_checkpoint": "./adaptive_hcg_360M_pretrain_1/checkpoint-1993",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_2",
+            "llama_checkpoint": "./adaptive_hcg_360M_pretrain_2/checkpoint-1993",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_4",
+            "llama_checkpoint": "./adaptive_hcg_360M_pretrain_4/checkpoint-1993",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_8",
+            "llama_checkpoint": "./adaptive_hcg_360M_pretrain_8/checkpoint-1993",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_12",
+            "llama_checkpoint": "./adaptive_hcg_360M_pretrain_12/checkpoint-1993",
+            **common_params,
+        },
+    ]
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
+
+
 def run_hcg_smollm1dot7B_layers_iterate(**kwargs):
 
     experiment_prefix_base_name = "adaptive_hcg_1.7B_layersi"
 
     common_params = {
         "freeze_lm_backbone": 0,
-        "select_train_dataset_items": 800000,
+        "select_train_dataset_items": 400000,
         "per_device_train_batch_size": 16,
         "warmup_steps": 2000,
         "torch_compile": 1,
@@ -252,25 +308,25 @@ def run_hcg_smollm1dot7B_layers_iterate(**kwargs):
         {
             "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_1",
-            "llama_checkpoint": "adaptive_hcg_1.7B_pretrain_1/checkpoint-1993",
+            "llama_checkpoint": "./adaptive_hcg_1.7B_pretrain_1/checkpoint-1993",
             **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "1,0,1,1,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_2",
-            "llama_checkpoint": "adaptive_hcg_1.7B_pretrain_2/checkpoint-1993",
+            "llama_checkpoint": "./adaptive_hcg_1.7B_pretrain_2/checkpoint-1993",
             **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_4",
-            "llama_checkpoint": "adaptive_hcg_1.7B_pretrain_4/checkpoint-1993",
+            "llama_checkpoint": "./adaptive_hcg_1.7B_pretrain_4/checkpoint-1993",
             **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_8",
-            "llama_checkpoint": "adaptive_hcg_1.7B_pretrain_8/checkpoint-1993",
+            "llama_checkpoint": "./adaptive_hcg_1.7B_pretrain_8/checkpoint-1993",
             **common_params,
         },
     ]
@@ -325,15 +381,13 @@ if __name__ == "__main__":
     dry = len(sys.argv) > 1 and sys.argv[1] == 'dry'
     print("dry", dry)
 
-    # HCG
-    # run_hcg_adaptive(dry=dry)
-    # run_hcg_adaptive_pretrain(dry=dry)
-
-    run_hcg_smollm360M_pretrain(dry=dry)
-
+    # Pretrain
+    # run_hcg_smollm360M_pretrain(dry=dry)
     # run_hcg_smollm1dot7B_pretrain(dry=dry)
-    # run_hcg_adaptive_smollm1dot7B(dry=dry)
-    # run_hcg_adaptive_smollm1dot7B_pretrain(dry=dry)
+
+    # Iterate over layers
+    run_hcg_smollm360M_layers_iterate(dry=dry)
+    run_hcg_smollm1dot7B_layers_iterate(dry=dry)
 
     # Random
     # run_hcg_random_sampling(dry=dry)
