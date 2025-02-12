@@ -102,7 +102,7 @@ def run_hcg_smollm360M_pretrain(**kwargs):
 
     common_params = {
         "freeze_lm_backbone": 1,
-        "select_train_dataset_items": 32000,
+        "select_train_dataset_items": 80000,
         "per_device_train_batch_size": 16,
         "llama_checkpoint": "HuggingFaceTB/SmolLM-360M",
         "warmup_steps": 100,
@@ -115,31 +115,31 @@ def run_hcg_smollm360M_pretrain(**kwargs):
 
     hcg_experiments = [
         # Fan out projection
-        {
-            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_1",
-            **common_params,
-        },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_1",
+        #     **common_params,
+        # },
         {
             "dummy_adaptive_fan_in_layers_str": "1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_2",
             **common_params,
         },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_4",
-            **common_params,
-        },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_4",
+        #     **common_params,
+        # },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_8",
             **common_params,
         },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_12",
-            **common_params,
-        },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_12",
+        #     **common_params,
+        # },
     ]
 
     run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
@@ -153,7 +153,7 @@ def run_hcg_smollm1dot7B_pretrain(**kwargs):
 
     common_params = {
         "freeze_lm_backbone": 1,
-        "select_train_dataset_items": 32000,
+        "select_train_dataset_items": 80000,
         "per_device_train_batch_size": 16,
         "llama_checkpoint": "HuggingFaceTB/SmolLM-1.7B",
         "warmup_steps": 100,
@@ -250,42 +250,41 @@ def run_hcg_smollm360M_layers_iterate(**kwargs):
 
     hcg_experiments = [
         # Fan out projection
-        {
-            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_1",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_360M_pretrain_1/checkpoint-1993",
-            **common_params,
-        },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_1",
+        #     "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_360M_pretrain_1/checkpoint-1993",
+        #     **common_params,
+        # },
         {
             "dummy_adaptive_fan_in_layers_str": "1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_2",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_360M_pretrain_2/checkpoint-1993",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_360M_pretrain_2/checkpoint-4993",
             **common_params,
         },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_4",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_360M_pretrain_4/checkpoint-1993",
-            **common_params,
-        },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_4",
+        #     "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_360M_pretrain_4/checkpoint-1993",
+        #     **common_params,
+        # },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_8",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_360M_pretrain_8/checkpoint-1993",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_360M_pretrain_8/checkpoint-4993/",
             **common_params,
         },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_12",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_360M_pretrain_12/checkpoint-1993",
-            **common_params,
-        },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_12",
+        #     "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_360M_pretrain_12/checkpoint-1993",
+        #     **common_params,
+        # },
     ]
 
     run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
 
     return
-
 
 
 def run_hcg_smollm1dot7B_layers_iterate(**kwargs):
@@ -390,7 +389,7 @@ if __name__ == "__main__":
 
     # Iterate over layers
     run_hcg_smollm360M_layers_iterate(dry=dry)
-    run_hcg_smollm1dot7B_layers_iterate(dry=dry)
+    # run_hcg_smollm1dot7B_layers_iterate(dry=dry)
 
     # Random
     # run_hcg_random_sampling(dry=dry)
