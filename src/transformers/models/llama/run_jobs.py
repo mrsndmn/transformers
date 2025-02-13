@@ -393,7 +393,7 @@ def run_hcg_smollm1dot7B_layers_iterate(**kwargs):
 
 def run_hcg_smollm2_1dot7B_layers_iterate(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_layersi"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_layersi_max_loss_1.1"
 
     common_params = {
         "freeze_lm_backbone": 0,
@@ -405,7 +405,7 @@ def run_hcg_smollm2_1dot7B_layers_iterate(**kwargs):
         "torch_compile": 1,
         "hcg_loss_weight_dynamic": "1",
         "hcg_loss_weight": 10,
-        "lm_loss_max_value": 2.0,
+        "lm_loss_max_value": 1.1,
         "fan_out_projection": "1",
     }
 
