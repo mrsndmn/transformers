@@ -109,45 +109,46 @@ def eval_hcg_adaptive_pretrain(**kwargs):
         #     "pretrained_model": "HuggingFaceTB/SmolLM2-1.7B",
         # },
 
-        # {
-        #     "pretrained_model": "./adaptive_hcg_360M_layersi_1/checkpoint-24996/",
-        # },
-        # {
-        #     "pretrained_model": "./adaptive_hcg_360M_layersi_2/checkpoint-24996/",
-        # },
-        # {
-        #     "pretrained_model": "./adaptive_hcg_360M_layersi_4/checkpoint-24996/",
-        # },
-        # {
-        #     "pretrained_model": "./adaptive_hcg_360M_layersi_8/checkpoint-24996/",
-        # },
-        # {
-        #     "pretrained_model": "./adaptive_hcg_360M_layersi_12/checkpoint-24996/",
-        # },
-        # {
-        #     "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_1/checkpoint-18743/",
-        # },
-        # {
-        #     "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_2/checkpoint-18743/",
-        # },
-        # {
-        #     "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_4/checkpoint-18743/",
-        # },
-        # {
-        #     "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_8/checkpoint-18743/",
-        # },
         {
-            "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_1/checkpoint-18743",
+            "pretrained_model": "./adaptive_hcg_360M_layersi_1/checkpoint-24996/",
         },
         {
-            "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_2/checkpoint-18743",
+            "pretrained_model": "./adaptive_hcg_360M_layersi_2/checkpoint-24996/",
         },
         {
-            "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_4/checkpoint-18743",
+            "pretrained_model": "./adaptive_hcg_360M_layersi_4/checkpoint-24996/",
         },
         {
-            "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_8/checkpoint-18743",
+            "pretrained_model": "./adaptive_hcg_360M_layersi_8/checkpoint-24996/",
         },
+        {
+            "pretrained_model": "./adaptive_hcg_360M_layersi_12/checkpoint-24996/",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_1/checkpoint-18743/",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_2/checkpoint-18743/",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_4/checkpoint-18743/",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_8/checkpoint-18743/",
+        },
+
+        # {
+        #     "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_1/checkpoint-18743",
+        # },
+        # {
+        #     "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_2/checkpoint-18743",
+        # },
+        # {
+        #     "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_4/checkpoint-18743",
+        # },
+        # {
+        #     "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_8/checkpoint-18743",
+        # },
     ]
 
     run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)

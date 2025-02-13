@@ -96,6 +96,9 @@ class AdaptiveTrainingArguments(TrainingArguments):
     full_unmerge_loss_weight: float = 1.0
     hcg_loss_weight: float = 0.0
     hcg_loss_weight_dynamic: bool = False
+
+    hcg_loss_max_value: float = 0.0
+
     lm_loss_max_value: float = 1.5
     sparsity_level: float = 1.0
     gumbel_loss_weight_dynamic: bool = False
@@ -269,12 +272,20 @@ class AdaptiveLlamaTrainer(Trainer):
                 hcg_loss /= count_hcg_layers
 
         total_tokens = attention_mask.sum().item()
+
+        if self.args.hcg_loss_weight_dynamic and self.args.hcg_loss_max_value > 0:
+            raise ValueError("hcg_loss_max_value cant be used with hcg_loss_max_value")
+
         if self.args.hcg_loss_weight_dynamic:
             # print("sum_pruned_tokens / total_tokens", sum_pruned_tokens / total_tokens)
             if outputs.loss < self.args.lm_loss_max_value:
                 hcg_loss *= self.args.hcg_loss_weight
             else:
                 hcg_loss = 0
+        elif self.args.hcg_loss_max_value > 0:
+            if hcg_loss.item() < self.args.hcg_loss_max_value:
+                hcg_loss = 0
+            hcg_loss *= self.args.hcg_loss_weight
         else:
             hcg_loss *= self.args.hcg_loss_weight
 
