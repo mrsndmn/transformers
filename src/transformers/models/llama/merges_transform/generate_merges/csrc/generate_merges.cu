@@ -148,10 +148,10 @@ torch::Tensor batch_repeat_interleave_for_merges_count(
 
 __global__ void fan_out_restore_residuals_kernel(
     const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
-    const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_cumsum,
+    const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_cumsum_flipped,
     const torch::PackedTensorAccessor64<float, 3> hidden_states,
     torch::PackedTensorAccessor64<float, 3> restored_hidden_states,
-    int batch_size, int seq_len, int hidden_dim
+    int batch_size, int seq_len, int residual_seq_len, int hidden_dim
 ) {
     int batch_i = blockIdx.x; // Batch index
     int seq_len_i = blockIdx.y; // Sequence index
@@ -175,7 +175,7 @@ __global__ void fan_out_restore_residuals_kernel(
         return;
     }
 
-    auto restored_idx = merged_embeddings_cumsum[batch_i][seq_len_i] - 1;
+    auto restored_idx = residual_seq_len - merged_embeddings_cumsum_flipped[batch_i][seq_len_i];
 
     for (int hi = hidden_dim_start; hi < hidden_dim_end; ++hi) {
         restored_hidden_states[batch_i][restored_idx][hi] = hidden_states[batch_i][seq_len_i][hi];
@@ -190,6 +190,7 @@ torch::Tensor fan_out_restore_residuals(
 ) {
     const int batch_size = merged_embeddings_counts.size(0);
     const int seq_len = merged_embeddings_counts.size(1);
+    const int residual_seq_len = residual_hidden_states_projection.size(1);
     const int hidden_dim = residual_hidden_states_projection.size(2);
 
     // Launch the kernel
@@ -201,19 +202,21 @@ torch::Tensor fan_out_restore_residuals(
 
     torch::Tensor restored_hidden_states = torch::clone(residual_hidden_states_projection);
 
-    torch::Tensor merged_embeddings_cumsum = torch::cumsum(merged_embeddings_counts, 1);
+    torch::Tensor merged_embeddings_counts_flipped = torch::flip(merged_embeddings_counts, {1});
+    torch::Tensor merged_embeddings_cumsum = torch::cumsum(merged_embeddings_counts_flipped, 1);
+    torch::Tensor merged_embeddings_cumsum_flipped = torch::flip(merged_embeddings_cumsum, {1});
 
     fan_out_restore_residuals_kernel<<<grid_size, block_size>>>(
         merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
-        merged_embeddings_cumsum.packed_accessor64<int64_t, 2>(),
+        merged_embeddings_cumsum_flipped.packed_accessor64<int64_t, 2>(),
         hidden_states.packed_accessor64<float, 3>(),
         restored_hidden_states.packed_accessor64<float, 3>(),
-        batch_size, seq_len, hidden_dim
+        batch_size, seq_len, residual_seq_len, hidden_dim
     );
 
     // Error checking
-    // cudaDeviceSynchronize();
-    // check_cuda_errors();
+    cudaDeviceSynchronize();
+    check_cuda_errors();
 
     return restored_hidden_states;
 }
@@ -229,13 +232,12 @@ __global__ void backward_fan_out_straight_kernel(
 ) {
     int batch_i = blockIdx.x; // Batch index
 
-    // TODO could be also parallelized by sequence dim!
     if (batch_i >= batch_size) {
         return; // Out of bounds check
     }
 
-    int output_seq_len_i = 0;
-    for (int seq_len_i = 0; seq_len_i < seq_len; ++seq_len_i) {
+    int output_seq_len_i = seq_len;
+    for (int seq_len_i = seq_len-1; seq_len_i >= 0; ++seq_len_i) {
         auto num_repeats = merged_embeddings_counts[batch_i][seq_len_i];
         if (num_repeats == 0) {
             break;
@@ -254,17 +256,18 @@ __global__ void backward_fan_out_straight_kernel(
             }
         }
 
-        output_seq_len_i += num_repeats;
+        output_seq_len_i -= num_repeats;
     }
 
+    // For left-side padding is not necessary
     // if last tokens were skipped
     // we need to copy gradients for them
-    int output_seq_len_total = restored_hidden_states_seq_lengths[batch_i];
-    for (int residuals_grad_i = output_seq_len_i; residuals_grad_i < output_seq_len_total; ++residuals_grad_i) {
-        for (int hi = 0; hi < hidden_dim; ++hi) {
-            residual_hidden_states_grad[batch_i][residuals_grad_i][hi] = restored_hidden_states_grad[batch_i][residuals_grad_i][hi];
-        }
-    }
+    // int output_seq_len_total = restored_hidden_states_seq_lengths[batch_i];
+    // for (int residuals_grad_i = output_seq_len_i; residuals_grad_i < output_seq_len_total; ++residuals_grad_i) {
+    //     for (int hi = 0; hi < hidden_dim; ++hi) {
+    //         residual_hidden_states_grad[batch_i][residuals_grad_i][hi] = restored_hidden_states_grad[batch_i][residuals_grad_i][hi];
+    //     }
+    // }
 
 }
 
@@ -323,16 +326,15 @@ __global__ void prune_tokens_concrete_kernel(
         return; // Out of bounds check
     }
 
-    int initial_new_seq_len_i = seq_len_block_idx * SEQ_LEN_BLOCK_SIZE;
-    int new_seq_len_i = seq_len_block_idx * SEQ_LEN_BLOCK_SIZE;
-
     int seq_len_i_start = seq_len_block_idx * SEQ_LEN_BLOCK_SIZE;
     int seq_len_i_end = seq_len_block_idx * SEQ_LEN_BLOCK_SIZE + SEQ_LEN_BLOCK_SIZE;
     if (seq_len_i_end > seq_len) {
         seq_len_i_end = seq_len;
     }
 
-    for (int seq_len_i = seq_len_i_start; seq_len_i < seq_len_i_end; ++seq_len_i) {
+    int new_seq_len_i = seq_len_i_end - 1;
+
+    for (int seq_len_i = seq_len_i_end - 1; seq_len_i >= seq_len_i_start; --seq_len_i) {
         if (!attention_mask[batch_i][seq_len_i]) {
             break;
         }
@@ -346,13 +348,13 @@ __global__ void prune_tokens_concrete_kernel(
             merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
             merged_attention_mask[batch_i][new_seq_len_i] = true;
 
-            new_seq_len_i += 1;
+            new_seq_len_i -= 1;
         } else {
             merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
         }
     }
 
-    seq_len_blocks_lengths[batch_i][seq_len_block_idx] = new_seq_len_i - initial_new_seq_len_i;
+    seq_len_blocks_lengths[batch_i][seq_len_block_idx] = seq_len_i_end - new_seq_len_i - 1;
 }
 
 __global__ void prune_tokens_concrete_copy_hidden_state_kernel(
@@ -380,7 +382,6 @@ __global__ void prune_tokens_concrete_copy_hidden_state_kernel(
     }
 
     int initial_new_seq_len_i = seq_len_block_idx * SEQ_LEN_BLOCK_SIZE;
-    int new_seq_len_i = seq_len_block_idx * SEQ_LEN_BLOCK_SIZE;
 
     int seq_len_i_start = seq_len_block_idx * SEQ_LEN_BLOCK_SIZE;
     int seq_len_i_end = seq_len_block_idx * SEQ_LEN_BLOCK_SIZE + SEQ_LEN_BLOCK_SIZE;
@@ -388,7 +389,9 @@ __global__ void prune_tokens_concrete_copy_hidden_state_kernel(
         seq_len_i_end = seq_len;
     }
 
-    for (int seq_len_i = seq_len_i_start; seq_len_i < seq_len_i_end; ++seq_len_i) {
+    int new_seq_len_i = seq_len_i_end - 1;
+
+    for (int seq_len_i = seq_len_i_end - 1; seq_len_i >= seq_len_i_start; --seq_len_i) {
         if (!attention_mask[batch_i][seq_len_i]) {
             break;
         }
@@ -398,14 +401,14 @@ __global__ void prune_tokens_concrete_copy_hidden_state_kernel(
         if (is_token_important) {
             // [ bs, sl1, h ]
             // [ emd1, emd2, emd3 ... ]
-            // 
+            //
             // [ bs, sl2, h ]
             // [ emd1, emd2, emd3 ... ]
             for (int i = hidden_dim_start; i < hidden_dim_end; ++i) {
                 merged_hidden_state[batch_i][new_seq_len_i][i] = hidden_state[batch_i][seq_len_i][i];
             }
 
-            new_seq_len_i += 1;
+            new_seq_len_i -= 1;
         }
     }
 }
@@ -587,11 +590,12 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cu
 
 
     int64_t max_seq_len = seq_len_blocks_lengths.slice(1, 0, 1).max().item<int64_t>();
+    int64_t slice_from = seq_len - max_seq_len;
 
     namespace index = torch::indexing;
-    torch::Tensor sliced_merged_hidden_state = merged_hidden_state.index({index::Slice(), index::Slice(0, max_seq_len), index::Slice()});
-    torch::Tensor sliced_merged_embeddings_counts = merged_embeddings_counts.index({index::Slice(), index::Slice(0, max_seq_len)});
-    torch::Tensor sliced_merged_attention_mask = merged_attention_mask.index({index::Slice(), index::Slice(0, max_seq_len)});
+    torch::Tensor sliced_merged_hidden_state = merged_hidden_state.index({index::Slice(), index::Slice(slice_from, seq_len), index::Slice()});
+    torch::Tensor sliced_merged_embeddings_counts = merged_embeddings_counts.index({index::Slice(), index::Slice(slice_from, seq_len)});
+    torch::Tensor sliced_merged_attention_mask = merged_attention_mask.index({index::Slice(), index::Slice(slice_from, seq_len)});
 
     // Error checking
     // cudaDeviceSynchronize();

@@ -26,6 +26,8 @@ if __name__ == '__main__':
         elif 'qem' in json_data['results'][key]:
             metric = json_data['results'][key]['qem']
             metric_stderr = json_data['results'][key]['qem_stderr']
+        else:
+            raise ValueError("unknown metrics:", json_data['results'][key])
 
         space = " " * (max_len - len(key) + 1)
         print(key, space, "\t", f"{metric*100:.2f}", '\tstderr', f"{metric_stderr*100:.2f}")

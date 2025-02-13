@@ -28,11 +28,13 @@ def run_eval_experiments(experiments, job_description_prefix="eval", dry=False):
 
         pretrained_model = exp.pop('pretrained_model')
         output_dir = exp.pop('output_dir', './exps_evaluation')
-c
+
         if len(exp.keys()) > 0:
             raise ValueError("Invalid exp values!")
 
-        script_str = f'bash -c \'cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 64 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|trivia_qa|0|1,custom|arc|0|1,custom|piqa|0|1"\''
+        script_str_no_gsm = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 32 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|trivia_qa|0|1,custom|arc|0|1,custom|piqa|0|1"\''
+        # script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 32 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|trivia_qa|0|1,custom|arc|0|1,custom|piqa|0|1,custom|gsm8k|5|1"\''
+        script_str = script_str_no_gsm
 
         print(f"\n\n{script_str}\n\n")
 
@@ -53,7 +55,7 @@ c
                 "WANDB_API_KEY": os.environ.get("WANDB_API_KEY", ""),
                 "WANDB_MODE": "online",
                 "PYTHONPATH": f"{workdir_prefix}/src:/workspace-SR004.nfs2/d.tarasov/lighteval/src",
-                "HF_HOME": "/workspace-SR004.nfs2/d.tarasov/.cache/huggingface"
+                "HF_HOME": "/workspace-SR004.nfs2/.cache/huggingface"
             },
         )
 
@@ -95,33 +97,57 @@ def eval_hcg_adaptive_pretrain(**kwargs):
 
     hcg_experiments = [
         # {
-        #     "pretrained_model": f"./adaptive_hcg_8_maintain_loss_nofanoutproj/checkpoint-24996",
-        # },
-        # {
-        #     "pretrained_model": "./adaptive_hcg_8_maintain_loss_nofanoutproj/checkpoint-24996",
-        # },
-        # {
-        #     "pretrained_model": "./random_hcg_8_random0.2/checkpoint-16000/",
-        # },
-        # {
-        #     "pretrained_model": "./adaptive_hcg_8_w10/checkpoint-24996/",
-        # },
-        # {
         #     "pretrained_model": "HuggingFaceTB/SmolLM-360M",
         # },
         # {
         #     "pretrained_model": "HuggingFaceTB/SmolLM-1.7B",
         # },
+        # # {
+        # #     "pretrained_model": "HuggingFaceTB/SmolLM2-360M",
+        # # },
         # {
         #     "pretrained_model": "HuggingFaceTB/SmolLM2-1.7B",
         # },
-        {
-            "pretrained_model": "./adaptive_hcg_1.7B_layersi_2/_bad_max_loss_1.5_checkpoint-19000",
-        },
-        # 
-        # adaptive_hcg_1.7B_layersi_8/_bad_max_loss_1.5_checkpoint-19000
-        # adaptive_hcg_1.7B_layersi_4/_bad_max_loss_1.5_checkpoint-19000
 
+        # {
+        #     "pretrained_model": "./adaptive_hcg_360M_layersi_1/checkpoint-24996/",
+        # },
+        # {
+        #     "pretrained_model": "./adaptive_hcg_360M_layersi_2/checkpoint-24996/",
+        # },
+        # {
+        #     "pretrained_model": "./adaptive_hcg_360M_layersi_4/checkpoint-24996/",
+        # },
+        # {
+        #     "pretrained_model": "./adaptive_hcg_360M_layersi_8/checkpoint-24996/",
+        # },
+        # {
+        #     "pretrained_model": "./adaptive_hcg_360M_layersi_12/checkpoint-24996/",
+        # },
+        # {
+        #     "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_1/checkpoint-18743/",
+        # },
+        # {
+        #     "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_2/checkpoint-18743/",
+        # },
+        # {
+        #     "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_4/checkpoint-18743/",
+        # },
+        # {
+        #     "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_8/checkpoint-18743/",
+        # },
+        {
+            "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_1/checkpoint-18743",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_2/checkpoint-18743",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_4/checkpoint-18743",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_8/checkpoint-18743",
+        },
     ]
 
     run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)

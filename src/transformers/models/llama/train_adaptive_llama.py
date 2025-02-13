@@ -837,6 +837,8 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
 
+    tokenizer.padding_side = 'left'
+
     return model, tokenizer
 
 

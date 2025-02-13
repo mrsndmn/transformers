@@ -587,20 +587,22 @@ def reorder_mask_for_concrete(concrete, hidden_state, attention_mask):
     reordered_indexes = torch.zeros_like(concrete_bool, dtype=torch.long, device='cpu')
     merged_embeddings_counts = torch.zeros([concrete_bool.shape[0], concrete_bool.shape[1]], dtype=torch.long, device='cpu')
     for batch_i in range(concrete_bool.shape[0]):
-        current_seq_len = 0
+        current_seq_len = concrete_bool.shape[1] - 1
         current_merged_embeddings = 0
-        for seq_len_i in range(seq_lengths[batch_i].item()):
+        for seq_len_i in range(seq_lengths[batch_i].item()-1, -1, -1 ):
             if concrete_bool[batch_i, seq_len_i]:
                 reordered_indexes[batch_i, current_seq_len] = seq_len_i
                 merged_embeddings_counts[batch_i, current_seq_len] = current_merged_embeddings + 1
-                current_seq_len += 1
+                current_seq_len -= 1
                 current_merged_embeddings = 0
             else:
                 current_merged_embeddings += 1
 
-        new_seq_lengths[batch_i] = current_seq_len
+        new_seq_lengths[batch_i] = concrete_bool.shape[1] - current_seq_len - 1
 
     max_seq_len = new_seq_lengths.max().item()
+    print("max_seq_len", max_seq_len)
+
     # print("new_seq_lengths", new_seq_lengths)
     # print("reordered_indexes", reordered_indexes)
     reordered_indexes_cuda = reordered_indexes.to(hidden_state.device)
@@ -610,10 +612,11 @@ def reorder_mask_for_concrete(concrete, hidden_state, attention_mask):
     hidden_state_m = torch.gather(hidden_state, dim=1, index=reordered_indexes_cuda)
 
     mast_template = torch.arange(max_seq_len, device=hidden_state.device).unsqueeze(0).repeat(hidden_state.shape[0], 1)
+    mast_template = mast_template.flip(1)
     new_attention_mask = (mast_template < new_seq_lengths.unsqueeze(-1).to(hidden_state.device)).to(torch.long)
 
-    hidden_state_m = hidden_state_m[:, :max_seq_len]
-    merged_embeddings_counts = merged_embeddings_counts[:, :max_seq_len].to(hidden_state.device)
+    hidden_state_m = hidden_state_m[:, -max_seq_len:]
+    merged_embeddings_counts = merged_embeddings_counts[:, -max_seq_len:].to(hidden_state.device)
 
     return hidden_state_m, merged_embeddings_counts, new_attention_mask
 
@@ -736,6 +739,12 @@ class AdaptiveFanInHCG(nn.Module):
             if hidden_state.dtype != hs_dtype:
                 hidden_state = hidden_state.to(hs_dtype)
 
+            # TODO remove on benchmarking
+
+            # assert mask is left-padded
+            assert (attention_mask == 1).all() or attention_mask[:, -1].sum() == attention_mask.shape[0]
+
+            # print("attention_mask", attention_mask.shape, attention_mask)
             # [ bs, seq_len ]
             # concrete_bool_cpu = concrete_bool.detach().cpu()
             # hidden_state_m, merged_embeddings_counts, merged_attention_mask = reorder_mask_for_concrete(concrete=concrete, hidden_state=hidden_state, attention_mask=attention_mask)
@@ -909,6 +918,13 @@ class AdaptiveFanOutHCG(nn.Module):
         residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
 
         if not self.training:
+            # print("merged_embeddings_counts", merged_embeddings_counts.shape, merged_embeddings_counts)
+            # print("merged_embeddings_counts_flip_cumsum_flip", merged_embeddings_counts.flip(-1).cumsum(-1).flip(-1))
+            # breakpoint()
+            # print("residual_attention_mask", residual_attention_mask.shape, residual_attention_mask)
+            # print("hidden_states", hidden_states.shape)
+            # print("residual_hidden_states_projection", residual_hidden_states_projection.shape)
+            # assert (merged_embeddings_counts.sum(dim=-1) == residual_attention_mask.sum(dim=-1)).all()
             hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection, residual_attention_mask)
 
         hidden_states = hidden_states + residual_hidden_states_projection
@@ -1203,6 +1219,8 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
 
+        assert len(attention_mask.shape) == 2
+
         causal_mask = self._update_causal_mask(
             attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
         )
@@ -1259,7 +1277,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                     hidden_states,
                     loop_down_causal_mask,
                     loop_down_position_ids,
-                    past_key_values,
+                    None, # past_key_value
                     output_attentions,
                     use_cache,
                     cache_position,
@@ -1270,7 +1288,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                     hidden_states,
                     attention_mask=loop_down_causal_mask,
                     position_ids=loop_down_position_ids,
-                    past_key_value=past_key_values,
+                    past_key_value=None,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,
@@ -1380,7 +1398,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                     hidden_states,
                     loop_up_causal_mask,
                     loop_up_position_ids,
-                    past_key_values,
+                    None, # past_key_value
                     output_attentions,
                     use_cache,
                     cache_position,
@@ -1391,7 +1409,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                     hidden_states,
                     attention_mask=loop_up_causal_mask,
                     position_ids=loop_up_position_ids,
-                    past_key_value=past_key_values,
+                    past_key_value=None,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,

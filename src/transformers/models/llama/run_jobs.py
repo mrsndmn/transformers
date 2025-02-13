@@ -92,7 +92,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
                 "WANDB_API_KEY": os.environ.get("WANDB_API_KEY", ""),
                 "WANDB_MODE": "online",
                 "PYTHONPATH": f"{workdir_prefix}/src",
-                "HF_HOME": "/workspace-SR004.nfs2/d.tarasov/.cache/huggingface"
+                "HF_HOME": "/workspace-SR004.nfs2/.cache/huggingface"
             },
         )
 
@@ -393,7 +393,7 @@ def run_hcg_smollm1dot7B_layers_iterate(**kwargs):
 
 def run_hcg_smollm2_1dot7B_layers_iterate(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_layersi_max_loss_1.1"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25"
 
     common_params = {
         "freeze_lm_backbone": 0,
@@ -405,7 +405,7 @@ def run_hcg_smollm2_1dot7B_layers_iterate(**kwargs):
         "torch_compile": 1,
         "hcg_loss_weight_dynamic": "1",
         "hcg_loss_weight": 10,
-        "lm_loss_max_value": 1.1,
+        "lm_loss_max_value": 1.25,
         "fan_out_projection": "1",
     }
 
