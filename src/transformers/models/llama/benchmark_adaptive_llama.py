@@ -94,7 +94,7 @@ if __name__ == "__main__":
 
                 if isinstance(current_model, AdaptiveLlamaForCausalLM):
                     special_embeddings_mask = model_inputs['attention_mask'].cumsum(-1)
-                    special_embeddings_mask[special_embeddings_mask > 1] = 1
+                    special_embeddings_mask[special_embeddings_mask > 1] = 0
                     model_inputs['special_embeddings_mask'] = special_embeddings_mask
 
                 max_new_tokens = 20
@@ -157,9 +157,8 @@ if __name__ == "__main__":
                     print("text_inputs['input_ids'].shape", text_inputs['input_ids'].shape)
 
                     if isinstance(current_model, AdaptiveLlamaForCausalLM):
-                        special_embeddings_mask = torch.zeros_like(text_inputs['input_ids'])
-                        special_embeddings_mask[:, 0] = 1
-                        special_embeddings_mask[:, -1] = 1
+                        special_embeddings_mask = text_inputs['attention_mask'].cumsum(-1)
+                        special_embeddings_mask[special_embeddings_mask > 1] = 0
                         text_inputs['special_embeddings_mask'] = special_embeddings_mask
 
                     forward_output = current_model.forward(**text_inputs)

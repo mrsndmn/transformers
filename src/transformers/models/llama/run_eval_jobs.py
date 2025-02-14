@@ -32,9 +32,8 @@ def run_eval_experiments(experiments, job_description_prefix="eval", dry=False):
         if len(exp.keys()) > 0:
             raise ValueError("Invalid exp values!")
 
-        # script_str_no_gsm8k = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 32 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|trivia_qa|0|1,custom|arc|0|1,custom|piqa|0|1"\''
-        script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 32 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|trivia_qa|0|1"\''
-        # script_str = script_str_no_gsm8k
+        # script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 32 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|trivia_qa|0|1"\''
+        script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 32 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|trivia_qa|0|1,custom|arc|0|1,custom|piqa|0|1"\''
 
         print(f"\n\n{script_str}\n\n")
 
@@ -63,32 +62,6 @@ def run_eval_experiments(experiments, job_description_prefix="eval", dry=False):
             print("JOB WAS NOT LAUNCHED")
         else:
             print(output_dir, job_w_args.submit())
-
-    return
-
-
-def eval_gumbel_adaptive_pretrain(**kwargs):
-
-    gumbel_experiments = [
-        # {
-        #     "pretrained_model": "HuggingFaceTB/SmolLM-360M",
-        #     "output_dir": f"exps_evaluation/hf_smollm_360m",
-        # },
-        # {
-        #     "pretrained_model": f"./adaptive_gumbel_pretrain_12/_backup_checkpoint-15000",
-        #     "output_dir": f"exps_evaluation/adaptive_gumbel_pretrain_12-checkpoint-15k",
-        # },
-        {
-            "pretrained_model": f"./adaptive_gumbel_pretrain_8/_back_checkpoint-24996",
-            "output_dir": f"exps_evaluation/adaptive_gumbel_pretrain_8-checkpoint-25k",
-        },
-        {
-            "pretrained_model": f"./adaptive_gumbel_pretrain_8_nofoutproj/_back_checkpoint-24996/",
-            "output_dir": f"exps_evaluation/adaptive_gumbel_pretrain_8_nofoutproj-checkpoint-25k",
-        },
-    ]
-
-    run_eval_experiments(gumbel_experiments, job_description_prefix="Eval Gumbel Adaptive: ", **kwargs)
 
     return
 
@@ -152,8 +125,30 @@ def eval_hcg_adaptive_pretrain(**kwargs):
         {
             "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_8/checkpoint-18743",
         },
+    ]
 
+    run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
 
+    return
+
+def eval_hcg_fixed_percent(**kwargs):
+
+    hcg_experiments = [
+        {
+            "pretrained_model": "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct20/checkpoint-4993",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct30/checkpoint-4993",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct40/checkpoint-4993",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct60/checkpoint-4993",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct80/checkpoint-4993",
+        },
     ]
 
     run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
@@ -173,4 +168,5 @@ if __name__ == "__main__":
     # eval_gumbel_adaptive_pretrain(dry=dry)
     # run_gumbel_adaptive(dry=dry)
 
-    eval_hcg_adaptive_pretrain(dry=dry)
+    # eval_hcg_adaptive_pretrain(dry=dry)
+    eval_hcg_fixed_percent(dry=dry)

@@ -728,6 +728,8 @@ class AdaptiveFanInHCG(nn.Module):
             # print("concrete           before", concrete[:, :, 0])
             # print("hidden_state.shape before", hidden_state.mean(dim=-1)[:, 5:])
 
+            # breakpoint()
+
             # if True or self.training:
             attention_mask_dtype = attention_mask.dtype
             concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
@@ -742,7 +744,7 @@ class AdaptiveFanInHCG(nn.Module):
             # TODO remove on benchmarking
 
             # assert mask is left-padded
-            assert (attention_mask == 1).all() or attention_mask[:, -1].sum() == attention_mask.shape[0]
+            # assert (attention_mask == 1).all() or attention_mask[:, -1].sum() == attention_mask.shape[0]
 
             # print("attention_mask", attention_mask.shape, attention_mask)
             # [ bs, seq_len ]
