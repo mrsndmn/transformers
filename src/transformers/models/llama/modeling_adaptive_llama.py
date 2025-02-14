@@ -1678,6 +1678,8 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
             special_embeddings_mask = attention_mask.cumsum(dim=-1)
             special_embeddings_mask[special_embeddings_mask > 1] = 0
 
+        # print("attention_mask", attention_mask)
+        # print("special_embeddings_mask", special_embeddings_mask)
 
         assert special_embeddings_mask is not None
 

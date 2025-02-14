@@ -52,11 +52,7 @@ if __name__ == "__main__":
         # attn_implementation='flash_attention_2',
     )
 
-    model = AdaptiveLlamaForCausalLM.from_pretrained(
-        checkpoint,
-        torch_dtype=bench_dtype,
-        # attn_implementation='flash_attention_2',
-    )
+    model = AdaptiveLlamaForCausalLM.from_pretrained( checkpoint, torch_dtype=bench_dtype )
 
     model.to(device)
     model.eval()
@@ -84,19 +80,24 @@ if __name__ == "__main__":
             #         current_model.eval()
             #     else:
             #         current_model.train()
-            for current_model in tqdm([model, llama_model]):
+            for current_model in tqdm([model]):
 
-                model_inputs = tokenizer([ 'Question: Which US President was born Lesley Lynch King Jr?\nAnswer:', 'Question: How are you?\nAnswer:', ], return_tensors='pt', padding=True)
-                model_inputs = model_inputs.to(device)
+                model_inputs = {
+                    "input_ids": torch.load('inputs_ids.pt').to(device),
+                    "attention_mask": torch.load('batch.input_mask.pt').to(device),
+                }
+
+                # model_inputs = tokenizer([ 'Question: Which Lloyd Webber musical premiered in the US on 10th December 1993?\nAnswer:', 'Question: How are you?\nAnswer:', ], return_tensors='pt', padding=True)
+                # model_inputs = model_inputs.to(device)
 
                 print('model_inputs["input_ids"].shape', model_inputs['input_ids'].shape)
 
                 if isinstance(current_model, AdaptiveLlamaForCausalLM):
-                    special_embeddings_mask = torch.zeros_like(model_inputs['input_ids'])
-                    special_embeddings_mask[:, 0] = 1
+                    special_embeddings_mask = model_inputs['attention_mask'].cumsum(-1)
+                    special_embeddings_mask[special_embeddings_mask > 1] = 1
                     model_inputs['special_embeddings_mask'] = special_embeddings_mask
 
-                max_new_tokens = 10
+                max_new_tokens = 20
                 gen_params = {
                     "do_sample": False,
                     "min_new_tokens": 1,

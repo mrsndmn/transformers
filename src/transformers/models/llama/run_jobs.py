@@ -490,7 +490,7 @@ def run_hcg_smollm2_1dot7B_layers_iterate(**kwargs):
 
 
 def run_hcg_smollm2_1dot7B_fixed_pruning_percent(**kwargs):
-    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_fixed_pruning_percent"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2"
 
     common_params = {
         "freeze_lm_backbone": 0,
@@ -653,7 +653,7 @@ if __name__ == "__main__":
     # run_hcg_smollm2_1dot7B_layers_iterate(dry=dry)
 
     # schedule pruned percent loss
-    # run_hcg_smollm2_1dot7B_fixed_pruning_percent(dry=dry)
+    run_hcg_smollm2_1dot7B_fixed_pruning_percent(dry=dry)
 
 
     # Strange 1.7B SmolLM2 8 Layer
