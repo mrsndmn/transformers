@@ -993,8 +993,8 @@ if __name__ == "__main__":
         project_name=trackers_project_name,
     )
 
-    # with torch.autograd.set_detect_anomaly(True):
-    trainer.train(
-        # resume_from_checkpoint="adaptive_gumbel_2-2_1.7B_model_my_checkpoint-4995",
-        # resume_from_checkpoint='adaptive_13-13_hcg_temp_5.0/checkpoint-4995/',
-    )
+    with torch.autograd.set_detect_anomaly(True):
+        trainer.train(
+            # resume_from_checkpoint="adaptive_gumbel_2-2_1.7B_model_my_checkpoint-4995",
+            # resume_from_checkpoint='adaptive_13-13_hcg_temp_5.0/checkpoint-4995/',
+        )

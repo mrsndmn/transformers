@@ -73,7 +73,7 @@ if __name__ == "__main__":
     llama_model.eval()
     print("llama model params:", count_params(llama_model))
 
-    tokenizer = AutoTokenizer.from_pretrained(checkpoint)
+    tokenizer = AutoTokenizer.from_pretrained(checkpoint, padding_side='left')
 
     with torch.no_grad():
         if args.generate:
@@ -86,7 +86,7 @@ if __name__ == "__main__":
             #         current_model.train()
             for current_model in tqdm([model, llama_model]):
 
-                model_inputs = tokenizer([ '<|im_start|> Who are you?' ], return_tensors='pt')
+                model_inputs = tokenizer([ 'Question: Which US President was born Lesley Lynch King Jr?\nAnswer:', 'Question: How are you?\nAnswer:', ], return_tensors='pt', padding=True)
                 model_inputs = model_inputs.to(device)
 
                 print('model_inputs["input_ids"].shape', model_inputs['input_ids'].shape)

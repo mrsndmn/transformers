@@ -36,49 +36,16 @@ def test_fan_out_restore_residuals_with_merging_map():
 
     restored_hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection, attention_mask)
 
-    assert (restored_hidden_states[:, :2] == hidden_states_clone[:, :2]).all()
-    assert (restored_hidden_states[:, 3:] == hidden_states_clone[:, 2:]).all()
+    assert (restored_hidden_states[:, :3] == hidden_states_clone[:, :3]).all()
 
-    assert (restored_hidden_states[:, 2] == residual_hidden_states_projection[:, 2]).all()
-
-    grad_init = torch.rand_like(restored_hidden_states)
-
-    restored_hidden_states.backward(grad_init)
-
-    assert (grad_init[:, 2, :] == residual_hidden_states_projection.grad[:, 2, :]).all()
-    assert (grad_init[:, :2, :] == hidden_states.grad[:, :2, :]).all()
-    assert (grad_init[:, 3, :] == hidden_states.grad[:, 2, :]).all()
-
-    breakpoint()
-
-
-def test_skip_last_tokens():
-    device = 'cuda'
-
-    merging_map = torch.tensor([ [ [ 0, 1 ], [ 0, 1 ], [ 1, 0 ], [ 1, 0 ] ] ], dtype=torch.bfloat16, device=device)
-    attention_mask = torch.ones([ 1, merging_map.shape[1] ], device=device, dtype=torch.bool)
-    special_embeddings_mask = torch.zeros([ 1, merging_map.shape[1] ], device=device, dtype=torch.bool)
-    special_embeddings_mask[:, 0] = 1
-
-    aggregated_embeddings_transform_output, merged_embeddings_counts, merged_attention_mask = generate_merges_transform(merging_map, attention_mask, special_embeddings_mask)
-
-    assert (merged_embeddings_counts == torch.tensor([ [ 1, 1 ] ], dtype=torch.long, device=device)).all()
-
-    hidden_states = torch.rand([1, merging_map[0, :, 1].sum().long().item(), 64], device=device, requires_grad=True)
-    hidden_states_clone = hidden_states.clone()
-    residual_hidden_states_projection = torch.rand([1, merging_map.shape[1], 64], device=device, requires_grad=True)
-
-    restored_hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection, attention_mask)
-
-    assert (restored_hidden_states[:, :2] == hidden_states_clone[:, :2]).all()
-    assert (restored_hidden_states[:, 2:] == residual_hidden_states_projection[:, 2:]).all()
+    assert (restored_hidden_states[:, -1] == residual_hidden_states_projection[:, -1]).all()
 
     grad_init = torch.rand_like(restored_hidden_states)
 
     restored_hidden_states.backward(grad_init)
 
-    assert (grad_init[:, :2, :] == hidden_states.grad[:, :2, :]).all()
-    assert (grad_init[:, 2:] == residual_hidden_states_projection.grad[:, 2:]).all()
+    assert (grad_init[:, -1, :] == residual_hidden_states_projection.grad[:, -1, :]).all()
+    assert (grad_init[:, :3, :] == hidden_states.grad[:, :3, :]).all()
 
     breakpoint()
 
@@ -115,7 +82,7 @@ def test_prune_tokens_concrete_middle():
 
     device = 'cuda'
 
-    hidden_state = torch.rand([ batch_size, seq_len, hidden_dim ], device=device)
+    hidden_state = torch.rand([ batch_size, seq_len, hidden_dim ], device=device, requires_grad=True)
     concrete_bool = torch.tensor([[ 1, 1, 1, 1, 0, 0, 1 ]], dtype=torch.bool, device=device)
     attention_mask = torch.ones_like(concrete_bool)
 
@@ -125,7 +92,7 @@ def test_prune_tokens_concrete_middle():
         attention_mask,
     )
 
-    expected_merged_emb_counts = torch.tensor([[ 1, 1, 1, 1, 3 ]], dtype=torch.long, device=device)
+    expected_merged_emb_counts = torch.tensor([[ 1, 1, 1, 3, 1 ]], dtype=torch.long, device=device)
     expected_attention_mask = torch.ones_like(expected_merged_emb_counts)
 
     assert merged_hidden_state.shape[1] == 5
@@ -156,7 +123,7 @@ def test_prune_tokens_concrete_end():
         attention_mask,
     )
 
-    expected_merged_emb_counts = torch.tensor([[ 1, 1, 1, 1 ]], dtype=torch.long, device=device)
+    expected_merged_emb_counts = torch.tensor([[ 1, 1, 1, 4 ]], dtype=torch.long, device=device)
     expected_attention_mask = torch.ones_like(expected_merged_emb_counts)
 
     assert merged_hidden_state.shape[1] == 4

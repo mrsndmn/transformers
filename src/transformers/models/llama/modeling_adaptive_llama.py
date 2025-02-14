@@ -570,10 +570,10 @@ class HardConcreteGate(nn.Module):
         # print('attention_mask.numel()', attention_mask.numel())
         # print('attention_mask.sum / numel', attention_mask.sum() / attention_mask.numel())
 
-        # if concrete.isnan().any():
-        #     print("found nan after hcg")
-        #     print(f"concrete mean={concrete.mean().item():.2f} max={concrete.max().item():.2f} min={concrete.min().item():.2f}")
-        #     breakpoint()
+        if concrete.isnan().any():
+            print("found nan after hcg")
+            print(f"concrete mean={concrete.mean().item():.2f} max={concrete.max().item():.2f} min={concrete.min().item():.2f}")
+            breakpoint()
 
 
         return concrete
@@ -857,6 +857,8 @@ class AdaptiveFanOut(nn.Module):
         else:
             residual_hidden_states_projection = residual_hidden_states
 
+        print("residual_hidden_states_projection", residual_hidden_states_projection.sum(-1))
+
         if self.fan_out_implementation in ('python',):
             restored_hidden_states = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
         elif self.fan_out_implementation in ('cuda_kernel'):
@@ -897,6 +899,8 @@ class AdaptiveFanOutHCG(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
+        self.projection_enabled: bool = config.fan_out_projection
+
         self.fan_out_linear = nn.Sequential(
             nn.Linear(self.hidden_size, self.hidden_size),
         )
@@ -915,7 +919,10 @@ class AdaptiveFanOutHCG(nn.Module):
             AdaptiveFanOutOutput: input hidden states
         """
 
-        residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
+        if self.projection_enabled:
+            residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
+        else:
+            residual_hidden_states_projection = residual_hidden_states
 
         if not self.training:
             # print("merged_embeddings_counts", merged_embeddings_counts.shape, merged_embeddings_counts)
@@ -926,8 +933,8 @@ class AdaptiveFanOutHCG(nn.Module):
             # print("residual_hidden_states_projection", residual_hidden_states_projection.shape)
             # assert (merged_embeddings_counts.sum(dim=-1) == residual_attention_mask.sum(dim=-1)).all()
             hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection, residual_attention_mask)
-
-        hidden_states = hidden_states + residual_hidden_states_projection
+        else:
+            hidden_states = hidden_states + residual_hidden_states_projection
 
         return AdaptiveFanOutOutput(hidden_state=hidden_states)
 
@@ -1664,12 +1671,13 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        if special_embeddings_mask is None:
-            special_embeddings_mask = torch.zeros([input_ids.shape[0], input_ids.shape[1]], device=input_ids.device)
-            special_embeddings_mask[:, 0] = 1
-
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids, dtype=torch.long)
+
+        if special_embeddings_mask is None:
+            special_embeddings_mask = attention_mask.cumsum(dim=-1)
+            special_embeddings_mask[special_embeddings_mask > 1] = 0
+
 
         assert special_embeddings_mask is not None
 

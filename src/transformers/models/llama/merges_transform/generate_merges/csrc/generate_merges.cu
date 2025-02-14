@@ -236,23 +236,24 @@ __global__ void backward_fan_out_straight_kernel(
         return; // Out of bounds check
     }
 
-    int output_seq_len_i = seq_len;
-    for (int seq_len_i = seq_len-1; seq_len_i >= 0; ++seq_len_i) {
+    int output_seq_len_i = residual_hidden_states_grad.size(1) - 1;
+    for (int seq_len_i = seq_len-1; seq_len_i >= 0; --seq_len_i) {
         auto num_repeats = merged_embeddings_counts[batch_i][seq_len_i];
         if (num_repeats == 0) {
             break;
         }
 
         // for hidden_states_grad
-        int restored_idx = int(output_seq_len_i + num_repeats - 1);
+        int restored_idx = int(output_seq_len_i - num_repeats + 1);
         for (int hi = 0; hi < hidden_dim; ++hi) {
             hidden_states_grad[batch_i][seq_len_i][hi] = restored_hidden_states_grad[batch_i][restored_idx][hi];
         }
 
         // for residual_hidden_states_grad
         for (int residuals_grad_i = 0; residuals_grad_i < num_repeats - 1; ++residuals_grad_i) {
+            int restore_idx = output_seq_len_i - residuals_grad_i;
             for (int hi = 0; hi < hidden_dim; ++hi) {
-                residual_hidden_states_grad[batch_i][output_seq_len_i + residuals_grad_i][hi] = restored_hidden_states_grad[batch_i][output_seq_len_i + residuals_grad_i][hi];
+                residual_hidden_states_grad[batch_i][restore_idx][hi] = restored_hidden_states_grad[batch_i][restore_idx][hi];
             }
         }
 
