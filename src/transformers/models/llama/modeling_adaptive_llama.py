@@ -695,6 +695,8 @@ class AdaptiveFanInHCG(nn.Module):
             p_open[~attention_mask.bool()] = 0
             p_open[special_embeddings_mask.bool()] = 1.
 
+        # print("special_embeddings_mask", special_embeddings_mask)
+
         # assert concrete.shape == special_embeddings_mask.shape
         concrete[special_embeddings_mask.bool()] = 1.0
         # breakpoint()
@@ -733,6 +735,7 @@ class AdaptiveFanInHCG(nn.Module):
             # if True or self.training:
             attention_mask_dtype = attention_mask.dtype
             concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
+            # print("concrete_bool sum / shape", concrete_bool.sum().item(), "/", concrete_bool.numel() )
             # concrete_bool = torch.rand(concrete_bool.shape, device=concrete_bool.device) < 0.8
             # concrete_bool[:, 0] = True
 
@@ -1191,7 +1194,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
+        use_cache = False if use_cache is None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if (input_ids is None) ^ (inputs_embeds is not None):
@@ -1407,7 +1410,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                     hidden_states,
                     loop_up_causal_mask,
                     loop_up_position_ids,
-                    None, # past_key_value
+                    past_key_values,
                     output_attentions,
                     use_cache,
                     cache_position,
@@ -1418,7 +1421,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                     hidden_states,
                     attention_mask=loop_up_causal_mask,
                     position_ids=loop_up_position_ids,
-                    past_key_value=None,
+                    past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,
@@ -1664,8 +1667,6 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
         "Hey, are you conscious? Can you talk to me?\nI'm not conscious, but I can talk to you."
         ```"""
-
-        use_cache = False
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (

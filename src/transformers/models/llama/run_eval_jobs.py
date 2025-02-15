@@ -24,6 +24,8 @@ def run_eval_experiments(experiments, job_description_prefix="eval", dry=False):
 
     env_bin_path = "/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin"
 
+    print("len experiments:", len(experiments))
+
     for exp in experiments:
 
         pretrained_model = exp.pop('pretrained_model')
@@ -155,7 +157,64 @@ def eval_hcg_fixed_percent(**kwargs):
 
     return
 
+def eval_hcg_strange_8layer(**kwargs):
 
+    hcg_experiments = [
+        {
+            "pretrained_model": "./run_hcg_smollm1dot7B_layer_8_8/checkpoint-18743",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_slm1_1.7B_layer_8_fixed_pruning_percent_8_pr_pct10/checkpoint-18743",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_slm1_1.7B_layer_8_fixed_pruning_percent_8_pr_pct20/checkpoint-18743",
+        },
+        {
+            "pretrained_model": "./adaptive_hcg_slm1_1.7B_layer_8_fixed_pruning_percent_8_pr_pct40/checkpoint-18743",
+        },
+    ]
+
+    run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
+
+    return
+
+def saturday_morninig_eval(**kwargs):
+
+    checkpoints = [
+        # Strange 8 layer
+        # "./run_hcg_smollm1dot7B_layer_8_8_lmv_1.25/_backup_checkpoint-35000",
+        "./run_hcg_smollm1dot7B_layer_8_8_lmv_1.1/_backup_checkpoint-35000",
+
+        # Strange 8 layer
+        # Fixed percent pruning slm2 1.7b 2 layer
+        # TODO
+        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_2_pr_pct20/checkpoint-4993",
+        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_2_pr_pct30/checkpoint-4993",
+        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_2_pr_pct40/checkpoint-4993",
+        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_2_pr_pct60/checkpoint-4993",
+        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_2_pr_pct80/checkpoint-4993",
+
+        # Fixed percent pruning slm2 1.7b 4 layer
+        "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_4_pr_pct20/checkpoint-4993",
+        # Посчиталось
+        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_4_pr_pct30/checkpoint-4993",
+        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_4_pr_pct40/checkpoint-4993",
+        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_4_pr_pct60/checkpoint-4993",
+        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_4_pr_pct80/checkpoint-4993",
+
+        # Fan out ablations
+        # TODO
+
+        # Random 20% tokens
+        "./random_hcg_4_random0.2_1.7B/checkpoint-24993",
+        "./random_hcg_8_random0.2_1.7B/checkpoint-24993",
+    ]
+
+    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
+
+    run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
+
+    return
 
 if __name__ == "__main__":
 
@@ -169,4 +228,8 @@ if __name__ == "__main__":
     # run_gumbel_adaptive(dry=dry)
 
     # eval_hcg_adaptive_pretrain(dry=dry)
-    eval_hcg_fixed_percent(dry=dry)
+    # eval_hcg_fixed_percent(dry=dry)
+
+    # eval_hcg_strange_8layer(dry=dry)
+
+    saturday_morninig_eval(dry=dry)

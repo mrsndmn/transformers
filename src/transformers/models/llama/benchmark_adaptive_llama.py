@@ -116,8 +116,7 @@ if __name__ == "__main__":
                     "num_return_sequences": 1,
                 }
 
-                forward_output = current_model.forward(**model_inputs)
-                forward_output = current_model.forward(**model_inputs)
+                current_model.train()
 
                 with torch.no_grad():
                     start_time = time.time()
@@ -129,6 +128,7 @@ if __name__ == "__main__":
                     print("duration:", time.time() - start_time)
                     print("tokens per second:", out.shape[-1] / (time.time() - start_time))
                     print("generation decode:", tokenizer.batch_decode(out))
+                    print("generation decode:", "\n\n".join(tokenizer.batch_decode(out, skip_special_tokens=True)))
 
                     if isinstance(current_model, AdaptiveLlamaForCausalLM):
                         print("pruned tokens")

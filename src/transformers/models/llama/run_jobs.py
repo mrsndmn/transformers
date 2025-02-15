@@ -246,7 +246,6 @@ def run_hcg_smollm2_1dot7B_pretrain(**kwargs):
 
     return
 
-
 def run_hcg_smollm2_1dot7B_pretrain_nofoutproj(**kwargs):
 
     experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_pretrain_nofoutproj"
@@ -260,22 +259,12 @@ def run_hcg_smollm2_1dot7B_pretrain_nofoutproj(**kwargs):
         "torch_compile": 1,
         "hcg_loss_weight_dynamic": "1",
         "hcg_loss_weight": 10,
-        "lm_loss_max_value": 1.0,
+        "lm_loss_max_value": 1.25,
         "fan_out_projection": "0",
     }
 
     hcg_experiments = [
         # Fan out projection
-        {
-            "dummy_adaptive_fan_in_layers_str": "0,1,1,1,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_1",
-            **common_params,
-        },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,0,1,1,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_2",
-            **common_params,
-        },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_4",
@@ -292,6 +281,44 @@ def run_hcg_smollm2_1dot7B_pretrain_nofoutproj(**kwargs):
 
     return
 
+
+def run_hcg_smollm2_1dot7B_nofoutproj(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_nofoutproj"
+
+    common_params = {
+        "freeze_lm_backbone": 0,
+        "select_train_dataset_items": 300000,
+        "per_device_train_batch_size": 16,
+        "model_type": "retrained_checkpoint",
+        "learning_rate": 0.00005,
+        "warmup_steps": 2000,
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": "1",
+        "hcg_loss_weight": 10,
+        "lm_loss_max_value": 1.25,
+        "fan_out_projection": "0",
+    }
+
+    hcg_experiments = [
+        # Fan out projection
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_4",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_nofoutproj_4/checkpoint-4993",
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,0,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_8",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_nofoutproj_8/checkpoint-4993",
+            **common_params,
+        },
+    ]
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
 
 
 def run_hcg_adaptive_smollm1dot7B(**kwargs):
@@ -445,7 +472,7 @@ def run_hcg_smollm1dot7B_layer_8(**kwargs):
 
     common_params = {
         "freeze_lm_backbone": 0,
-        "select_train_dataset_items": 300000,
+        "select_train_dataset_items": 800000,
         "per_device_train_batch_size": 16,
         "model_type": "pretrained_checkpoint",
         "learning_rate": 0.00005,
@@ -453,7 +480,6 @@ def run_hcg_smollm1dot7B_layer_8(**kwargs):
         "torch_compile": 1,
         "hcg_loss_weight_dynamic": "1",
         "hcg_loss_weight": 10,
-        "lm_loss_max_value": 1.1,
         "fan_out_projection": "1",
     }
 
@@ -461,8 +487,16 @@ def run_hcg_smollm1dot7B_layer_8(**kwargs):
         # Fan out projection
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8",
+            "output_dir": f"{experiment_prefix_base_name}_8_lmv_1.1",
             "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_1.7B_pretrain_8/checkpoint-1993",
+            "lm_loss_max_value": 1.1,
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_8_lmv_1.25",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_1.7B_pretrain_8/checkpoint-1993",
+            "lm_loss_max_value": 1.25,
             **common_params,
         },
     ]
@@ -474,7 +508,7 @@ def run_hcg_smollm1dot7B_layer_8(**kwargs):
 
 def run_hcg_smollm2_1dot7B_layers_iterate(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_fix_fanoutproj"
 
     common_params = {
         "freeze_lm_backbone": 0,
@@ -541,43 +575,65 @@ def run_hcg_smollm2_1dot7B_fixed_pruning_percent(**kwargs):
     }
 
     hcg_experiments = [
-        # Fan out projection
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_pr_pct20",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_8/checkpoint-4993/",
-            "hcg_loss_max_value": 0.8,
-            **common_params,
-        },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_pr_pct30",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_8/checkpoint-4993/",
-            "hcg_loss_max_value": 0.7,
-            **common_params,
-        },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_pr_pct40",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_8/checkpoint-4993/",
-            "hcg_loss_max_value": 0.6,
-            **common_params,
-        },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_pr_pct60",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_8/checkpoint-4993/",
-            "hcg_loss_max_value": 0.4,
-            **common_params,
-        },
-        {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_8_pr_pct80",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_8/checkpoint-4993/",
-            "hcg_loss_max_value": 0.2,
-            **common_params,
-        },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8_pr_pct20",
+        #     "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_8/checkpoint-4993/",
+        #     "hcg_loss_max_value": 0.8,
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8_pr_pct30",
+        #     "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_8/checkpoint-4993/",
+        #     "hcg_loss_max_value": 0.7,
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8_pr_pct40",
+        #     "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_8/checkpoint-4993/",
+        #     "hcg_loss_max_value": 0.6,
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8_pr_pct60",
+        #     "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_8/checkpoint-4993/",
+        #     "hcg_loss_max_value": 0.4,
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_8_pr_pct80",
+        #     "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_8/checkpoint-4993/",
+        #     "hcg_loss_max_value": 0.2,
+        #     **common_params,
+        # },
     ]
+
+    # 4th layer
+    for percent in [ 20, 30, 40, 60, 80 ]:
+        exp_config = {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_4_pr_pct{percent}",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_4/checkpoint-4993/",
+            "hcg_loss_max_value": percent / 100,
+            **common_params,
+        }
+        hcg_experiments.append(exp_config)
+
+    # 2nd layer
+    for percent in [ 20, 30, 40, 60, 80 ]:
+        exp_config = {
+            "dummy_adaptive_fan_in_layers_str": "1,0,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_2_pr_pct{percent}",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_2/checkpoint-4993/",
+            "hcg_loss_max_value": percent / 100,
+            **common_params,
+        }
+        hcg_experiments.append(exp_config)
+
 
     run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
 
@@ -637,26 +693,28 @@ def run_hcg_random_sampling(**kwargs):
 
     common_params = {
         "freeze_lm_backbone": 0,
-        "select_train_dataset_items": 800000,
+        "select_train_dataset_items": 400000,
         "warmup_steps": 2000,
         "model_type": "pretrained",
         "torch_compile": 1,
         "hcg_loss_weight_dynamic": 1,
         "hcg_loss_weight": 0,
+        "per_device_train_batch_size": 16,
+        "llama_checkpoint": "HuggingFaceTB/SmolLM2-1.7B",
     }
 
     hcg_experiments = [
-        # {
-        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
-        #     "output_dir": f"{experiment_prefix_base_name}_8_random0.2",
-        #     "fan_out_projection": "0",
-        #     "concrete_random_mask_proba": 0.2,
-        #     **common_params,
-        # },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_4_random0.2_1.7B",
-            "fan_out_projection": "0",
+            "fan_out_projection": "1",
+            "concrete_random_mask_proba": 0.2,
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,0,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_8_random0.2_1.7B",
+            "fan_out_projection": "1",
             "concrete_random_mask_proba": 0.2,
             **common_params,
         },
@@ -687,7 +745,7 @@ if __name__ == "__main__":
     # run_hcg_smollm2_1dot7B_layers_iterate(dry=dry)
 
     # schedule pruned percent loss
-    run_hcg_smollm2_1dot7B_fixed_pruning_percent(dry=dry)
+    # run_hcg_smollm2_1dot7B_fixed_pruning_percent(dry=dry)
 
     # Strange 1.7B SmolLM2 8 Layer
     # run_hcg_smollm1dot7B_layer_8(dry=dry)
@@ -696,13 +754,10 @@ if __name__ == "__main__":
     # Ablations
     # Pretrain no fan out projection
     # run_hcg_smollm2_1dot7B_pretrain_nofoutproj(dry=dry)
-    # TODO В зависимости от результатов предыдущих экспов
-    # надо будет запустить или с разными процентами прунинг
-    # или на разных слоях. На разных слоях вроде норм работает
+    # run_hcg_smollm2_1dot7B_nofoutproj(dry=dry)
 
 
     # Random
-    # run_hcg_random_sampling(dry=dry)
     # run_hcg_random_sampling(dry=dry)
 
     # Gumbel

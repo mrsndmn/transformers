@@ -193,6 +193,7 @@ class AdaptiveLlamaTrainer(Trainer):
             "input_ids": inputs['input_ids'],
             "labels": labels,
             "attention_mask": attention_mask,
+            "use_cache": False,
         }
 
         if self.args.with_special_embeddings_mask:
@@ -917,19 +918,10 @@ if __name__ == "__main__":
 
             def tokenize_function(examples):
                 # 2046 = 2048 - 1 - 1 # eos and bos tokens
-                tokenized_inputs = tokenizer(examples['text'], return_special_tokens_mask=True, truncation=True, max_length=1022)
-                for x in tokenized_inputs['input_ids']:
-                    x.insert(0, im_start_token_id)
-                    x.append(im_end_token_id)
+                text = [ '<|im_start|>' + x + '<|im_end|>' for x in examples['text'] ]
 
-                for x in tokenized_inputs['attention_mask']:
-                    x.insert(0, 1)
-                    x.append(1)
+                tokenized_inputs = tokenizer(text, truncation=True, max_length=1022)
 
-                for x in tokenized_inputs['special_tokens_mask']:
-                    x.insert(0, 1)
-                    x.append(1)
-                
                 return tokenized_inputs
 
             print("training_args.select_train_dataset_items", training_args.select_train_dataset_items)
@@ -943,8 +935,8 @@ if __name__ == "__main__":
             # breakpoint()
             # smollm_corpus.save_to_disk("data/tokenized-smollm-corpus-1-shard.dataset")
 
-        assert sum(smollm_corpus[0]['special_tokens_mask']) > 0
-        
+        # assert sum(smollm_corpus[0]['special_tokens_mask']) > 0
+
         if len(smollm_corpus) <= 100:
             train_dataset = smollm_corpus
             eval_dataset = smollm_corpus
@@ -952,19 +944,17 @@ if __name__ == "__main__":
             smollm_corpus = smollm_corpus.train_test_split(test_size=100, seed=1)
             train_dataset = smollm_corpus['train']
             eval_dataset = smollm_corpus['test']
-        
+
         nested_data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
-        
+
         def crutch_collator(examples):
             collate_dummy = nested_data_collator(examples)
-            
-            collate_dummy['special_tokens_mask'] = torch.zeros_like(collate_dummy['attention_mask'])
 
-            for i, ex in enumerate(examples):
-                currrent_special_tokens_mask = ex['special_tokens_mask']
-                collate_dummy['special_tokens_mask'][i, :len(currrent_special_tokens_mask)] = torch.tensor(currrent_special_tokens_mask, dtype=torch.long)
+            collate_dummy['special_tokens_mask'] = collate_dummy['attention_mask'].cumsum(-1)
+            collate_dummy['special_tokens_mask'][ collate_dummy['special_tokens_mask'] > 1 ] = 0
+            collate_dummy['special_tokens_mask'][:, -1] = 1
 
-            # assert (collate_dummy['special_tokens_mask'].sum(dim=-1) == 2).all()
+            assert (collate_dummy['special_tokens_mask'].sum(dim=-1) == 2).all()
 
             return collate_dummy
 
