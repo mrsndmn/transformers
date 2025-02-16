@@ -290,7 +290,7 @@ def run_hcg_smollm2_1dot7B_nofoutproj(**kwargs):
         "freeze_lm_backbone": 0,
         "select_train_dataset_items": 300000,
         "per_device_train_batch_size": 16,
-        "model_type": "retrained_checkpoint",
+        "model_type": "pretrained_checkpoint",
         "learning_rate": 0.00005,
         "warmup_steps": 2000,
         "torch_compile": 1,
@@ -742,7 +742,7 @@ if __name__ == "__main__":
     # Iterate over layers
     # run_hcg_smollm360M_layers_iterate(dry=dry)
     # run_hcg_smollm1dot7B_layers_iterate(dry=dry)
-    # run_hcg_smollm2_1dot7B_layers_iterate(dry=dry)
+    run_hcg_smollm2_1dot7B_layers_iterate(dry=dry)
 
     # schedule pruned percent loss
     # run_hcg_smollm2_1dot7B_fixed_pruning_percent(dry=dry)

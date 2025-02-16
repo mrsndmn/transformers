@@ -91,11 +91,11 @@ if __name__ == "__main__":
         checkpoint_path = checkpoint_desc['checkpoint']
         exp_name = checkpoint_desc['exp_name']
 
-        batch_size = checkpoint_desc.get('batch_size', 64)
-        bench_iters = checkpoint_desc.get('bench_iters', 5)
+        batch_size = checkpoint_desc.get('batch_size', 16)
+        bench_iters = checkpoint_desc.get('bench_iters', 10)
         # seq_lengths = checkpoint_desc.get('seq_lengths', [ 128, 1024, 4096, 8192])
         # seq_lengths = checkpoint_desc.get('seq_lengths', [ 128, 1024, 4096, 8192])
-        seq_lengths = checkpoint_desc.get('seq_lengths', [ 512, 2048, 2048 ])
+        seq_lengths = checkpoint_desc.get('seq_lengths', [ 512, 2048, 4096, 4096 + 1024, 4096 + 2048 ])
 
         tokenizer = AutoTokenizer.from_pretrained(checkpoint_path, padding_side='left')
         tokenizer.pad_token_id = 0
