@@ -557,6 +557,62 @@ def run_hcg_smollm2_1dot7B_layers_iterate(**kwargs):
     return
 
 
+def run_hcg_smollm2_1dot7B_hcg_lambda_iterate(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_hcg_lambda_iterate"
+
+    common_params = {
+        "freeze_lm_backbone": 0,
+        "select_train_dataset_items": 0,
+        "per_device_train_batch_size": 8,
+        "model_type": "pretrained_checkpoint",
+        "learning_rate": 0.00005,
+        "warmup_steps": 2000,
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": "0",
+        "lm_loss_max_value": 0.0,
+        "fan_out_projection": "1",
+    }
+
+    hcg_experiments = [
+        # Fan out projection
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_2.25",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_4/checkpoint-4993/",
+            "hcg_loss_weight": 2.25,
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_2.5",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_4/checkpoint-4993/",
+            "hcg_loss_weight": 2.5,
+            **common_params,
+        },
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_2.75",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_4/checkpoint-4993/",
+            "hcg_loss_weight": 2.75,
+            **common_params,
+        },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_3",
+        #     "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_4/checkpoint-4993/",
+        #     "hcg_loss_weight": 3,
+
+        #     **common_params,
+        # },
+    ]
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
+
+
 def run_hcg_smollm2_1dot7B_fixed_pruning_percent(**kwargs):
     experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2"
 
@@ -742,7 +798,9 @@ if __name__ == "__main__":
     # Iterate over layers
     # run_hcg_smollm360M_layers_iterate(dry=dry)
     # run_hcg_smollm1dot7B_layers_iterate(dry=dry)
-    run_hcg_smollm2_1dot7B_layers_iterate(dry=dry)
+    # run_hcg_smollm2_1dot7B_layers_iterate(dry=dry)
+
+    run_hcg_smollm2_1dot7B_hcg_lambda_iterate(dry=dry)
 
     # schedule pruned percent loss
     # run_hcg_smollm2_1dot7B_fixed_pruning_percent(dry=dry)
