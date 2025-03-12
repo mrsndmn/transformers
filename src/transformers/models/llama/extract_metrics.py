@@ -11,13 +11,14 @@ if __name__ == '__main__':
     bench_keys = [
         'custom|arc:_average|0',
         'custom|piqa|0',
-        'custom|trivia_qa|0',
+        # 'custom|trivia_qa|0',
         'custom|mmlu_cloze:_average|0',
         'custom|mmlu_pro_cloze|0',
-        'custom|gsm8k|5',
+        # 'custom|gsm8k|5',
     ]
     max_len = max(map(len, bench_keys))
 
+    result_str = ""
     for key in bench_keys:
 
         metric_dict = json_data['results'].get(key, {})
@@ -36,3 +37,7 @@ if __name__ == '__main__':
 
         space = " " * (max_len - len(key) + 1)
         print(key, space, "\t", f"{metric*100:.2f}", '\tstderr', f"{metric_stderr*100:.2f}")
+
+        result_str += f"{metric*100:.2f} & "
+
+    print(result_str)

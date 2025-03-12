@@ -85,7 +85,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
             n_workers=N_WORKERS,
             # conda_env="test_client_lib",
             processes_per_worker=1,
-            job_desc=f"{job_description_prefix}{output_dir}",
+            job_desc=f"{job_description_prefix}{output_dir} #rnd #multimodality",
             # stop_timer=600, # в минутах, = 10 часов
             env_variables={
                 "PATH": "/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/user/conda/bin",
@@ -578,25 +578,46 @@ def run_hcg_smollm2_1dot7B_hcg_lambda_iterate(**kwargs):
         # Fan out projection
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_2.25",
+            "output_dir": f"{experiment_prefix_base_name}_1.5",
             "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_4/checkpoint-4993/",
-            "hcg_loss_weight": 2.25,
+            "hcg_loss_weight": 1.5,
             **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_2.5",
+            "output_dir": f"{experiment_prefix_base_name}_1.75",
             "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_4/checkpoint-4993/",
-            "hcg_loss_weight": 2.5,
+            "hcg_loss_weight": 1.75,
             **common_params,
         },
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_2.75",
+            "output_dir": f"{experiment_prefix_base_name}_2.0",
             "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_4/checkpoint-4993/",
-            "hcg_loss_weight": 2.75,
+            "hcg_loss_weight": 2.0,
             **common_params,
         },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_2.25",
+        #     "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_4/checkpoint-4993/",
+        #     "hcg_loss_weight": 2.25,
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_2.5",
+        #     "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_4/checkpoint-4993/",
+        #     "hcg_loss_weight": 2.5,
+        #     **common_params,
+        # },
+        # {
+        #     "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+        #     "output_dir": f"{experiment_prefix_base_name}_2.75",
+        #     "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_1.7B_pretrain_4/checkpoint-4993/",
+        #     "hcg_loss_weight": 2.75,
+        #     **common_params,
+        # },
         # {
         #     "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
         #     "output_dir": f"{experiment_prefix_base_name}_3",

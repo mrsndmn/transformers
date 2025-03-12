@@ -47,7 +47,7 @@ def run_eval_experiments(experiments, job_description_prefix="eval", dry=False):
             n_workers=N_WORKERS,
             # conda_env="test_client_lib",
             processes_per_worker=1,
-            job_desc=f"{job_description_prefix} {pretrained_model}",
+            job_desc=f"{job_description_prefix} {pretrained_model} #rnd #multimodality",
             # stop_timer=600, # в минутах, = 10 часов
             env_variables={
                 "PATH": f"{env_bin_path}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/user/conda/bin",
@@ -218,6 +218,33 @@ def saturday_morninig_eval(**kwargs):
 
     return
 
+
+def no_crutch_loss_eval(**kwargs):
+
+    checkpoints = [
+        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_3/checkpoint-351000",
+        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_3/_backup_checkpoint-37000",
+        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_3/_backup_checkpoint-52000",
+        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_3/_backup_checkpoint-61000",
+        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_3/_backup_checkpoint-77000",
+
+        # 2.75
+        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_2.75/checkpoint-219000",
+
+        # 2.5
+        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_2.5/checkpoint-217000"
+
+        # 2.25
+        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_2.25/checkpoint-218000",
+    ]
+
+    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
+
+    run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
+
+    return
+
+
 if __name__ == "__main__":
 
     import sys
@@ -234,4 +261,4 @@ if __name__ == "__main__":
 
     # eval_hcg_strange_8layer(dry=dry)
 
-    saturday_morninig_eval(dry=dry)
+    no_crutch_loss_eval(dry=dry)

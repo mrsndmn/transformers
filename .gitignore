@@ -175,3 +175,11 @@ tags
 data
 /adaptive_*
 /vanilla-llama
+results/
+random_hcg_*
+*.pt
+*.json
+run_hcg_*
+*.png
+exps_evaluation/
+

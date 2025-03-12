@@ -752,8 +752,9 @@ class AdaptiveFanInHCG(nn.Module):
             # print("attention_mask", attention_mask.shape, attention_mask)
             # [ bs, seq_len ]
             # concrete_bool_cpu = concrete_bool.detach().cpu()
-            # hidden_state_m, merged_embeddings_counts, merged_attention_mask = reorder_mask_for_concrete(concrete=concrete, hidden_state=hidden_state, attention_mask=attention_mask)
-            hidden_state_m, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(hidden_state, concrete_bool, attention_mask.bool())
+            # print("concrete", concrete.shape, concrete)
+            hidden_state_m, merged_embeddings_counts, merged_attention_mask = reorder_mask_for_concrete(concrete=concrete, hidden_state=hidden_state, attention_mask=attention_mask)
+            # hidden_state_m, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(hidden_state, concrete_bool, attention_mask.bool())
 
             hidden_state = hidden_state_m
             attention_mask = merged_attention_mask
