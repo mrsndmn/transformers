@@ -112,7 +112,7 @@ if __name__ == "__main__":
             collate_dummy['special_tokens_mask'][ collate_dummy['special_tokens_mask'] > 1 ] = 0
             collate_dummy['special_tokens_mask'][:, -1] = 1
 
-            assert (collate_dummy['special_tokens_mask'].sum(dim=-1) == 2).all()
+            # assert (collate_dummy['special_tokens_mask'].sum(dim=-1) == 2).all()
 
             return collate_dummy
 

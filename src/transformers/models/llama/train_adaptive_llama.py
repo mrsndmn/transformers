@@ -79,7 +79,9 @@ class AdaptiveTrainingArguments(TrainingArguments):
     save_strategy: str = field(default="no")
     save_steps: int = 10000
     save_total_limit: Optional[int] = field(default=1)
-    
+
+    prohibit_end_of_sentence_pruning: bool = field(default=False)
+
     push_to_hub: bool = field(default=False)
     optim: str = field(default="adamw_torch")
     report_to: str = field(default="wandb")
@@ -947,6 +949,10 @@ if __name__ == "__main__":
 
         nested_data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
+        special_tokens = None
+        if training_args.prohibit_end_of_sentence_pruning:
+            special_tokens = [ x[0] for x in tokenizer([ '.', '..', '...', '?', '!', ':', ';' ])['input_ids'] ]
+
         def crutch_collator(examples):
             collate_dummy = nested_data_collator(examples)
 
@@ -954,7 +960,10 @@ if __name__ == "__main__":
             collate_dummy['special_tokens_mask'][ collate_dummy['special_tokens_mask'] > 1 ] = 0
             collate_dummy['special_tokens_mask'][:, -1] = 1
 
-            assert (collate_dummy['special_tokens_mask'].sum(dim=-1) == 2).all()
+            for special_token in special_tokens:
+                collate_dummy['special_tokens_mask'][ collate_dummy['input_ids'] == special_token ] = 1
+
+            # assert (collate_dummy['special_tokens_mask'].sum(dim=-1) == 2).all()
 
             return collate_dummy
 
