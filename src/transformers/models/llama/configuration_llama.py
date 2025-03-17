@@ -178,6 +178,7 @@ class LlamaConfig(PretrainedConfig):
         scale_not_pruned_gradients=0.0,
         force_skip_tokens_percent=0.0,
         concrete_random_mask_proba=0.0,
+        scale_token_frequency=False,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -204,6 +205,8 @@ class LlamaConfig(PretrainedConfig):
         
         self.gumbel_tau = gumbel_tau
         self.scale_not_pruned_gradients = scale_not_pruned_gradients
+
+        self.scale_token_frequency = scale_token_frequency
 
         assert len(full_unmerge) == num_hidden_layers // 2
         self.full_unmerge = full_unmerge

@@ -135,7 +135,7 @@ class NoOpFanIn(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
 
-    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, full_unmerge=None) -> AdaptiveFanInOutput:
+    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, full_unmerge=None, **kwargs) -> AdaptiveFanInOutput:
         res = AdaptiveFanInOutput(
             hidden_state=hidden_state,
             residual_hidden_state=hidden_state,
@@ -643,7 +643,7 @@ class AdaptiveFanInHCG(nn.Module):
         self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
 
     # @torch.compiler.disable(recursive=True)
-    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, full_unmerge=False) -> AdaptiveFanInOutput:
+    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, token_frequency: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, full_unmerge=False) -> AdaptiveFanInOutput:
         """_summary_
 
         Args:
@@ -676,6 +676,9 @@ class AdaptiveFanInHCG(nn.Module):
         # OHE: [ bs, seq_len, 1 ]
         log_a = self.fan_in_mlp(hidden_state)
 
+        if self.config.scale_token_frequency:
+            log_a = log_a - token_frequency.unsqueeze(-1).log()
+
         if self.config.concrete_random_mask_proba is not None and self.config.concrete_random_mask_proba > 0:
             # [ bs, seq_len, 1 ]
             concrete = torch.ones_like(log_a)
@@ -684,6 +687,7 @@ class AdaptiveFanInHCG(nn.Module):
         else:
             # [ bs, seq_len, 1 ]
             concrete = self.hcg(log_a, attention_mask=attention_mask)
+
         # if self.training: #  and self.config.force_skip_tokens_percent > 0.0:
         #     # force X% of tokens to be pruned
         #     concrete[torch.rand_like(concrete) < 0.1] = 0
@@ -1180,6 +1184,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         self,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
+        token_frequency: Optional[torch.Tensor] = None,
         special_embeddings_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
@@ -1319,6 +1324,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             adaptive_down_output: AdaptiveFanInOutput = adaptive_down_layer.forward(
                 hidden_state=hidden_states,
                 attention_mask=loop_down_attention_mask,
+                token_frequency=token_frequency,
                 special_embeddings_mask=loop_down_special_embeddings_mask,
                 full_unmerge=current_full_unmerge,
             )
@@ -1624,6 +1630,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         self,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
+        token_frequency: Optional[torch.Tensor] = None,
         special_embeddings_mask: Optional[torch.Tensor] = None,
         special_tokens_mask: Optional[torch.Tensor] = None, # сrutch for remove unsued columns from dataset
         position_ids: Optional[torch.LongTensor] = None,
@@ -1691,6 +1698,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         outputs: AdaptiveBaseModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
+            token_frequency=token_frequency,
             special_embeddings_mask=special_embeddings_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
