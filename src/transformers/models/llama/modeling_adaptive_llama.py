@@ -579,7 +579,7 @@ class HardConcreteGate(nn.Module):
         return concrete
 
 
-def reorder_mask_for_concrete(concrete, hidden_state, attention_mask):
+def reorder_mask_for_concrete(concrete, hidden_state, attention_mask, distributed=False):
     concrete_bool = concrete.cpu().bool()
     seq_lengths = attention_mask.sum(dim=-1).cpu()
     new_seq_lengths = torch.zeros([ concrete_bool.shape[0] ], device='cpu', dtype=torch.long)
@@ -600,10 +600,11 @@ def reorder_mask_for_concrete(concrete, hidden_state, attention_mask):
 
         new_seq_lengths[batch_i] = concrete_bool.shape[1] - current_seq_len - 1
 
-    max_seq_len = new_seq_lengths.max().item()
-    print("max_seq_len", max_seq_len)
+    if distributed:
+        max_seq_len = concrete_bool.shape[1]
+    else:
+        max_seq_len = new_seq_lengths.max().item()
 
-    # print("new_seq_lengths", new_seq_lengths)
     # print("reordered_indexes", reordered_indexes)
     reordered_indexes_cuda = reordered_indexes.to(hidden_state.device)
     reordered_indexes_cuda = reordered_indexes_cuda.expand(-1, -1, hidden_state.size(-1))
@@ -757,7 +758,10 @@ class AdaptiveFanInHCG(nn.Module):
             # [ bs, seq_len ]
             # concrete_bool_cpu = concrete_bool.detach().cpu()
             # print("concrete", concrete.shape, concrete)
-            hidden_state_m, merged_embeddings_counts, merged_attention_mask = reorder_mask_for_concrete(concrete=concrete, hidden_state=hidden_state, attention_mask=attention_mask)
+
+            # TODO not distributed
+            distributed = self.config.distributed
+            hidden_state_m, merged_embeddings_counts, merged_attention_mask = reorder_mask_for_concrete(concrete=concrete, hidden_state=hidden_state, attention_mask=attention_mask, distributed=distributed)
             # hidden_state_m, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(hidden_state, concrete_bool, attention_mask.bool())
 
             hidden_state = hidden_state_m
@@ -1449,6 +1453,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
+        # print("use_cache", use_cache)
         next_cache = next_decoder_cache if use_cache else None
         if return_legacy_cache:
             next_cache = next_cache.to_legacy_cache()
@@ -1689,12 +1694,18 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
             special_embeddings_mask = attention_mask.cumsum(dim=-1)
             special_embeddings_mask[special_embeddings_mask > 1] = 0
 
+        if token_frequency is None:
+            bin_frequencies = torch.bincount(input_ids.flatten())
+            token_frequency = bin_frequencies[input_ids]
+
+
         # print("attention_mask", attention_mask)
         # print("special_embeddings_mask", special_embeddings_mask)
 
         assert special_embeddings_mask is not None
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+        # print("use_cache", use_cache)
         outputs: AdaptiveBaseModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,

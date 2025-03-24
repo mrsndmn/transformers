@@ -21,7 +21,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--llama_checkpoint",
-        required=True,
+        default='HuggingFaceTB/SmolLM2-1.7B',
+        # required=True,
     )
     parser.add_argument(
         "--bench_iters",

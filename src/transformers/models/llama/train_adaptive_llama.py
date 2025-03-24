@@ -75,7 +75,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
     weight_decay: float = field(default=0.01)
     eval_strategy: str = field(default="steps")
-    eval_steps: int = field(default=500)
+    eval_steps: int = field(default=1000)
     save_strategy: str = field(default="no")
     save_steps: int = 10000
     save_total_limit: Optional[int] = field(default=1)
@@ -86,11 +86,12 @@ class AdaptiveTrainingArguments(TrainingArguments):
     push_to_hub: bool = field(default=False)
     optim: str = field(default="adamw_torch")
     report_to: str = field(default="wandb")
-    logging_steps: int = field(default=50)
+    logging_steps: int = field(default=100)
     dataloader_drop_last: bool = field(default=True)
-    dataloader_num_workers: int = field(default=0)
+    dataloader_num_workers: int = field(default=4)
     merging_type: str = field(default="next_token_merge_mlp")
     freeze_lm_backbone: bool = field(default=False)
+    bf16: bool = field(default=True)
 
     training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
     model_type: str = "dummy" # dummy | pretrained | SmolLM-1.7B
@@ -198,7 +199,8 @@ class AdaptiveLlamaTrainer(Trainer):
             "labels": labels,
             "attention_mask": attention_mask,
             "token_frequency": token_frequency,
-            "use_cache": False,
+            "use_cache": None,
+            "output_attentions": False,
         }
 
         if self.args.with_special_embeddings_mask:
@@ -214,10 +216,16 @@ class AdaptiveLlamaTrainer(Trainer):
 
         # fan_in_merging_logits_sum = sum(x.sum(dim=[0, 1]) for x in fan_in_merging_logits)
         outputs_no_pruning = None
-        if model.config.full_unmerge is not None and sum(model.config.full_unmerge) > 0:
-            model_kwargs['full_unmerge'] = model.config.full_unmerge
+        model_unwrapped = model
+        if type(model_unwrapped) != AdaptiveLlamaForCausalLM:
+            model_unwrapped = model_unwrapped.module
+
+        model_config = model_unwrapped.config
+
+        if model_config.full_unmerge is not None and sum(model_config.full_unmerge) > 0:
+            model_kwargs['full_unmerge'] = model_config.full_unmerge
             outputs_no_pruning = model.forward(**model_kwargs)
-        
+
 
         ce_merging_loss_sum = torch.tensor(0.0, device=outputs.loss.device)
         count_merging_losses = 0
@@ -259,7 +267,7 @@ class AdaptiveLlamaTrainer(Trainer):
         count_hcg_layers = 0
         hcg_loss = 0
         sum_pruned_tokens = 0
-        if self.args.hcg_loss_weight > 0.0 and  model.config.merging_type == 'hcg':
+        if self.args.hcg_loss_weight > 0.0 and  model_config.merging_type == 'hcg':
             for i, (hcg_p_open, hcg_p_open_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                 if hcg_p_open is None:
                     continue
@@ -296,13 +304,13 @@ class AdaptiveLlamaTrainer(Trainer):
             hcg_loss *= self.args.hcg_loss_weight
 
         # loss = outputs.loss
-        pruning_loss = outputs.loss
+        pruning_loss = outputs.loss.mean()
         loss = pruning_loss + ce_merging_loss_sum + hcg_loss
 
         # print("pruning_loss", pruning_loss)
         # print("ce_merging_loss", ce_merging_loss_sum)
         # print("hcg_loss", hcg_loss)
-        
+
         if outputs_no_pruning is not None:
             # print("outputs_no_pruning_loss", outputs_no_pruning.loss.item())
             loss += outputs_no_pruning.loss * self.args.full_unmerge_loss_weight
@@ -315,7 +323,7 @@ class AdaptiveLlamaTrainer(Trainer):
             outputs_loss = outputs.loss
             if len(outputs_loss.shape) > 0:
                 outputs_loss = outputs.loss.mean()
-                
+
             hcg_loss_to_log = hcg_loss
             if isinstance(hcg_loss_to_log, torch.Tensor):
                 hcg_loss_to_log = hcg_loss_to_log.item()
@@ -334,7 +342,7 @@ class AdaptiveLlamaTrainer(Trainer):
                 f"{log_prefix}/not_pruned_tokens_percent": (sum_pruned_tokens / (total_tokens + 1e-4)),
             }
 
-            if model.config.merging_type == 'hcg':
+            if model_config.merging_type == 'hcg':
                 for i, (hcg_p_open, fan_in_merging_logits_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                     if hcg_p_open is None:
                         continue
@@ -358,7 +366,7 @@ class AdaptiveLlamaTrainer(Trainer):
                     if self.args.learnt_temperature:
                         log_info[f'{log_prefix}/concrete_{i}_temperature'] = model.model.adaptive_down[i].hcg.temperature.item()
 
-                for i, adaptive_down in enumerate(model.model.adaptive_down):
+                for i, adaptive_down in enumerate(model_unwrapped.model.adaptive_down):
                     if isinstance(adaptive_down, AdaptiveFanInGumbel):
                         log_info[f'{log_prefix}/gumbel_tau_{i}'] = adaptive_down.gumbel_tau
 
@@ -381,7 +389,7 @@ class AdaptiveLlamaTrainer(Trainer):
                 extra_log['tau'] = current_tau
 
             if False and hasattr(model.model, "adaptive_down"):
-                for i, adown in enumerate(model.model.adaptive_down):
+                for i, adown in enumerate(model_unwrapped.model.adaptive_down):
                     if isinstance(adown, (AdaptiveFanInGumbel)):
                         merger_mpl_grad = adown.fan_in_mlp.weight.grad.norm(2).item()
                         fan_in_mlp_weight_grad_sum = adown.fan_in_mlp.weight.grad.sum(1)
@@ -405,7 +413,7 @@ class AdaptiveLlamaTrainer(Trainer):
             if hasattr(model.model, "adaptive_down"):
                 # if self.state.global_step % 50 == 0:
                 #     print("self.state.global_step, tau=", current_tau, "global_step", self.state.global_step)
-                for i, adown in enumerate(model.model.adaptive_down):
+                for i, adown in enumerate(model_unwrapped.model.adaptive_down):
                     adown.set_gumbel_tau(current_tau)
         
         return result
@@ -518,6 +526,8 @@ class AdaptiveLlamaTrainer(Trainer):
 
 
         with torch.no_grad():
+            # print('inputs shape', inputs['input_ids'].shape)
+
             with self.compute_loss_context_manager():
                 loss, outputs = self.compute_loss(
                     model,
@@ -859,6 +869,11 @@ def build_model(training_args: AdaptiveTrainingArguments):
     if training_args.scale_token_frequency:
         model.config.scale_token_frequency = True
 
+    if torch.cuda.device_count() > 1:
+        model.config.distributed = True
+
+    print("model.config.distributed", model.config.distributed)
+
     return model, tokenizer
 
 
@@ -928,7 +943,7 @@ if __name__ == "__main__":
                 # 2046 = 2048 - 1 - 1 # eos and bos tokens
                 text = [ '<|im_start|>' + x + '<|im_end|>' for x in examples['text'] ]
 
-                tokenized_inputs = tokenizer(text, truncation=True, max_length=1022)
+                tokenized_inputs = tokenizer(text, truncation=True, padding='max_length', max_length=1022, return_tensors='pt')
 
                 return tokenized_inputs
 
@@ -988,6 +1003,8 @@ if __name__ == "__main__":
 
     trackers_project_name = os.path.basename(training_args.output_dir)
     training_args.run_name = trackers_project_name
+
+    # breakpoint()
 
     trainer = AdaptiveLlamaTrainer(
         model,

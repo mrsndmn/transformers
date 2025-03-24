@@ -74,6 +74,13 @@ if __name__ == "__main__":
             special_embeddings_mask[:, -1] = 1
             text_inputs['special_embeddings_mask'] = special_embeddings_mask
 
+            prohibit_end_of_sentence_pruning = True
+            special_tokens = None
+            if prohibit_end_of_sentence_pruning:
+                special_tokens = [ x[0] for x in tokenizer([ '.', '..', '...', '?', '!', ':', ';' ])['input_ids'] ]
+                for special_token in special_tokens:
+                    text_inputs['special_embeddings_mask'][ text_inputs['input_ids'] == special_token ] = 1
+
             forward_output = model.forward(**text_inputs)
 
             token_will_be_passed = None
