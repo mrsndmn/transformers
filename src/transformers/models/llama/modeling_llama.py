@@ -502,7 +502,7 @@ class LlamaFlashAttention2(LlamaAttention):
             q_len,
             position_ids=position_ids,
             dropout=dropout_rate,
-            sliding_window=getattr(self, "sliding_window", None),
+            # sliding_window=16,
             use_top_left_mask=self._flash_attn_uses_top_left_mask,
             is_causal=self.is_causal,
         )
@@ -627,6 +627,8 @@ class LlamaDecoderLayer(nn.Module):
         super().__init__()
         self.hidden_size = config.hidden_size
 
+        print("config._attn_implementation", config._attn_implementation)
+        config._attn_implementation = 'flash_attention_2'
         self.self_attn = LLAMA_ATTENTION_CLASSES[config._attn_implementation](config=config, layer_idx=layer_idx)
 
         self.mlp = LlamaMLP(config)

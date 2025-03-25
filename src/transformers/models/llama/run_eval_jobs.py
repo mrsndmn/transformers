@@ -1,6 +1,7 @@
+import glob
 import time
 import client_lib # импортируем библиотеку для работы с ML Space
-
+import json
 from rich.console import Console
 
 import os
@@ -245,11 +246,91 @@ def no_crutch_loss_eval(**kwargs):
     return
 
 
+def no_crutch_loss_normalize_token_frequenct_eval(**kwargs):
+
+    checkpoints = [
+        "./adaptive_hcg_slm2_1.7B_hcg_scale_token_frequency_0.5_no_eossp/checkpoint-58793/",
+        "./adaptive_hcg_slm2_1.7B_hcg_scale_token_frequency_0.75_no_eossp/checkpoint-58793/",
+        "./adaptive_hcg_slm2_1.7B_hcg_scale_token_frequency_1.0_no_eossp/checkpoint-58793/",
+        "./adaptive_hcg_slm2_1.7B_hcg_scale_token_frequency_1.5_no_eossp/checkpoint-58793/",
+        "./adaptive_hcg_slm2_1.7B_hcg_scale_token_frequency_2.0_no_eossp/checkpoint-58793/",
+
+        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_0.75_no_eossp/checkpoint-58793/",
+        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_1_no_eossp/checkpoint-58793/",
+        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_1.5_no_eossp/checkpoint-58793/",
+        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_2.0_no_eossp/checkpoint-58793/",
+        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_2.5_no_eossp/checkpoint-58793/",
+        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_3.0_no_eossp/checkpoint-58793/",
+        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_3.5_no_eossp/checkpoint-58793/",
+    ]
+
+    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
+
+
+    if kwargs.get('extract_metrics', False):
+        run_extract_metrics(checkpoints)
+    else:
+        run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
+
+    return
+
+def run_extract_metrics(checkpoints: list[str]):
+
+    bench_keys = [
+        'custom|arc:_average|0',
+        'custom|piqa|0',
+        # 'custom|trivia_qa|0',
+        'custom|mmlu_cloze:_average|0',
+        'custom|mmlu_pro_cloze|0',
+        # 'custom|gsm8k|5',
+    ]
+
+    print(" & ".join([ 'checkpoint' ] + bench_keys), " \\\\")
+
+    for checkpoint in checkpoints:
+        checkpoint_norm = checkpoint.replace('/', '_')
+        metrics_mask = os.path.join('exps_evaluation', 'results', checkpoint_norm, '*.json')
+        metrics_path = glob.glob(metrics_mask)
+        assert len(metrics_path) == 1, f"Found {len(metrics_path)} metrics files for {checkpoint}"
+        metrics_path = metrics_path[0]
+
+        with open(metrics_path, "r") as f:
+            json_data = json.load(f)
+
+        max_len = max(map(len, bench_keys))
+
+        checkpoint_metrics = []
+        for key in bench_keys:
+
+            metric_dict = json_data['results'].get(key, {})
+
+            metric = 0
+            metric_stderr = 0
+
+            if 'acc_norm' in metric_dict:
+                metric = metric_dict['acc_norm']
+                metric_stderr = metric_dict['acc_norm_stderr']
+            elif 'qem' in metric_dict:
+                metric = metric_dict['qem']
+                metric_stderr = metric_dict['qem_stderr']
+            elif len(metric_dict.keys()) > 0:
+                raise ValueError("unknown metrics:", metric_dict)
+
+            space = " " * (max_len - len(key) + 1)
+            # print(key, space, "\t", f"{metric*100:.2f}", '\tstderr', f"{metric_stderr*100:.2f}")
+
+            checkpoint_metrics.append(f"{metric*100:.2f}")
+
+        print(" & ".join([ checkpoint ] + checkpoint_metrics), " \\\\")
+
+
 if __name__ == "__main__":
 
     import sys
 
     dry = len(sys.argv) > 1 and sys.argv[1] == 'dry'
+    extract_metrics = len(sys.argv) > 1 and sys.argv[1] == 'extract_metrics'
+
     print("dry", dry)
 
     # Gumbel
@@ -261,4 +342,5 @@ if __name__ == "__main__":
 
     # eval_hcg_strange_8layer(dry=dry)
 
-    no_crutch_loss_eval(dry=dry)
+    # no_crutch_loss_eval(dry=dry)
+    no_crutch_loss_normalize_token_frequenct_eval(dry=dry, extract_metrics=extract_metrics)

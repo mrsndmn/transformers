@@ -12,6 +12,8 @@ from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInGumbel, AdaptiveFanInGumbel, AdaptiveLlamaForCausalLM, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel, AdaptiveCausalLMOutputWithPast
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
+from transformers.utils import is_sagemaker_mp_enabled
+
 from datasets import load_dataset
 import datasets
 
@@ -176,6 +178,69 @@ class SequentialNumbersDataset():
 
 
 class AdaptiveLlamaTrainer(Trainer):
+
+    def create_optimizer(self):
+        """
+        Setup the optimizer.
+
+        We provide a reasonable default that works well. If you want to use something else, you can pass a tuple in the
+        Trainer's init through `optimizers`, or subclass and override this method in a subclass.
+        """
+
+        if is_sagemaker_mp_enabled():
+            raise ValueError("SMP is not supported")
+
+        opt_model = self.model
+
+        if self.optimizer is None:
+            decay_parameters = self.get_decay_parameter_names(opt_model)
+            
+            # TODO separate group for HCG linear?
+
+            optimizer_grouped_parameters = [
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)
+                    ],
+                    "weight_decay": self.args.weight_decay,
+                },
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad)
+                    ],
+                    "weight_decay": 0.0,
+                },
+            ]
+
+            optimizer_cls, optimizer_kwargs = self.get_optimizer_cls_and_kwargs(self.args, opt_model)
+
+            # Overwrite `params` in case it's created by `get_optimizer_cls_and_kwargs`
+            # e.g. for GaLore optimizer.
+            if "params" in optimizer_kwargs:
+                raise ValueError("params in optimizer_kwargs is not supported")
+                # optimizer_grouped_parameters = optimizer_kwargs.pop("params")
+
+            # Overwrite `model` in case it's created by `get_optimizer_cls_and_kwargs`
+            # e.g. for LOMO optimizer.
+            if "model" in optimizer_kwargs:
+                raise ValueError("model in optimizer_kwargs is not supported")
+                # optimizer_grouped_parameters = optimizer_kwargs.pop("model")
+
+            # For layer-wise dummy optimizers we overwrite optimizer_grouped_parameters with `optimizer_dict`
+            # to avoid arguments conflicts.
+            if "optimizer_dict" in optimizer_kwargs:
+                raise ValueError("optimizer_dict in optimizer_kwargs is not supported")
+                # optimizer_grouped_parameters = optimizer_kwargs.pop("optimizer_dict")
+
+            self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+
+            if optimizer_cls.__name__ == "Adam8bit":
+                raise ValueError("Adam8bit optimizer is not supported")
+
+        return self.optimizer
+
+
+
     def compute_loss(self, model: AdaptiveLlamaForCausalLM, inputs, return_outputs=False, log_metrics=True, log_prefix='debug', force_log=False):
         """
         How the loss is computed by Trainer. By default, all models return the loss in the first element.
@@ -193,7 +258,7 @@ class AdaptiveLlamaTrainer(Trainer):
             special_embeddings_mask = inputs.get('special_tokens_mask') > 0
 
         attention_mask = inputs['attention_mask']
-        token_frequency = inputs['token_frequency']
+        token_frequency = inputs.get('token_frequency', None)
         model_kwargs = {
             "input_ids": inputs['input_ids'],
             "labels": labels,
@@ -217,7 +282,7 @@ class AdaptiveLlamaTrainer(Trainer):
         # fan_in_merging_logits_sum = sum(x.sum(dim=[0, 1]) for x in fan_in_merging_logits)
         outputs_no_pruning = None
         model_unwrapped = model
-        if type(model_unwrapped) != AdaptiveLlamaForCausalLM:
+        if type(model_unwrapped) != AdaptiveLlamaForCausalLM and hasattr(model_unwrapped, "module"):
             model_unwrapped = model_unwrapped.module
 
         model_config = model_unwrapped.config
@@ -292,7 +357,11 @@ class AdaptiveLlamaTrainer(Trainer):
 
         if self.args.hcg_loss_weight_dynamic:
             # print("sum_pruned_tokens / total_tokens", sum_pruned_tokens / total_tokens)
-            if outputs.loss < self.args.lm_loss_max_value:
+            outputs_loss = outputs.loss
+            if len(outputs_loss.shape) > 0:
+                outputs_loss = outputs_loss.mean()
+
+            if outputs_loss < self.args.lm_loss_max_value:
                 hcg_loss *= self.args.hcg_loss_weight
             else:
                 hcg_loss = 0

@@ -230,7 +230,9 @@ def _flash_attention_forward(
     use_sliding_windows = (
         _flash_supports_window_size and sliding_window is not None and key_states.shape[1] > sliding_window
     )
-    flash_kwargs = {"window_size": (sliding_window, sliding_window)} if use_sliding_windows else {}
+    # assert use_sliding_windows
+    flash_kwargs = {"window_size": (sliding_window, 0)} if use_sliding_windows else {}
+    # print("flash_kwargs", flash_kwargs)
 
     if is_flash_attn_greater_or_equal("2.4.1"):
         if deterministic is None:

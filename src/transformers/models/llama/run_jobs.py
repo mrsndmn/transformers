@@ -72,7 +72,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
 
         seed = SEED
 
-        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --full_unmerge_loss_weight {full_unmerge_loss_weight} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type cosine --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection {fan_out_projection} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --gumbel_tau {gumbel_tau} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --ce_merging_loss_weight {ce_merging_loss_weight} --gumbel_loss_weight_dynamic {gumbel_loss_weight_dynamic} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --bf16 1 --torch_compile {torch_compile} --sparsity_level {sparsity_level} --concrete_random_mask_proba {concrete_random_mask_proba} --lm_loss_max_value {lm_loss_max_value} --hcg_loss_max_value {hcg_loss_max_value} --prohibit_end_of_sentence_pruning {prohibit_end_of_sentence_pruning} --scale_token_frequency {scale_token_frequency}"
+        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file /workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/accelerate_config.yaml {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --full_unmerge_loss_weight {full_unmerge_loss_weight} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type cosine --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection {fan_out_projection} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --max_steps_pretrain_fan_modules 0  --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --gumbel_tau {gumbel_tau} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --ce_merging_loss_weight {ce_merging_loss_weight} --gumbel_loss_weight_dynamic {gumbel_loss_weight_dynamic} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --bf16 1 --torch_compile {torch_compile} --sparsity_level {sparsity_level} --concrete_random_mask_proba {concrete_random_mask_proba} --lm_loss_max_value {lm_loss_max_value} --hcg_loss_max_value {hcg_loss_max_value} --prohibit_end_of_sentence_pruning {prohibit_end_of_sentence_pruning} --scale_token_frequency {scale_token_frequency}"
 
         print(f"\n\n{script_str}\n\n")
 
@@ -198,6 +198,39 @@ def run_hcg_smollm1dot7B_pretrain(**kwargs):
             "output_dir": f"{experiment_prefix_base_name}_8",
             **common_params,
         },
+    ]
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
+def run_hcg_smollm2_360M_pretrain(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_pretrain"
+
+    common_params = {
+        "freeze_lm_backbone": 1,
+        "select_train_dataset_items": 160000,
+        "num_train_epochs": 1,
+        "per_device_train_batch_size": 16,
+        "llama_checkpoint": "HuggingFaceTB/SmolLM2-360M",
+        "warmup_steps": 100,
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": "0",
+        "hcg_loss_weight": 2,
+        "lm_loss_max_value": 1.0,
+        "fan_out_projection": "1",
+        "scale_token_frequency": "1",
+    }
+
+    hcg_experiments = [
+        # Fan out projection
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_4",
+            **common_params,
+        },
+
     ]
 
     run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
@@ -603,6 +636,45 @@ def run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(**kwargs):
 
     return
 
+def run_hcg_smollm2_360M_hcg_scale_token_frequency(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_hcg_scale_token_frequency"
+
+    common_params = {
+        "freeze_lm_backbone": 0,
+        "select_train_dataset_items": 0,
+        "per_device_train_batch_size": 16,
+        "model_type": "pretrained_checkpoint",
+        "learning_rate": 0.0002,
+        "warmup_steps": 2000,
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": "0",
+        "lm_loss_max_value": 0.0,
+        "fan_out_projection": "1",
+
+        "scale_token_frequency": 1,
+    }
+
+    hcg_experiments = []
+
+
+    for hcg_loss_weight in [ 0.75, 1, 1.5, 2.0, 2.5, 3.0, 3.5 ]:
+        exp_config = {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}_no_eossp",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_4/checkpoint-2498/",
+            "hcg_loss_weight": hcg_loss_weight,
+
+            "prohibit_end_of_sentence_pruning": "1",
+            **common_params,
+        }
+        hcg_experiments.append(exp_config)
+
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
 
 
 def run_hcg_smollm2_1dot7B_hcg_prohibit_end_of_sentence_pruning(**kwargs):
@@ -897,6 +969,7 @@ if __name__ == "__main__":
     # run_hcg_smollm1dot7B_pretrain(dry=dry)
     # SmolLM2 pretrain
     # run_hcg_smollm2_1dot7B_pretrain(dry=dry)
+    # run_hcg_smollm2_360M_pretrain(dry=dry)
 
     # Iterate over layers
     # run_hcg_smollm360M_layers_iterate(dry=dry)
@@ -906,7 +979,8 @@ if __name__ == "__main__":
     # run_hcg_smollm2_1dot7B_hcg_lambda_iterate(dry=dry)
     # run_hcg_smollm2_1dot7B_hcg_prohibit_end_of_sentence_pruning(dry=dry)
 
-    run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(dry=dry)
+    # run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(dry=dry)
+    run_hcg_smollm2_360M_hcg_scale_token_frequency(dry=dry)
 
     # schedule pruned percent loss
     # run_hcg_smollm2_1dot7B_fixed_pruning_percent(dry=dry)
