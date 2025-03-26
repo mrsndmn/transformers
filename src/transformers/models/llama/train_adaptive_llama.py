@@ -7,7 +7,7 @@ import wandb
 from torch.nn.utils.rnn import pad_sequence
 import torch
 
-
+from transformers import TrainerCallback
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInGumbel, AdaptiveFanInGumbel, AdaptiveLlamaForCausalLM, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel, AdaptiveCausalLMOutputWithPast
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
@@ -64,6 +64,8 @@ from typing import List, Optional
 class AdaptiveTrainingArguments(TrainingArguments):
     output_dir: str = field(default="llama_for_sequential_numbers",)
     learning_rate: float = field(default=2e-4)
+    hcg_learning_rate: float = field(default=1e-4)
+
     warmup_steps: int = field(default=500)
     per_device_train_batch_size: int = field(default=32)
     per_device_eval_batch_size: int = field(default=16)
@@ -72,6 +74,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     hcg_temperature: float = field(default=1.0)
     learnt_temperature: bool = field(default=False)
     lr_scheduler_type: str = field(default='constant_with_warmup')
+
 
     llama_checkpoint: str = field(default='')
 
@@ -88,12 +91,13 @@ class AdaptiveTrainingArguments(TrainingArguments):
     push_to_hub: bool = field(default=False)
     optim: str = field(default="adamw_torch")
     report_to: str = field(default="wandb")
-    logging_steps: int = field(default=100)
+    logging_steps: int = field(default=1)
     dataloader_drop_last: bool = field(default=True)
     dataloader_num_workers: int = field(default=4)
     merging_type: str = field(default="next_token_merge_mlp")
     freeze_lm_backbone: bool = field(default=False)
     bf16: bool = field(default=True)
+    early_stopping_for_pretraining: bool = field(default=False)
 
     training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
     model_type: str = "dummy" # dummy | pretrained | SmolLM-1.7B
@@ -194,7 +198,13 @@ class AdaptiveLlamaTrainer(Trainer):
 
         if self.optimizer is None:
             decay_parameters = self.get_decay_parameter_names(opt_model)
-            
+            decay_parameters = set(decay_parameters)
+
+            hcg_lr = self.args.hcg_learning_rate
+
+            hcg_params = set([ p for n, p in opt_model.named_parameters() if "fan_in_mlp" in n ])
+            hcg_params_no_decay = set([ p for n, p in opt_model.named_parameters() if "bias" in n ])
+            decay_parameters = decay_parameters - hcg_params
             # TODO separate group for HCG linear?
 
             optimizer_grouped_parameters = [
@@ -203,12 +213,28 @@ class AdaptiveLlamaTrainer(Trainer):
                         p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)
                     ],
                     "weight_decay": self.args.weight_decay,
+                    "betas": (0.99, 0.999),
                 },
                 {
                     "params": [
-                        p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad)
+                        p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in hcg_params and p.requires_grad)
+                    ],
+                    "betas": (0.99, 0.999),
+                    "weight_decay": 0.0,
+                },
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters() if (n in hcg_params_no_decay and p.requires_grad)
                     ],
                     "weight_decay": 0.0,
+                    "learning_rate": hcg_lr,
+                },
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters() if (n in hcg_params and p.requires_grad)
+                    ],
+                    "weight_decay": self.args.weight_decay,
+                    "learning_rate": hcg_lr,
                 },
             ]
 
@@ -946,6 +972,25 @@ def build_model(training_args: AdaptiveTrainingArguments):
     return model, tokenizer
 
 
+class EarlyStoppingCallbacForPretraining(TrainerCallback):
+    def on_step_end(self, args, state, control, **kwargs):
+
+        min_steps = 3
+
+        if len(state.log_history) < min_steps:
+            return control
+
+        metric_name = 'debug/not_pruned_tokens_percent'
+        metric_values = [ x[metric_name] for x in state.log_history[-min_steps:] if metric_name in x ]
+
+        if np.mean(metric_values) > 0.98:
+            print("Early stopping because of low not pruned tokens percent")
+            control.should_training_stop = True
+            control.should_save = True
+
+        return control
+
+
 # pretrained
 # WANDB_MODE=online PYTHONPATH=/Users/d.tarasov/workspace/transformers/src:./src ~/miniconda3/envs/audio/bin/python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --per_device_train_batch_size 32 --num_train_epochs 10 --seed 1001 --training_dataset smollm-corpus --model_type pretrained
 
@@ -1005,14 +1050,14 @@ if __name__ == "__main__":
             smollm_corpus = datasets.Dataset.load_from_disk(disk_dataset_path)
         else:
             # load and tokenize
-            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(10) ]
+            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(100) ]
             smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files)
 
             def tokenize_function(examples):
                 # 2046 = 2048 - 1 - 1 # eos and bos tokens
                 text = [ '<|im_start|>' + x + '<|im_end|>' for x in examples['text'] ]
 
-                tokenized_inputs = tokenizer(text, truncation=True, padding='max_length', max_length=1022, return_tensors='pt')
+                tokenized_inputs = tokenizer(text, truncation=True, padding='max_length', max_length=2046, return_tensors='pt')
 
                 return tokenized_inputs
 
@@ -1075,8 +1120,14 @@ if __name__ == "__main__":
 
     # breakpoint()
 
+    callbacks = []
+    if training_args.early_stopping_for_pretraining:
+        callbacks.append(EarlyStoppingCallbacForPretraining())
+
     trainer = AdaptiveLlamaTrainer(
         model,
+        callbacks=callbacks,
+
         processing_class=tokenizer,
         args=training_args,
         train_dataset=train_dataset,

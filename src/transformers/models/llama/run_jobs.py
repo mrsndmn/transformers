@@ -231,7 +231,7 @@ def run_hcg_smollm2_360M_pretrain(**kwargs):
         "lm_loss_max_value": 0.0,
         "fan_out_projection": "1",
         "scale_token_frequency": "0",
-        "early_stopping_for_pretraining": True,
+        "early_stopping_for_pretraining": '1',
         'instance_type': 'a100.1gpu',
     }
 
@@ -657,7 +657,7 @@ def run_hcg_smollm2_360M_hcg_scale_token_frequency(**kwargs):
         "select_train_dataset_items": 0,
         "per_device_train_batch_size": 16,
         "model_type": "pretrained_checkpoint",
-        "learning_rate": 0.0002,
+        "learning_rate": 0.0001,
         "warmup_steps": 2000,
         "torch_compile": 1,
         "hcg_loss_weight_dynamic": "0",
