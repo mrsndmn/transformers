@@ -71,7 +71,7 @@ def build_adaptive_llama_from_llama_checkpoint(
 
     dtype_orig = torch.get_default_dtype()
     torch.set_default_dtype(torch.bfloat16)
-    adaptive_llama_model = AdaptiveLlamaForCausalLM(config, attn_implementation='flash_attention_2')
+    adaptive_llama_model = AdaptiveLlamaForCausalLM(config)
     torch.set_default_dtype(dtype_orig)
 
     adaptive_llama_model_state_dict = adaptive_llama_model.state_dict()
