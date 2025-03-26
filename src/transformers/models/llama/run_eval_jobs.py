@@ -267,7 +267,7 @@ def no_crutch_loss_normalize_token_frequenct_eval(**kwargs):
     hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
 
 
-    if kwargs.get('extract_metrics', False):
+    if kwargs.pop('extract_metrics', False):
         run_extract_metrics(checkpoints)
     else:
         run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
@@ -290,9 +290,10 @@ def run_extract_metrics(checkpoints: list[str]):
     for checkpoint in checkpoints:
         checkpoint_norm = checkpoint.replace('/', '_')
         metrics_mask = os.path.join('exps_evaluation', 'results', checkpoint_norm, '*.json')
-        metrics_path = glob.glob(metrics_mask)
-        assert len(metrics_path) == 1, f"Found {len(metrics_path)} metrics files for {checkpoint}"
-        metrics_path = metrics_path[0]
+        metrics_paths = glob.glob(metrics_mask)
+        assert len(metrics_paths) >= 1, f"No metrics files found for {checkpoint}"
+        # Sort by creation time and take the most recent one
+        metrics_path = sorted(metrics_paths, key=lambda x: os.path.getctime(x))[-1]
 
         with open(metrics_path, "r") as f:
             json_data = json.load(f)
