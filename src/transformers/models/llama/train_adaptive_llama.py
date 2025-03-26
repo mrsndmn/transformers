@@ -64,7 +64,7 @@ from typing import List, Optional
 class AdaptiveTrainingArguments(TrainingArguments):
     output_dir: str = field(default="llama_for_sequential_numbers",)
     learning_rate: float = field(default=2e-4)
-    hcg_learning_rate: float = field(default=1e-4)
+    hcg_learning_rate: float = field(default=1e-3)
 
     warmup_steps: int = field(default=500)
     per_device_train_batch_size: int = field(default=32)
@@ -91,7 +91,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     push_to_hub: bool = field(default=False)
     optim: str = field(default="adamw_torch")
     report_to: str = field(default="wandb")
-    logging_steps: int = field(default=1)
+    logging_steps: int = field(default=100)
     dataloader_drop_last: bool = field(default=True)
     dataloader_num_workers: int = field(default=4)
     merging_type: str = field(default="next_token_merge_mlp")
@@ -277,7 +277,7 @@ class AdaptiveLlamaTrainer(Trainer):
         labels = inputs.get('labels', None)
         if labels is None:
             labels = inputs['input_ids'].clone()
-            inputs['input_ids'][inputs['input_ids'] == self.tokenizer.pad_token_id] = -100
+            labels[labels == self.tokenizer.pad_token_id] = -100
 
         special_embeddings_mask = inputs.get('special_embeddings_mask')
         if special_embeddings_mask is None:
@@ -358,7 +358,7 @@ class AdaptiveLlamaTrainer(Trainer):
         count_hcg_layers = 0
         hcg_loss = 0
         sum_pruned_tokens = 0
-        if self.args.hcg_loss_weight > 0.0 and  model_config.merging_type == 'hcg':
+        if self.args.hcg_loss_weight != 0.0 and  model_config.merging_type == 'hcg':
             for i, (hcg_p_open, hcg_p_open_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                 if hcg_p_open is None:
                     continue
