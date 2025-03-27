@@ -70,7 +70,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     per_device_train_batch_size: int = field(default=32)
     per_device_eval_batch_size: int = field(default=16)
     num_train_epochs: int = field(default=1)
-    max_steps_pretrain_fan_modules: int = field(default=2000)
+
     hcg_temperature: float = field(default=1.0)
     learnt_temperature: bool = field(default=False)
     lr_scheduler_type: str = field(default='constant_with_warmup')
@@ -89,7 +89,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     scale_token_frequency: bool = field(default=False)
 
     push_to_hub: bool = field(default=False)
-    optim: str = field(default="adamw_torch")
+    optim: str = field(default="adamw_torch_fused")
     report_to: str = field(default="wandb")
     logging_steps: int = field(default=100)
     dataloader_drop_last: bool = field(default=True)
@@ -97,7 +97,9 @@ class AdaptiveTrainingArguments(TrainingArguments):
     merging_type: str = field(default="next_token_merge_mlp")
     freeze_lm_backbone: bool = field(default=False)
     bf16: bool = field(default=True)
+
     early_stopping_for_pretraining: bool = field(default=False)
+    pretrain_fan_out_projection: bool = field(default=False)
 
     training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
     model_type: str = "dummy" # dummy | pretrained | SmolLM-1.7B
@@ -200,11 +202,12 @@ class AdaptiveLlamaTrainer(Trainer):
             decay_parameters = self.get_decay_parameter_names(opt_model)
             decay_parameters = set(decay_parameters)
 
-            hcg_lr = self.args.hcg_learning_rate
+            # hcg_lr = self.args.hcg_learning_rate
 
-            hcg_params = set([ p for n, p in opt_model.named_parameters() if "fan_in_mlp" in n ])
-            hcg_params_no_decay = set([ p for n, p in opt_model.named_parameters() if "bias" in n ])
-            decay_parameters = decay_parameters - hcg_params
+            hcg_params = []
+            # hcg_params = set([ p for n, p in opt_model.named_parameters() if "fan_in_mlp" in n ])
+            # hcg_params_no_decay = set([ p for n, p in opt_model.named_parameters() if "bias" in n ])
+            # decay_parameters = decay_parameters - hcg_params
             # TODO separate group for HCG linear?
 
             optimizer_grouped_parameters = [
@@ -213,29 +216,27 @@ class AdaptiveLlamaTrainer(Trainer):
                         p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)
                     ],
                     "weight_decay": self.args.weight_decay,
-                    "betas": (0.99, 0.999),
                 },
                 {
                     "params": [
                         p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in hcg_params and p.requires_grad)
                     ],
-                    "betas": (0.99, 0.999),
                     "weight_decay": 0.0,
                 },
-                {
-                    "params": [
-                        p for n, p in opt_model.named_parameters() if (n in hcg_params_no_decay and p.requires_grad)
-                    ],
-                    "weight_decay": 0.0,
-                    "learning_rate": hcg_lr,
-                },
-                {
-                    "params": [
-                        p for n, p in opt_model.named_parameters() if (n in hcg_params and p.requires_grad)
-                    ],
-                    "weight_decay": self.args.weight_decay,
-                    "learning_rate": hcg_lr,
-                },
+                # {
+                #     "params": [
+                #         p for n, p in opt_model.named_parameters() if (n in hcg_params_no_decay and p.requires_grad)
+                #     ],
+                #     "weight_decay": 0.0,
+                #     "learning_rate": hcg_lr,
+                # },
+                # {
+                #     "params": [
+                #         p for n, p in opt_model.named_parameters() if (n in hcg_params and p.requires_grad)
+                #     ],
+                #     "weight_decay": self.args.weight_decay,
+                #     "learning_rate": hcg_lr,
+                # },
             ]
 
             optimizer_cls, optimizer_kwargs = self.get_optimizer_cls_and_kwargs(self.args, opt_model)
@@ -258,6 +259,7 @@ class AdaptiveLlamaTrainer(Trainer):
                 raise ValueError("optimizer_dict in optimizer_kwargs is not supported")
                 # optimizer_grouped_parameters = optimizer_kwargs.pop("optimizer_dict")
 
+            print("optimizer_cls, optimizer_kwargs", optimizer_cls, optimizer_kwargs)
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
 
             if optimizer_cls.__name__ == "Adam8bit":
@@ -939,7 +941,6 @@ def build_model(training_args: AdaptiveTrainingArguments):
             generate_merges_transform_impl=training_args.generate_merges_transform_impl,
             fan_out_projection=training_args.fan_out_projection,
             merging_type=training_args.merging_type,
-            freeze_lm_backbone=training_args.freeze_lm_backbone,
             full_unmerge=full_unmerge,
             fan_out_type=training_args.fan_out_type,
             hcg_temperature=training_args.hcg_temperature,
@@ -947,6 +948,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
             gumbel_tau=training_args.gumbel_tau,
             scale_not_pruned_gradients=training_args.scale_not_pruned_gradients,
             concrete_random_mask_proba=training_args.concrete_random_mask_proba,
+            pretrain_fan_out_projection=training_args.pretrain_fan_out_projection,
         )
 
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
@@ -957,8 +959,6 @@ def build_model(training_args: AdaptiveTrainingArguments):
     else:
         raise ValueError(f"{training_args.model_type} is not supported")
 
-    print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
-
     tokenizer.padding_side = 'left'
 
     if training_args.scale_token_frequency:
@@ -968,6 +968,26 @@ def build_model(training_args: AdaptiveTrainingArguments):
         model.config.distributed = True
 
     print("model.config.distributed", model.config.distributed)
+
+    model.config.pretrain_fan_out_projection = training_args.pretrain_fan_out_projection
+
+    if training_args.freeze_lm_backbone:
+        for p in model.parameters():
+            p.requires_grad = False
+
+        for p in model.model.adaptive_down.parameters():
+            p.requires_grad = True
+
+        for p in model.model.adaptive_up.parameters():
+            p.requires_grad = True
+
+    if training_args.pretrain_fan_out_projection:
+        print("Pretrain fan out projection. Freeze Fan In parameters")
+        for adaptive_down in model.model.adaptive_down:
+            for p in adaptive_down.parameters():
+                p.requires_grad = False
+
+    print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
 
     return model, tokenizer
 
@@ -1050,8 +1070,8 @@ if __name__ == "__main__":
             smollm_corpus = datasets.Dataset.load_from_disk(disk_dataset_path)
         else:
             # load and tokenize
-            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(100) ]
-            smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files)
+            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(20) ]
+            smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files, num_proc=16)
 
             def tokenize_function(examples):
                 # 2046 = 2048 - 1 - 1 # eos and bos tokens
@@ -1065,7 +1085,7 @@ if __name__ == "__main__":
             if training_args.select_train_dataset_items > 0:
                 smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items))
 
-            smollm_corpus = smollm_corpus.map(tokenize_function, batched=True)
+            smollm_corpus = smollm_corpus.map(tokenize_function, batched=True, num_proc=16)
 
             # smollm_corpus = smollm_corpus.rename_column('special_tokens_mask', 'special_embeddings_mask')
             # print(smollm_corpus[0]['input_ids'])
@@ -1110,10 +1130,6 @@ if __name__ == "__main__":
         data_collator = crutch_collator
     else:
         raise ValueError(f"{training_args.training_dataset} is not supported")
-
-    # training_args.max_steps = training_args.max_steps_pretrain_fan_modules
-    # trainer.args.max_steps = -1
-    # trainer.args.warmup_steps = 0
 
     trackers_project_name = os.path.basename(training_args.output_dir)
     training_args.run_name = trackers_project_name

@@ -31,7 +31,6 @@ def build_adaptive_llama_from_llama_checkpoint(
         generate_merges_transform_impl='python',
         fan_out_projection=True,
         merging_type='next_token_merge_mlp',
-        freeze_lm_backbone=False,
         full_unmerge=None,
         fan_out_type=None,
         hcg_temperature=1.0,
@@ -40,6 +39,7 @@ def build_adaptive_llama_from_llama_checkpoint(
         gumbel_tau=2.0,
         scale_not_pruned_gradients=0.0,
         concrete_random_mask_proba=None,
+        pretrain_fan_out_projection=False,
     ):
 
     torch_dtype = torch.bfloat16
@@ -62,6 +62,8 @@ def build_adaptive_llama_from_llama_checkpoint(
     config.gumbel_tau = gumbel_tau
     config.scale_not_pruned_gradients = scale_not_pruned_gradients
     config.concrete_random_mask_proba = concrete_random_mask_proba
+    config.pretrain_fan_out_projection = pretrain_fan_out_projection
+
     if flash_attention:
         config._attn_implementation = 'flash_attention_2'
 
@@ -97,16 +99,6 @@ def build_adaptive_llama_from_llama_checkpoint(
         if isinstance(adaptive_down, AdaptiveFanInHCG):
             adaptive_down.hcg.to(torch.float32)
 
-    if freeze_lm_backbone:
-        for p in adaptive_llama_model.parameters():
-            p.requires_grad = False
-
-        for p in adaptive_llama_model.model.adaptive_down.parameters():
-            p.requires_grad = True
-
-        for p in adaptive_llama_model.model.adaptive_up.parameters():
-            p.requires_grad = True
-            
     print("total parameters:", sum(p.numel() for p in adaptive_llama_model.parameters()))
 
     adaptive_llama_model._init_adaptive_layers()

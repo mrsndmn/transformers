@@ -673,31 +673,33 @@ class AdaptiveFanInHCG(nn.Module):
 
         residual_hidden_state = hidden_state
 
-        # OHE: [ bs, seq_len, 1 ]
-        log_a = self.fan_in_mlp(hidden_state)
-
-        if self.config.scale_token_frequency:
-            log_a = log_a - token_frequency.unsqueeze(-1).log()
-
-        if self.config.concrete_random_mask_proba is not None and self.config.concrete_random_mask_proba > 0:
-            # [ bs, seq_len, 1 ]
-            concrete = torch.ones_like(log_a)
-            concrete_random_mask = torch.rand(log_a.shape, device=log_a.device) < self.config.concrete_random_mask_proba
-            concrete[concrete_random_mask] = 0.0
+        assert self.config.pretrain_fan_out_projection
+        if self.config.pretrain_fan_out_projection:
+            concrete = torch.rand([ batch_size, seq_len, 1 ], device=hidden_state.device)
+            concrete = (concrete > 0.5).long().float()
+            p_open = concrete
         else:
+            # OHE: [ bs, seq_len, 1 ]
+            log_a = self.fan_in_mlp(hidden_state)
+
+            if self.config.scale_token_frequency:
+                log_a = log_a - token_frequency.unsqueeze(-1).log()
+
+            if self.config.concrete_random_mask_proba is not None and self.config.concrete_random_mask_proba > 0:
+                # [ bs, seq_len, 1 ]
+                concrete = torch.ones_like(log_a)
+                concrete_random_mask = torch.rand(log_a.shape, device=log_a.device) < self.config.concrete_random_mask_proba
+                concrete[concrete_random_mask] = 0.0
+            else:
+                # [ bs, seq_len, 1 ]
+                concrete = self.hcg(log_a, attention_mask=attention_mask)
+
             # [ bs, seq_len, 1 ]
-            concrete = self.hcg(log_a, attention_mask=attention_mask)
-
-        # if self.training: #  and self.config.force_skip_tokens_percent > 0.0:
-        #     # force X% of tokens to be pruned
-        #     concrete[torch.rand_like(concrete) < 0.1] = 0
-
-        # [ bs, seq_len, 1 ]
-        p_open = concrete
-        if self.training:
-            p_open = self.hcg.get_p_open(log_a)
-            p_open[~attention_mask.bool()] = 0
-            p_open[special_embeddings_mask.bool()] = 1.
+            p_open = concrete
+            if self.training:
+                p_open = self.hcg.get_p_open(log_a)
+                p_open[~attention_mask.bool()] = 0
+                p_open[special_embeddings_mask.bool()] = 1.
 
         # print("special_embeddings_mask", special_embeddings_mask)
 
