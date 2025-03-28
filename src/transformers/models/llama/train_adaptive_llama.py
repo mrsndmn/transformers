@@ -970,7 +970,6 @@ def build_model(training_args: AdaptiveTrainingArguments):
     print("model.config.distributed", model.config.distributed)
 
     model.config.pretrain_fan_out_projection = training_args.pretrain_fan_out_projection
-
     if training_args.freeze_lm_backbone:
         for p in model.parameters():
             p.requires_grad = False

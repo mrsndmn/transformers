@@ -673,7 +673,6 @@ class AdaptiveFanInHCG(nn.Module):
 
         residual_hidden_state = hidden_state
 
-        assert self.config.pretrain_fan_out_projection
         if self.config.pretrain_fan_out_projection:
             concrete = torch.rand([ batch_size, seq_len, 1 ], device=hidden_state.device)
             concrete = (concrete > 0.5).long().float()

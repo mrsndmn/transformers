@@ -717,13 +717,12 @@ def run_hcg_smollm2_360M_hcg_scale_token_frequency(**kwargs):
 
     hcg_experiments = []
 
-
     # for hcg_loss_weight in [ 1.0, 2.0, 2.5, 3.0, 3.5 ]:
-    for hcg_loss_weight in [ 3.0, 4.0,]:
+    for hcg_loss_weight in [ 1.5, 2.0, 2.5 ]:
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}_no_eossp",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_with_early_stopping_4/checkpoint-176/",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/checkpoint-9993/",
             "hcg_loss_weight": hcg_loss_weight,
 
             "prohibit_end_of_sentence_pruning": "1",
@@ -1031,7 +1030,7 @@ if __name__ == "__main__":
     # SmolLM2 pretrain
     # run_hcg_smollm2_1dot7B_pretrain(dry=dry)
     # run_hcg_smollm2_360M_pretrain(dry=dry)
-    run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
+    # run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
 
     # Iterate over layers
     # run_hcg_smollm360M_layers_iterate(dry=dry)
@@ -1042,7 +1041,7 @@ if __name__ == "__main__":
     # run_hcg_smollm2_1dot7B_hcg_prohibit_end_of_sentence_pruning(dry=dry)
 
     # run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(dry=dry)
-    # run_hcg_smollm2_360M_hcg_scale_token_frequency(dry=dry)
+    run_hcg_smollm2_360M_hcg_scale_token_frequency(dry=dry)
 
     # schedule pruned percent loss
     # run_hcg_smollm2_1dot7B_fixed_pruning_percent(dry=dry)

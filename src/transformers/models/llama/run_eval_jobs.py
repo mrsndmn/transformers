@@ -274,6 +274,26 @@ def no_crutch_loss_normalize_token_frequenct_eval(**kwargs):
 
     return
 
+
+def no_crutch_loss_normalize_token_frequenct_eval_bs_1m(**kwargs):
+
+    checkpoints = [
+        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_pretrain_1.5_no_eossp/checkpoint-14698",
+        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_pretrain_2.0_no_eossp/checkpoint-14698",
+        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_pretrain_2.5_no_eossp/checkpoint-14698",
+    ]
+
+    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
+
+    if kwargs.pop('extract_metrics', False):
+        run_extract_metrics(checkpoints)
+    else:
+        run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
+
+    return
+
+
+
 def run_extract_metrics(checkpoints: list[str]):
 
     bench_keys = [
@@ -344,4 +364,5 @@ if __name__ == "__main__":
     # eval_hcg_strange_8layer(dry=dry)
 
     # no_crutch_loss_eval(dry=dry)
-    no_crutch_loss_normalize_token_frequenct_eval(dry=dry, extract_metrics=extract_metrics)
+    # no_crutch_loss_normalize_token_frequenct_eval(dry=dry, extract_metrics=extract_metrics)
+    no_crutch_loss_normalize_token_frequenct_eval_bs_1m(dry=dry, extract_metrics=extract_metrics)
