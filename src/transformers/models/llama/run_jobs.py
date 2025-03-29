@@ -255,16 +255,55 @@ def run_hcg_smollm2_360M_pretrain(**kwargs):
 
     return
 
-def run_hcg_smollm2_360M_pretrain_fan_out_projection(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_pretrain_fan_out_projection"
+def run_hcg_llama31_8B_pretrain(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_llama_8B_pretrain"
 
     common_params = {
         "freeze_lm_backbone": 1,
         "select_train_dataset_items": 160000,
         "num_train_epochs": 1,
+        "per_device_train_batch_size": 2,
+        "gradient_accumulation_steps": 8,
+        "llama_checkpoint": "unsloth/Meta-Llama-3.1-8B",
+        "warmup_steps": 100,
+        "learning_rate": 0.001,
+        "hcg_learning_rate": 0.001,
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": "0",
+        "hcg_loss_weight": -1.0,
+        "lm_loss_max_value": 0.0,
+        "fan_out_projection": "1",
+        "scale_token_frequency": "0",
+        "early_stopping_for_pretraining": '1',
+        'instance_type': 'a100.1gpu',
+    }
+
+    hcg_experiments = [
+        # Fan out projection
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_4",
+            **common_params,
+        },
+
+    ]
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
+def run_hcg_llama31_8B_pretrain_fan_out_projection(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_llama_8B_pretrain_fan_out_projection"
+
+    common_params = {
+        "freeze_lm_backbone": 1,
+        "select_train_dataset_items": 50000,
+        "num_train_epochs": 1,
         "per_device_train_batch_size": 16,
-        "llama_checkpoint": "HuggingFaceTB/SmolLM2-360M",
+        "model_type": "pretrained_checkpoint",
         "warmup_steps": 1000,
         "learning_rate": 0.0001,
         "torch_compile": 1,
@@ -281,7 +320,85 @@ def run_hcg_smollm2_360M_pretrain_fan_out_projection(**kwargs):
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_4",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_with_early_stopping_4/checkpoint-176/",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_llama_8B_pretrain_4/checkpoint-601/",
+            **common_params,
+        },
+
+    ]
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
+
+
+def run_hcg_qwen_7B_pretrain(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_qwen_7B_pretrain"
+
+    common_params = {
+        "freeze_lm_backbone": 1,
+        "select_train_dataset_items": 160000,
+        "num_train_epochs": 1,
+        "per_device_train_batch_size": 2,
+        "gradient_accumulation_steps": 8,
+        "llama_checkpoint": "Qwen/Qwen2.5-7B",
+        "warmup_steps": 100,
+        "learning_rate": 0.001,
+        "hcg_learning_rate": 0.001,
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": "0",
+        "hcg_loss_weight": -1.0,
+        "lm_loss_max_value": 0.0,
+        "fan_out_projection": "1",
+        "scale_token_frequency": "0",
+        "early_stopping_for_pretraining": '1',
+        'instance_type': 'a100.1gpu',
+    }
+
+    hcg_experiments = [
+        # Fan out projection
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_4",
+            **common_params,
+        },
+
+    ]
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
+
+
+def run_hcg_smollm2_360M_pretrain_fan_out_projection(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_pretrain_fan_out_projection"
+
+    common_params = {
+        "freeze_lm_backbone": 1,
+        "select_train_dataset_items": 50000,
+        "num_train_epochs": 1,
+        "per_device_train_batch_size": 16,
+        "model_type": "pretrained_checkpoint",
+        "warmup_steps": 1000,
+        "learning_rate": 0.0001,
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": "0",
+        "hcg_loss_weight": 0.0,
+        "lm_loss_max_value": 0.0,
+        "fan_out_projection": "1",
+        "pretrain_fan_out_projection": "1",
+        'instance_type': 'a100.1gpu',
+    }
+
+    hcg_experiments = [
+        # Fan out projection
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_4",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_with_early_stopping_4/checkpoint-601/",
             **common_params,
         },
 
@@ -694,7 +811,7 @@ def run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(**kwargs):
 
 def run_hcg_smollm2_360M_hcg_scale_token_frequency(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_pretrain"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_fix_pretrain"
 
     common_params = {
         "freeze_lm_backbone": 0,
@@ -718,11 +835,11 @@ def run_hcg_smollm2_360M_hcg_scale_token_frequency(**kwargs):
     hcg_experiments = []
 
     # for hcg_loss_weight in [ 1.0, 2.0, 2.5, 3.0, 3.5 ]:
-    for hcg_loss_weight in [ 1.5, 2.0, 2.5 ]:
+    for hcg_loss_weight in [ 1.25, 1.5 ]:
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}_no_eossp",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/checkpoint-9993/",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/checkpoint-3118/",
             "hcg_loss_weight": hcg_loss_weight,
 
             "prohibit_end_of_sentence_pruning": "1",
@@ -1029,6 +1146,17 @@ if __name__ == "__main__":
     # run_hcg_smollm1dot7B_pretrain(dry=dry)
     # SmolLM2 pretrain
     # run_hcg_smollm2_1dot7B_pretrain(dry=dry)
+
+    # Llama 8B
+    # run_hcg_llama31_8B_pretrain(dry=dry)
+    run_hcg_llama31_8B_pretrain_fan_out_projection(dry=dry)
+
+    # Qwen 7B
+    # run_hcg_qwen_7B_pretrain(dry=dry)
+    # run_hcg_qwen_7B_pretrain_fan_out_projection(dry=dry)
+
+
+
     # run_hcg_smollm2_360M_pretrain(dry=dry)
     # run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
 
@@ -1041,7 +1169,7 @@ if __name__ == "__main__":
     # run_hcg_smollm2_1dot7B_hcg_prohibit_end_of_sentence_pruning(dry=dry)
 
     # run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(dry=dry)
-    run_hcg_smollm2_360M_hcg_scale_token_frequency(dry=dry)
+    # run_hcg_smollm2_360M_hcg_scale_token_frequency(dry=dry)
 
     # schedule pruned percent loss
     # run_hcg_smollm2_1dot7B_fixed_pruning_percent(dry=dry)

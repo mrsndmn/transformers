@@ -68,7 +68,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
     warmup_steps: int = field(default=500)
     per_device_train_batch_size: int = field(default=32)
-    per_device_eval_batch_size: int = field(default=16)
+    per_device_eval_batch_size: int = field(default=4)
     num_train_epochs: int = field(default=1)
 
     hcg_temperature: float = field(default=1.0)
@@ -83,7 +83,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     eval_steps: int = field(default=1000)
     save_strategy: str = field(default="no")
     save_steps: int = 10000
-    save_total_limit: Optional[int] = field(default=1)
+    save_total_limit: Optional[int] = field(default=5)
 
     prohibit_end_of_sentence_pruning: bool = field(default=False)
     scale_token_frequency: bool = field(default=False)
@@ -913,6 +913,9 @@ def build_model(training_args: AdaptiveTrainingArguments):
         llama_checkpoint = training_args.llama_checkpoint
         if llama_checkpoint is None or llama_checkpoint == "":
             llama_checkpoint = "HuggingFaceTB/SmolLM-360M"
+
+        assert not llama_checkpoint.startswith("./")
+
         llama_config = LlamaConfig.from_pretrained(llama_checkpoint)
         num_layers = llama_config.num_hidden_layers
         num_layers_half = num_layers // 2
@@ -992,20 +995,34 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
 
 class EarlyStoppingCallbacForPretraining(TrainerCallback):
+
+    def __init__(self, min_steps=10):
+        self.current_step = 0
+        self.min_steps = min_steps
+
+        self.subsequent_steps_metric_ok = 0
+
     def on_step_end(self, args, state, control, **kwargs):
 
-        min_steps = 3
+        self.current_step += 1
 
-        if len(state.log_history) < min_steps:
+        if self.current_step < self.min_steps:
+            return control
+
+        if len(state.log_history) == 0:
             return control
 
         metric_name = 'debug/not_pruned_tokens_percent'
-        metric_values = [ x[metric_name] for x in state.log_history[-min_steps:] if metric_name in x ]
+        metric_values = [ x[metric_name] for x in state.log_history if metric_name in x ]
 
-        if np.mean(metric_values) > 0.98:
-            print("Early stopping because of low not pruned tokens percent")
-            control.should_training_stop = True
-            control.should_save = True
+        if metric_values[-1] > 0.99:
+            self.subsequent_steps_metric_ok += 1
+            if self.subsequent_steps_metric_ok > 500:
+                print("Early stopping because of low not pruned tokens percent")
+                control.should_training_stop = True
+                control.should_save = True
+        else:
+            self.subsequent_steps_metric_ok = 0
 
         return control
 
