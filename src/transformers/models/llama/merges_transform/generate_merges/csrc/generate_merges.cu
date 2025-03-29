@@ -233,8 +233,8 @@ torch::Tensor fan_out_restore_residuals(
     );
     
     // Error checking
-    cudaDeviceSynchronize();
-    check_cuda_errors();
+    // cudaDeviceSynchronize();
+    // check_cuda_errors();
     
     return restored_hidden_states;
 }
