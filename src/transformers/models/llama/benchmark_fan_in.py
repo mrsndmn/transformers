@@ -16,8 +16,8 @@ if __name__ == "__main__":
 
     cuda_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_cuda_kernel)
 
-    batch_size = 100
-    seq_len = 128
+    batch_size = 16
+    seq_len = 2048
 
     merging_map_1 = torch.zeros([batch_size, seq_len, 2])
     merging_map_1[:, :, 0] = 1.
@@ -46,12 +46,16 @@ if __name__ == "__main__":
         cuda_attention_mask = attention_mask.to('cuda').to(dtype=torch.bool)
         special_tokens_mask = special_tokens_mask.to('cuda').to(dtype=torch.bool)
 
-        n_runs = 100
+        cuda_aggregated_embeddings_transform, cuda_merged_embeddings_counts, cuda_merged_attention_mask = cuda_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask, special_tokens_mask)
 
+        n_runs = 500
+
+        torch.cuda.synchronize()
         cuda_time_start = time.time()
         for _ in range(n_runs):
             cuda_aggregated_embeddings_transform, cuda_merged_embeddings_counts, cuda_merged_attention_mask = cuda_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask, special_tokens_mask)
-            cuda_aggregated_embeddings_transform.sum().item()
+            torch.cuda.synchronize()
+
         cuda_duration = (time.time() - cuda_time_start) / n_runs
 
         # py_cuda_time_start = time.time()

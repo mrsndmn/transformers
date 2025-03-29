@@ -331,6 +331,41 @@ def run_hcg_llama31_8B_pretrain_fan_out_projection(**kwargs):
     return
 
 
+def run_hcg_llama31_8B_train_iterative(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_llama_8B_train_iterative"
+
+    common_params = {
+        "freeze_lm_backbone": 0,
+        "select_train_dataset_items": 150000,
+        "per_device_train_batch_size": 8,
+        "model_type": "pretrained_checkpoint",
+        "learning_rate": 0.00005,
+        "warmup_steps": 2000,
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": "0",
+        "lm_loss_max_value": 0.0,
+        "fan_out_projection": "1",
+
+        "prohibit_end_of_sentence_pruning": '1',
+    }
+
+    hcg_experiments = [
+        # Fan out projection
+        {
+            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
+            "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}_peosp_punkt",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_llama_8B_pretrain_fan_out_projection_4/checkpoint-1556/",
+            "hcg_loss_weight": hcg_loss_weight,
+            **common_params,
+        } for hcg_loss_weight in [ 1.5, 2.0 ]
+    ]
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
+
 
 def run_hcg_qwen_7B_pretrain(**kwargs):
 
@@ -1149,7 +1184,8 @@ if __name__ == "__main__":
 
     # Llama 8B
     # run_hcg_llama31_8B_pretrain(dry=dry)
-    run_hcg_llama31_8B_pretrain_fan_out_projection(dry=dry)
+    # run_hcg_llama31_8B_pretrain_fan_out_projection(dry=dry)
+    run_hcg_llama31_8B_train_iterative(dry=dry)
 
     # Qwen 7B
     # run_hcg_qwen_7B_pretrain(dry=dry)
