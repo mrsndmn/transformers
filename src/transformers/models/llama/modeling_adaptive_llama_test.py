@@ -296,8 +296,8 @@ def test_cuda_kernel_merges_transform_generate_merges_transform():
 
 
 def test_cuda_kernel_merges_transform_benchmark():
-    config_py = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
-    config_cuda_kernel = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="cuda_kernel")
+    config_py = LlamaConfig(hidden_size=1024, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
+    config_cuda_kernel = LlamaConfig(hidden_size=1024, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="cuda_kernel")
 
     py_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_py)
     cuda_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_cuda_kernel)
@@ -330,12 +330,12 @@ def test_cuda_kernel_merges_transform_benchmark():
                 merging_map = test_case['merging_map']
                 attention_mask = test_case['attention_mask']
                 special_tokens_mask = test_case['special_tokens_mask']
-                
+
                 cuda_merging_map = merging_map.to('cuda').to(dtype=torch.float32)
                 cuda_attention_mask = attention_mask.to('cuda').to(dtype=torch.bool)
                 special_tokens_mask = special_tokens_mask.to('cuda').to(dtype=torch.bool)
-                
-                n_runs = 10
+
+                n_runs = 100
                 py_time_start = time.time()
                 for _ in range(n_runs):
                     py_aggregated_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(merging_map, attention_mask, special_tokens_mask)
@@ -348,19 +348,19 @@ def test_cuda_kernel_merges_transform_benchmark():
                     cuda_aggregated_embeddings_transform.sum().item()
                 cuda_duration = (time.time() - cuda_time_start) / n_runs
 
-                py_cuda_time_start = time.time()
-                for _ in range(n_runs):
-                    py_aggregated_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask, special_tokens_mask)
-                    py_aggregated_embeddings_transform.sum().item()
-                py_cuda_duration = (time.time() - py_cuda_time_start) / n_runs
+                # py_cuda_time_start = time.time()
+                # # for _ in range(n_runs):
+                # #     py_aggregated_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask, special_tokens_mask)
+                # #     py_aggregated_embeddings_transform.sum().item()
+                # py_cuda_duration = (time.time() - py_cuda_time_start) / n_runs
 
                 print(f"bs={batch_size} seq_len={seq_len} cuda_duration", cuda_duration)
                 print(f"bs={batch_size} seq_len={seq_len} py_cpu_duration", py_duration)
-                print(f"bs={batch_size} seq_len={seq_len} py_cuda_duration", py_cuda_duration)
-                
-                assert (py_aggregated_embeddings_transform == cuda_aggregated_embeddings_transform).all(), f"{test_case_name}: aggregated_embeddings_transform mismatch"
-                assert (py_merged_embeddings_counts == cuda_merged_embeddings_counts).all(), f"{test_case_name}: merged_embeddings_counts mismatch"
-                assert (py_merged_attention_mask == cuda_merged_attention_mask).all(), f"{test_case_name}: merged_attention_mask mismatch"
+                # print(f"bs={batch_size} seq_len={seq_len} py_cuda_duration", py_cuda_duration)
+
+                assert (py_aggregated_embeddings_transform == cuda_aggregated_embeddings_transform.to('cpu')).all(), f"{test_case_name}: aggregated_embeddings_transform mismatch"
+                assert (py_merged_embeddings_counts == cuda_merged_embeddings_counts.to('cpu')).all(), f"{test_case_name}: merged_embeddings_counts mismatch"
+                assert (py_merged_attention_mask == cuda_merged_attention_mask.to('cpu')).all(), f"{test_case_name}: merged_attention_mask mismatch"
 
     return
 
