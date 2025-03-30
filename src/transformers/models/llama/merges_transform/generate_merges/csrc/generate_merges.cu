@@ -331,12 +331,12 @@ const int SEQ_LEN_BLOCK_SIZE = 100024;
 __global__ void prune_tokens_concrete_kernel(
     const torch::PackedTensorAccessor64<float, 3, torch::RestrictPtrTraits> hidden_state,
     const torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> concrete_bool,
-    const torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> attention_mask,
-    const torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> special_embeddings_mask,
+    const torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> attention_mask,
+    const torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> special_embeddings_mask,
     const torch::PackedTensorAccessor64<float, 2, torch::RestrictPtrTraits> concrete,
     torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> merged_embeddings_counts,
-    torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> merged_attention_mask,
-    torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> merged_special_embeddings_mask,
+    torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> merged_attention_mask,
+    torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> merged_special_embeddings_mask,
     torch::PackedTensorAccessor64<float, 2, torch::RestrictPtrTraits> merged_concrete,
     torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> seq_len_blocks_lengths,
     int batch_size, int seq_len, int hidden_dim
@@ -359,7 +359,7 @@ __global__ void prune_tokens_concrete_kernel(
             merged_embeddings_counts[batch_i][current_seq_len] = current_merged_embeddings + 1;
             merged_special_embeddings_mask[batch_i][current_seq_len] = special_embeddings_mask[batch_i][seq_len_i];
             merged_concrete[batch_i][current_seq_len] = concrete[batch_i][seq_len_i];
-            merged_attention_mask[batch_i][current_seq_len] = true;
+            merged_attention_mask[batch_i][current_seq_len] = 1L;
             current_seq_len -= 1;
             current_merged_embeddings = 0;
         } else {
@@ -373,7 +373,7 @@ __global__ void prune_tokens_concrete_kernel(
 __global__ void prune_tokens_concrete_copy_hidden_state_kernel(
     const torch::PackedTensorAccessor64<float, 3, torch::RestrictPtrTraits> hidden_state,
     const torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> concrete_bool,
-    const torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> attention_mask,
+    const torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> attention_mask,
     torch::PackedTensorAccessor64<float, 3, torch::RestrictPtrTraits> merged_hidden_state,
     int batch_size, int seq_len, int hidden_dim
 ) {
@@ -395,7 +395,7 @@ __global__ void prune_tokens_concrete_copy_hidden_state_kernel(
 
     int current_seq_len = seq_len - 1;
     for (int seq_len_i = seq_len - 1; seq_len_i >= 0; --seq_len_i) {
-        if (!attention_mask[batch_i][seq_len_i]) {
+        if (attention_mask[batch_i][seq_len_i] == 0L) {
             break;
         }
 
@@ -534,7 +534,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
     auto device = options.device();
 
     auto merged_embeddings_counts_options = torch::TensorOptions().dtype(torch::kInt64).device(device);
-    auto mask_options = torch::TensorOptions().dtype(torch::kBool).device(device);
+    auto mask_options = torch::TensorOptions().dtype(torch::kInt64).device(device);
     auto merged_hidden_state_options = torch::TensorOptions().dtype(torch::kFloat32).device(device);
     auto concrete_options = torch::TensorOptions().dtype(torch::kFloat32).device(device);
 
@@ -553,12 +553,12 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
     prune_tokens_concrete_kernel<<<grid_size_prune, block_size_prune, 0, stream1>>>(
         hidden_state.packed_accessor64<float, 3, torch::RestrictPtrTraits>(),
         concrete_bool.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
-        attention_mask.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
-        special_embeddings_mask.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
+        attention_mask.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
+        special_embeddings_mask.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
         concrete.packed_accessor64<float, 2, torch::RestrictPtrTraits>(),
         merged_embeddings_counts.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
-        merged_attention_mask.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
-        merged_special_embeddings_mask.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
+        merged_attention_mask.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
+        merged_special_embeddings_mask.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
         merged_concrete.packed_accessor64<float, 2, torch::RestrictPtrTraits>(),
         seq_len_blocks_lengths.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
         batch_size, seq_len, hidden_dim
@@ -567,7 +567,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
     prune_tokens_concrete_copy_hidden_state_kernel<<<grid_size, block_size, 0, stream2>>>(
         hidden_state.packed_accessor64<float, 3, torch::RestrictPtrTraits>(),
         concrete_bool.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
-        attention_mask.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
+        attention_mask.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
         merged_hidden_state.packed_accessor64<float, 3, torch::RestrictPtrTraits>(),
         batch_size, seq_len, hidden_dim
     );

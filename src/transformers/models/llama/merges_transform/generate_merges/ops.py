@@ -231,10 +231,6 @@ def prune_tokens_concrete(
 
     # Handle optional inputs
     device = hidden_state.device
-    if special_embeddings_mask is None:
-        special_embeddings_mask = torch.zeros_like(attention_mask, dtype=torch.bool, device=device)
-    if concrete is None:
-        concrete = concrete_bool.to(torch.float32)
 
     # Input validation
     torch._check(len(hidden_state.shape) == 3)
@@ -243,8 +239,8 @@ def prune_tokens_concrete(
     torch._check(concrete_bool.shape == special_embeddings_mask.shape)
     torch._check(concrete_bool.shape == concrete.shape)
     torch._check(concrete_bool.dtype == torch.bool)
-    torch._check(attention_mask.dtype == torch.bool)
-    torch._check(special_embeddings_mask.dtype == torch.bool)
+    torch._check(attention_mask.dtype == torch.long)
+    torch._check(special_embeddings_mask.dtype == torch.long)
 
     outputs = torch.ops.generate_merges.prune_tokens_concrete_cuda.default(
         hidden_state,

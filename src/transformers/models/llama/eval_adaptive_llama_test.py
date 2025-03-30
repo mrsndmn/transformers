@@ -70,10 +70,10 @@ def test_prune_tokens_concrete():
         hidden_state = torch.rand([1, 780, 64], device=device)
         concrete_bool = torch.ones([1, 780], device=device, dtype=torch.bool)
         concrete_bool[:, 50:130] = 0  # Make some tokens unimportant
-        attention_mask = torch.ones([1, 780], dtype=torch.bool, device=device)
+        attention_mask = torch.ones([1, 780], dtype=torch.long, device=device)
         special_embeddings_mask = torch.zeros_like(attention_mask)
-        special_embeddings_mask[:, 0] = 1  # First token is special
-        special_embeddings_mask[:, -1] = 1  # Last token is special
+        special_embeddings_mask[:, 0] = 1
+        special_embeddings_mask[:, -1] = 1
         concrete = concrete_bool.float()
 
         # Run CUDA implementation
@@ -118,10 +118,24 @@ def test_prune_tokens_concrete():
         # Test with all tokens important
         hidden_state = torch.rand([1, 100, 64], device=device)
         concrete_bool = torch.ones([1, 100], device=device, dtype=torch.bool)
-        attention_mask = torch.ones([1, 100], dtype=torch.bool, device=device)
+        attention_mask = torch.ones([1, 100], dtype=torch.long, device=device)
+        special_embeddings_mask = torch.zeros_like(attention_mask)
+        concrete = concrete_bool.float()
         
-        outputs_cuda = prune_tokens_concrete(hidden_state, concrete_bool, attention_mask)
-        outputs_py = reorder_mask_for_concrete(concrete_bool=concrete_bool.cpu(), hidden_state=hidden_state, attention_mask=attention_mask)
+        outputs_cuda = prune_tokens_concrete(
+            hidden_state,
+            concrete_bool,
+            attention_mask,
+            special_embeddings_mask,
+            concrete
+        )
+        outputs_py = reorder_mask_for_concrete(
+            concrete_bool=concrete_bool.cpu(),
+            hidden_state=hidden_state,
+            attention_mask=attention_mask,
+            special_embeddings_mask=special_embeddings_mask,
+            concrete=concrete
+        )
         
         assert torch.equal(outputs_cuda[0], outputs_py[0]), "All important tokens case failed"
         assert outputs_cuda[1].sum().item() == 100, "Wrong token count for all important case"
@@ -129,9 +143,22 @@ def test_prune_tokens_concrete():
         # Test with no tokens important (except first and last for stability)
         concrete_bool = torch.zeros([1, 100], device=device, dtype=torch.bool)
         concrete_bool[:, [0, -1]] = 1
+        concrete = concrete_bool.float()
         
-        outputs_cuda = prune_tokens_concrete(hidden_state, concrete_bool, attention_mask)
-        outputs_py = reorder_mask_for_concrete(concrete_bool=concrete_bool.cpu(), hidden_state=hidden_state, attention_mask=attention_mask)
+        outputs_cuda = prune_tokens_concrete(
+            hidden_state,
+            concrete_bool,
+            attention_mask,
+            special_embeddings_mask,
+            concrete
+        )
+        outputs_py = reorder_mask_for_concrete(
+            concrete_bool=concrete_bool.cpu(),
+            hidden_state=hidden_state,
+            attention_mask=attention_mask,
+            special_embeddings_mask=special_embeddings_mask,
+            concrete=concrete
+        )
         
         assert torch.equal(outputs_cuda[0], outputs_py[0]), "No important tokens case failed"
         assert outputs_cuda[1].sum().item() == 100, "Wrong token count for no important case"
@@ -148,10 +175,24 @@ def test_prune_tokens_concrete():
                 # Make different patterns of important tokens for each batch
                 for i in range(batch_size):
                     concrete_bool[i, 10+i*10:50+i*10] = 0
-                attention_mask = torch.ones([batch_size, seq_len], dtype=torch.bool, device=device)
+                attention_mask = torch.ones([batch_size, seq_len], dtype=torch.long, device=device)
+                special_embeddings_mask = torch.zeros_like(attention_mask)
+                concrete = concrete_bool.float()
                 
-                outputs_cuda = prune_tokens_concrete(hidden_state, concrete_bool, attention_mask)
-                outputs_py = reorder_mask_for_concrete(concrete_bool=concrete_bool.cpu(), hidden_state=hidden_state, attention_mask=attention_mask)
+                outputs_cuda = prune_tokens_concrete(
+                    hidden_state,
+                    concrete_bool,
+                    attention_mask,
+                    special_embeddings_mask,
+                    concrete
+                )
+                outputs_py = reorder_mask_for_concrete(
+                    concrete_bool=concrete_bool.cpu(),
+                    hidden_state=hidden_state,
+                    attention_mask=attention_mask,
+                    special_embeddings_mask=special_embeddings_mask,
+                    concrete=concrete
+                )
                 
                 assert torch.equal(outputs_cuda[0], outputs_py[0]), f"Batch test failed for size {batch_size}x{seq_len}"
                 assert outputs_cuda[1].sum().item() == batch_size * seq_len, f"Wrong token count for batch {batch_size}x{seq_len}"

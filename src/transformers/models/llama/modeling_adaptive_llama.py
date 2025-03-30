@@ -784,8 +784,8 @@ class AdaptiveFanInHCG(nn.Module):
                 hidden_state=hidden_state,
                 concrete_bool=concrete_bool,
                 attention_mask=attention_mask,
-                special_embeddings_mask=special_embeddings_mask,
-                concrete=concrete
+                special_embeddings_mask=special_embeddings_mask.long(),
+                concrete=concrete.squeeze(-1).to(torch.float32),
             )
             # hidden_state_m, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(hidden_state, concrete_bool, attention_mask.bool())
 
@@ -796,7 +796,10 @@ class AdaptiveFanInHCG(nn.Module):
 
             # breakpoint()
 
-            concrete = concrete_merged
+            if concrete_merged.dtype != hs_dtype:
+                concrete_merged = concrete_merged.to(hs_dtype)
+
+            concrete = concrete_merged.unsqueeze(-1)
 
             hidden_state = hidden_state_m
             attention_mask = merged_attention_mask
