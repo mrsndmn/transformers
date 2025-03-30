@@ -1189,13 +1189,11 @@ if __name__ == "__main__":
     # Llama 8B
     # run_hcg_llama31_8B_pretrain(dry=dry)
     # run_hcg_llama31_8B_pretrain_fan_out_projection(dry=dry)
-    run_hcg_llama31_8B_train_iterative(dry=dry)
+    # run_hcg_llama31_8B_train_iterative(dry=dry)
 
     # Qwen 7B
     # run_hcg_qwen_7B_pretrain(dry=dry)
     # run_hcg_qwen_7B_pretrain_fan_out_projection(dry=dry)
-
-
 
     # run_hcg_smollm2_360M_pretrain(dry=dry)
     # run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
@@ -1209,7 +1207,7 @@ if __name__ == "__main__":
     # run_hcg_smollm2_1dot7B_hcg_prohibit_end_of_sentence_pruning(dry=dry)
 
     # run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(dry=dry)
-    # run_hcg_smollm2_360M_hcg_scale_token_frequency(dry=dry)
+    run_hcg_smollm2_360M_hcg_scale_token_frequency(dry=dry)
 
     # schedule pruned percent loss
     # run_hcg_smollm2_1dot7B_fixed_pruning_percent(dry=dry)

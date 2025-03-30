@@ -578,13 +578,14 @@ class HardConcreteGate(nn.Module):
         return concrete
 
 
-def reorder_mask_for_concrete(concrete_bool, hidden_state, attention_mask, distributed=False, special_embeddings_mask=None):
+def reorder_mask_for_concrete(concrete_bool, concrete, hidden_state, attention_mask, distributed=False, special_embeddings_mask=None):
     concrete_bool = concrete_bool.cpu()
     assert concrete_bool.dtype == torch.bool
     assert special_embeddings_mask is not None
 
     special_embeddings_mask = special_embeddings_mask.cpu()
 
+    attention_mask_cpu = attention_mask.cpu()
     seq_lengths = attention_mask.sum(dim=-1).cpu()
     new_seq_lengths = torch.zeros([ concrete_bool.shape[0] ], device='cpu', dtype=torch.long)
 
@@ -592,20 +593,30 @@ def reorder_mask_for_concrete(concrete_bool, hidden_state, attention_mask, distr
     merged_embeddings_counts = torch.zeros([concrete_bool.shape[0], concrete_bool.shape[1]], dtype=torch.long, device='cpu')
     merged_special_embeddings_mask = torch.zeros_like(special_embeddings_mask, device='cpu')
 
+    attention_mask_merged = torch.zeros_like(attention_mask, device='cpu')
+    concrete_merged = torch.zeros_like(concrete, device='cpu')
+
     for batch_i in range(concrete_bool.shape[0]):
         current_seq_len = concrete_bool.shape[1] - 1
         current_merged_embeddings = 0
-        for seq_len_i in range(seq_lengths[batch_i].item()-1, -1, -1 ):
+        for seq_len_i in range(concrete_bool.shape[1]-1, -1, -1 ):
             if concrete_bool[batch_i, seq_len_i]:
                 reordered_indexes[batch_i, current_seq_len] = seq_len_i
                 merged_embeddings_counts[batch_i, current_seq_len] = current_merged_embeddings + 1
                 merged_special_embeddings_mask[batch_i, current_seq_len] = special_embeddings_mask[batch_i, seq_len_i]
+                concrete_merged[batch_i, current_seq_len] = concrete[batch_i, seq_len_i]
+                attention_mask_merged[batch_i, current_seq_len] = 1
                 current_seq_len -= 1
                 current_merged_embeddings = 0
             else:
                 current_merged_embeddings += 1
 
+            if attention_mask_cpu[batch_i, seq_len_i].item() == 0:
+                break
+
         new_seq_lengths[batch_i] = concrete_bool.shape[1] - current_seq_len - 1
+
+    assert (new_seq_lengths == concrete_bool.sum(-1)).all(), f"new_seq_lengths == concrete_bool.sum(-1): {new_seq_lengths} != {concrete_bool.sum(-1)}"
 
     if distributed:
         max_seq_len = concrete_bool.shape[1]
@@ -621,13 +632,19 @@ def reorder_mask_for_concrete(concrete_bool, hidden_state, attention_mask, distr
 
     mast_template = torch.arange(max_seq_len, device=hidden_state.device).unsqueeze(0).repeat(hidden_state.shape[0], 1)
     mast_template = mast_template.flip(1)
-    new_attention_mask = (mast_template < new_seq_lengths.unsqueeze(-1).to(hidden_state.device)).to(torch.long)
 
     hidden_state_m = hidden_state_m[:, -max_seq_len:]
     merged_embeddings_counts = merged_embeddings_counts[:, -max_seq_len:].to(hidden_state.device)
     merged_special_embeddings_mask = merged_special_embeddings_mask[:, -max_seq_len:].to(hidden_state.device)
 
-    return hidden_state_m, merged_embeddings_counts, new_attention_mask, merged_special_embeddings_mask
+    concrete_merged = concrete_merged[:, -max_seq_len:].to(hidden_state.device)
+    attention_mask_merged = attention_mask_merged[:, -max_seq_len:].to(hidden_state.device)
+
+    assert merged_special_embeddings_mask.sum().item() == special_embeddings_mask.sum().item(), f"merged_special_embeddings_mask.sum().item() == special_embeddings_mask.sum().item(): {merged_special_embeddings_mask.sum().item()} != {special_embeddings_mask.sum().item()}"
+
+    # assert max_seq_len > 0
+
+    return hidden_state_m, merged_embeddings_counts, attention_mask_merged, merged_special_embeddings_mask, concrete_merged
 
 class AdaptiveFanInHCG(nn.Module):
     def __init__(self, config: LlamaConfig):
@@ -719,32 +736,30 @@ class AdaptiveFanInHCG(nn.Module):
         hs_dtype = hidden_state.dtype
         rhs_dtype = residual_hidden_state.dtype
 
+        concrete = concrete.to(hs_dtype)
+
         # print("concrete", concrete)
 
         residual_hidden_state = ((1 - concrete) * residual_hidden_state)
 
-        if residual_hidden_state.dtype != rhs_dtype:
-            residual_hidden_state = residual_hidden_state.to(rhs_dtype)
-
-        # breakpoint()
-
         merged_embeddings_counts = attention_mask
 
-        print("hidden_state before scale", hidden_state[0, 49:52].sum(dim=-1))
+        # print("concrete_bool", concrete[0, 49:52])
+        # print("hidden_state before scale", hidden_state[0, 49:52].sum(dim=-1))
 
-        hidden_state = (concrete * hidden_state).to(hs_dtype)
-        if hidden_state.dtype != hs_dtype:
-            hidden_state = hidden_state.to(hs_dtype)
+        hidden_state = concrete * hidden_state
 
-        print("hidden_state.shape", hidden_state.shape)
+        # print("hidden_state.shape", hidden_state.shape)
 
-        PRUNE_PERCENT = 0.02
+        PRUNE_PERCENT = 0.0
         attention_mask_dtype = attention_mask.dtype
         concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
 
-        if self.training:
+        # if self.training:
         # if True:
-            attention_mask = (attention_mask * concrete_bool).to(attention_mask_dtype)
+        if False:
+            pass
+            # attention_mask = (attention_mask * concrete_bool).to(attention_mask_dtype)
         else:
             # print("concrete_bool pruned", (~(concrete[:, :, 0] > PRUNE_PERCENT)).sum())
             # print("concrete           before", concrete[:, :, 0])
@@ -767,15 +782,17 @@ class AdaptiveFanInHCG(nn.Module):
 
             # TODO not distributed
             distributed = self.config.distributed
-            hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m = reorder_mask_for_concrete(concrete_bool=concrete_bool, hidden_state=hidden_state, attention_mask=attention_mask, distributed=distributed, special_embeddings_mask=special_embeddings_mask)
+            hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m, concrete_merged = reorder_mask_for_concrete(concrete_bool=concrete_bool, concrete=concrete, hidden_state=hidden_state, attention_mask=attention_mask, distributed=distributed, special_embeddings_mask=special_embeddings_mask)
             # hidden_state_m, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(hidden_state, concrete_bool, attention_mask.bool())
 
-            print("merged_embeddings_counts", merged_embeddings_counts[0, 49:52])
-            print("hidden_state_m", hidden_state_m[0, 49:52].sum(-1))
-            print("hidden_state", hidden_state[0, 49:52].sum(-1))
-            print("concrete_bool", concrete_bool[0, 49:52])
+            # print("merged_embeddings_counts", merged_embeddings_counts[0, 49:52])
+            # print("hidden_state_m", hidden_state_m[0, 49:52].sum(-1))
+            # print("hidden_state", hidden_state[0, 49:52].sum(-1))
+            # print("concrete_bool", concrete_bool[0, 49:52])
 
-            breakpoint()
+            # breakpoint()
+
+            concrete = concrete_merged
 
             hidden_state = hidden_state_m
             attention_mask = merged_attention_mask
@@ -947,18 +964,18 @@ class AdaptiveFanOutHCG(nn.Module):
             AdaptiveFanOutOutput: input hidden states
         """
 
-        print("fanout hcg residual_hidden_states", residual_hidden_states[0, 49:52].sum(dim=-1))
-        print("fanout hcg hidden_states", hidden_states[0, 49:52].sum(dim=-1))
+        # print("fanout hcg residual_hidden_states", residual_hidden_states[0, 49:52].sum(dim=-1))
+        # print("fanout hcg hidden_states", hidden_states[0, 49:52].sum(dim=-1))
 
         if self.projection_enabled:
             residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
         else:
             residual_hidden_states_projection = residual_hidden_states
 
-        print("fanout hcg residual_hidden_states_projection", residual_hidden_states_projection[0, 49:52].sum(dim=-1))
+        # print("fanout hcg residual_hidden_states_projection", residual_hidden_states_projection[0, 49:52].sum(dim=-1))
 
         # if not self.training:
-        if False:
+        # if False:
             # print("merged_embeddings_counts", merged_embeddings_counts.shape, merged_embeddings_counts)
             # print("merged_embeddings_counts_flip_cumsum_flip", merged_embeddings_counts.flip(-1).cumsum(-1).flip(-1))
             # breakpoint()
@@ -966,13 +983,14 @@ class AdaptiveFanOutHCG(nn.Module):
             # print("hidden_states", hidden_states.shape)
             # print("residual_hidden_states_projection", residual_hidden_states_projection.shape)
             # assert (merged_embeddings_counts.sum(dim=-1) == residual_attention_mask.sum(dim=-1)).all()
-            hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection, residual_attention_mask)
-        else:
-            hidden_states = hidden_states + residual_hidden_states_projection
 
-        print("fanout hcg  hidden_states restored", hidden_states[0, 49:52].sum(dim=-1))
+        hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection, residual_attention_mask)
 
-        breakpoint()
+        # else:
+        #     hidden_states = hidden_states + residual_hidden_states_projection
+
+        # print("fanout hcg  hidden_states restored", hidden_states[0, 49:52].sum(dim=-1))
+        # breakpoint()
 
         return AdaptiveFanOutOutput(hidden_state=hidden_states)
 
@@ -1305,8 +1323,15 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         fan_in_merging_logits = []
         fan_in_merging_logits_attention_mask = []
 
+        current_concrete = None
 
         for i, (decoder_layer, adaptive_down_layer) in enumerate(zip(self.layers_down, self.adaptive_down)):
+
+            # print("down layers", i, "current_concrete", current_concrete is not None)
+
+            if current_concrete is not None:
+                hidden_states = hidden_states * current_concrete
+
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
@@ -1361,6 +1386,9 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             all_loop_down_hidden_states.append(adaptive_down_output.residual_hidden_state)
             all_loop_down_merging_map.append(adaptive_down_output.merging_map)
 
+            if adaptive_down_output.merging_map is not None:
+                current_concrete = adaptive_down_output.merging_map
+
             fan_in_merging_maps.append(adaptive_down_output.merging_map)
             fan_in_merging_logits.append(adaptive_down_output.merging_map_logits)
             fan_in_merging_logits_attention_mask.append(loop_down_attention_mask)
@@ -1368,6 +1396,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             hidden_states = adaptive_down_output.hidden_state
 
             loop_down_attention_mask = adaptive_down_output.attention_mask.to(torch.long)
+            assert loop_down_attention_mask.shape[1] > 0, f"loop_down_attention_mask.shape[1] > 0: {loop_down_attention_mask.shape[1]} > 0"
             all_loop_down_attention_mask.append(loop_down_attention_mask)
 
             loop_down_merged_embeddings_counts = adaptive_down_output.merged_embeddings_counts
@@ -1375,9 +1404,10 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
             loop_down_special_embeddings_mask = adaptive_down_output.special_embeddings_mask
 
-            if not self.training and not isinstance(adaptive_down_layer, NoOpFanIn):
+            if not isinstance(adaptive_down_layer, NoOpFanIn):
+            # if not self.training and not isinstance(adaptive_down_layer, NoOpFanIn):
                 past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
-                
+
                 cache_position = cache_position[:hidden_states.shape[1]]
                 loop_down_position_ids = loop_down_position_ids[:, :hidden_states.shape[1]]
                 loop_down_position_embeddings = (loop_down_position_embeddings[0][:, :hidden_states.shape[1]], loop_down_position_embeddings[1][:, :hidden_states.shape[1]])
@@ -1409,6 +1439,12 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         assert len(all_loop_down_merged_embeddings_counts) == len(self.layers_up)
 
         for i, decoder_layer in enumerate(self.layers_up):
+
+            # print("up layers", i, "current_concrete", current_concrete is not None)
+
+            if current_concrete is not None:
+                hidden_states = hidden_states * current_concrete
+
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
@@ -1420,9 +1456,9 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             residual_hidden_states = all_loop_down_hidden_states.pop(-1)
             residual_attention_mask = all_loop_down_residual_attention_mask.pop(-1)
 
-            assert loop_up_attention_mask.shape[1] == hidden_states.shape[1]
-            assert residual_attention_mask.shape[1] == residual_hidden_states.shape[1]
-            assert residual_attention_mask.shape[1] >= loop_up_attention_mask.shape[1]
+            assert loop_up_attention_mask.shape[1] == hidden_states.shape[1], f"loop_up_attention_mask.shape[1] == hidden_states.shape[1]: {loop_up_attention_mask.shape[1]} != {hidden_states.shape[1]}"
+            assert residual_attention_mask.shape[1] == residual_hidden_states.shape[1], f"residual_attention_mask.shape[1] == residual_hidden_states.shape[1]: {residual_attention_mask.shape[1]} != {residual_hidden_states.shape[1]}"
+            assert residual_attention_mask.shape[1] >= loop_up_attention_mask.shape[1], f"residual_attention_mask.shape[1] >= loop_up_attention_mask.shape[1]: {residual_attention_mask.shape[1]} >= {loop_up_attention_mask.shape[1]}"
 
             adaptive_up_output: AdaptiveFanOutOutput = adaptive_up_layer.forward(
                 hidden_states,
@@ -1431,6 +1467,9 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                 residual_hidden_states,
                 residual_attention_mask,
             )
+
+            if isinstance(adaptive_up_layer, AdaptiveFanOutHCG):
+                current_concrete = None
 
             hidden_states = adaptive_up_output.hidden_state
             assert hidden_states.shape == residual_hidden_states.shape
