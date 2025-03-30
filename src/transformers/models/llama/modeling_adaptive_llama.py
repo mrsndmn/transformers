@@ -630,9 +630,6 @@ def reorder_mask_for_concrete(concrete_bool, concrete, hidden_state, attention_m
 
     hidden_state_m = torch.gather(hidden_state, dim=1, index=reordered_indexes_cuda)
 
-    mast_template = torch.arange(max_seq_len, device=hidden_state.device).unsqueeze(0).repeat(hidden_state.shape[0], 1)
-    mast_template = mast_template.flip(1)
-
     hidden_state_m = hidden_state_m[:, -max_seq_len:]
     merged_embeddings_counts = merged_embeddings_counts[:, -max_seq_len:].to(hidden_state.device)
     merged_special_embeddings_mask = merged_special_embeddings_mask[:, -max_seq_len:].to(hidden_state.device)
