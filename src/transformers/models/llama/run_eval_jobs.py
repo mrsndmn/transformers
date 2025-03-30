@@ -278,9 +278,8 @@ def no_crutch_loss_normalize_token_frequenct_eval(**kwargs):
 def no_crutch_loss_normalize_token_frequenct_eval_bs_1m(**kwargs):
 
     checkpoints = [
-        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_pretrain_1.5_no_eossp/checkpoint-14698",
-        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_pretrain_2.0_no_eossp/checkpoint-14698",
-        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_pretrain_2.5_no_eossp/checkpoint-14698",
+        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_fix_pretrain_1.5_no_eossp/checkpoint-14698",
+        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_fix_pretrain_1.25_no_eossp/checkpoint-14698",
     ]
 
     hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
@@ -305,7 +304,7 @@ def run_extract_metrics(checkpoints: list[str]):
         # 'custom|gsm8k|5',
     ]
 
-    print(" & ".join([ 'checkpoint' ] + bench_keys), " \\\\")
+    print(" & ".join([ 'checkpoint', 'pruned', 'MaxLM Loss' ] + bench_keys), " \\\\")
 
     for checkpoint in checkpoints:
         checkpoint_norm = checkpoint.replace('/', '_')
@@ -342,7 +341,7 @@ def run_extract_metrics(checkpoints: list[str]):
 
             checkpoint_metrics.append(f"{metric*100:.2f}")
 
-        print(" & ".join([ checkpoint ] + checkpoint_metrics), " \\\\")
+        print(" & ".join([ checkpoint, '\%', '\-'] + checkpoint_metrics), " \\\\")
 
 
 if __name__ == "__main__":
