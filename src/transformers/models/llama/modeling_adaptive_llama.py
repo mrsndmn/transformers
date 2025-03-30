@@ -778,8 +778,15 @@ class AdaptiveFanInHCG(nn.Module):
             # print("concrete", concrete.shape, concrete)
 
             # TODO not distributed
-            distributed = self.config.distributed
-            hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m, concrete_merged = reorder_mask_for_concrete(concrete_bool=concrete_bool, concrete=concrete, hidden_state=hidden_state, attention_mask=attention_mask, distributed=distributed, special_embeddings_mask=special_embeddings_mask)
+            # hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m, concrete_merged = reorder_mask_for_concrete(concrete_bool=concrete_bool, concrete=concrete, hidden_state=hidden_state, attention_mask=attention_mask, distributed=distributed, special_embeddings_mask=special_embeddings_mask)            
+            # distributed = self.config.distributed
+            hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m, concrete_merged = prune_tokens_concrete(
+                hidden_state=hidden_state,
+                concrete_bool=concrete_bool,
+                attention_mask=attention_mask,
+                special_embeddings_mask=special_embeddings_mask,
+                concrete=concrete
+            )
             # hidden_state_m, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(hidden_state, concrete_bool, attention_mask.bool())
 
             # print("merged_embeddings_counts", merged_embeddings_counts[0, 49:52])

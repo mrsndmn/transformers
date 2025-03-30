@@ -205,23 +205,58 @@ def prune_tokens_concrete(
         hidden_state: Tensor, # [ bs, seq_len, hidden_dim ]
         concrete_bool: Tensor, # [ bs, seq_len ]
         attention_mask: Tensor, # [ bs, seq_len ]
+        special_embeddings_mask: Tensor = None, # [ bs, seq_len ]
+        concrete: Tensor = None, # [ bs, seq_len ]
         ):
+    """Prunes tokens based on concrete boolean mask and reorders them.
+    
+    Args:
+        hidden_state: Input hidden states [batch_size, seq_len, hidden_dim]
+        concrete_bool: Boolean mask for important tokens [batch_size, seq_len]
+        attention_mask: Attention mask [batch_size, seq_len]
+        special_embeddings_mask: Optional mask for special embeddings [batch_size, seq_len]
+        concrete: Optional concrete values [batch_size, seq_len]
+    
+    Returns:
+        Tuple containing:
+        - Reordered hidden states [batch_size, new_seq_len, hidden_dim]
+        - Merged embeddings counts [batch_size, new_seq_len]
+        - Merged attention mask [batch_size, new_seq_len]
+        - Merged special embeddings mask [batch_size, new_seq_len] (if special_embeddings_mask provided)
+        - Merged concrete values [batch_size, new_seq_len] (if concrete provided)
+    """
     
     hidden_state_dtype = hidden_state.dtype
     hidden_state = hidden_state.to(torch.float32)
 
-    # print("hidden_state", hidden_state)
-    # print("concrete_bool", concrete_bool)
-    # print("attention_mask", attention_mask)
+    # Handle optional inputs
+    device = hidden_state.device
+    if special_embeddings_mask is None:
+        special_embeddings_mask = torch.zeros_like(attention_mask, dtype=torch.bool, device=device)
+    if concrete is None:
+        concrete = concrete_bool.to(torch.float32)
 
-    hidden_state, merged_embeddings_counts, merged_attention_mask = torch.ops.generate_merges.prune_tokens_concrete_cuda.default(
+    # Input validation
+    torch._check(len(hidden_state.shape) == 3)
+    torch._check(len(concrete_bool.shape) == 2)
+    torch._check(concrete_bool.shape == attention_mask.shape)
+    torch._check(concrete_bool.shape == special_embeddings_mask.shape)
+    torch._check(concrete_bool.shape == concrete.shape)
+    torch._check(concrete_bool.dtype == torch.bool)
+    torch._check(attention_mask.dtype == torch.bool)
+    torch._check(special_embeddings_mask.dtype == torch.bool)
+
+    outputs = torch.ops.generate_merges.prune_tokens_concrete_cuda.default(
         hidden_state,
         concrete_bool,
         attention_mask,
+        special_embeddings_mask,
+        concrete,
     )
 
-    hidden_state = hidden_state.to(hidden_state_dtype)
+    hidden_state_m, merged_embeddings_counts, merged_attention_mask, merged_special_embeddings_mask, merged_concrete = outputs
+    hidden_state_m = hidden_state_m.to(hidden_state_dtype)
 
-    return hidden_state, merged_embeddings_counts, merged_attention_mask
+    return hidden_state_m, merged_embeddings_counts, merged_attention_mask, merged_special_embeddings_mask, merged_concrete
 
 

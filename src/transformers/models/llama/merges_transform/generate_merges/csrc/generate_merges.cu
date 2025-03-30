@@ -332,48 +332,42 @@ __global__ void prune_tokens_concrete_kernel(
     const torch::PackedTensorAccessor64<float, 3, torch::RestrictPtrTraits> hidden_state,
     const torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> concrete_bool,
     const torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> attention_mask,
+    const torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> special_embeddings_mask,
+    const torch::PackedTensorAccessor64<float, 2, torch::RestrictPtrTraits> concrete,
     torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> merged_embeddings_counts,
     torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> merged_attention_mask,
+    torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> merged_special_embeddings_mask,
+    torch::PackedTensorAccessor64<float, 2, torch::RestrictPtrTraits> merged_concrete,
     torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> seq_len_blocks_lengths,
     int batch_size, int seq_len, int hidden_dim
 ) {
     int batch_i = blockIdx.x; // Batch index
-    int seq_len_block_idx = blockIdx.y; // Index for the new sequence length
-    // int thread_idx = threadIdx.x; // Index for hidden dim
 
-    if (batch_i >= batch_size || seq_len_block_idx * SEQ_LEN_BLOCK_SIZE >= seq_len + SEQ_LEN_BLOCK_SIZE) {
+    if (batch_i >= batch_size) {
         return; // Out of bounds check
     }
 
-    int seq_len_i_start = seq_len_block_idx * SEQ_LEN_BLOCK_SIZE;
-    int seq_len_i_end = seq_len_block_idx * SEQ_LEN_BLOCK_SIZE + SEQ_LEN_BLOCK_SIZE;
-    if (seq_len_i_end > seq_len) {
-        seq_len_i_end = seq_len;
-    }
+    int current_seq_len = seq_len - 1;
+    int current_merged_embeddings = 0;
 
-    int new_seq_len_i = seq_len_i_end - 1;
-
-    for (int seq_len_i = seq_len_i_end - 1; seq_len_i >= seq_len_i_start; --seq_len_i) {
+    for (int seq_len_i = seq_len - 1; seq_len_i >= 0; --seq_len_i) {
         if (!attention_mask[batch_i][seq_len_i]) {
             break;
         }
 
-        bool is_token_important = concrete_bool[batch_i][seq_len_i];
-
-        if (is_token_important) {
-            // concrete_bool = [ t, t, f, f, t, t, t ]
-            // merged_embeddings_counts = [ 1, 1, 3, 1, 1, 0 ]
-
-            merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
-            merged_attention_mask[batch_i][new_seq_len_i] = true;
-
-            new_seq_len_i -= 1;
+        if (concrete_bool[batch_i][seq_len_i]) {
+            merged_embeddings_counts[batch_i][current_seq_len] = current_merged_embeddings + 1;
+            merged_special_embeddings_mask[batch_i][current_seq_len] = special_embeddings_mask[batch_i][seq_len_i];
+            merged_concrete[batch_i][current_seq_len] = concrete[batch_i][seq_len_i];
+            merged_attention_mask[batch_i][current_seq_len] = true;
+            current_seq_len -= 1;
+            current_merged_embeddings = 0;
         } else {
-            merged_embeddings_counts[batch_i][new_seq_len_i] += 1;
+            current_merged_embeddings += 1;
         }
     }
 
-    seq_len_blocks_lengths[batch_i][seq_len_block_idx] = seq_len_i_end - new_seq_len_i - 1;
+    seq_len_blocks_lengths[batch_i][0] = seq_len - current_seq_len - 1;
 }
 
 __global__ void prune_tokens_concrete_copy_hidden_state_kernel(
@@ -384,15 +378,14 @@ __global__ void prune_tokens_concrete_copy_hidden_state_kernel(
     int batch_size, int seq_len, int hidden_dim
 ) {
     int batch_i = blockIdx.x; // Batch index
-    int seq_len_block_idx = blockIdx.y; // Index for the new sequence length
     int thread_idx = threadIdx.x; // Index for hidden dim
 
-    if (batch_i >= batch_size || seq_len_block_idx * SEQ_LEN_BLOCK_SIZE >= seq_len + SEQ_LEN_BLOCK_SIZE) {
+    if (batch_i >= batch_size) {
         return; // Out of bounds check
     }
 
     int hidden_dim_start = thread_idx * HIDDEN_DIM_BLOCK_SIZE;
-    if (hidden_dim_start > hidden_dim) {
+    if (hidden_dim_start >= hidden_dim) {
         return;
     }
     int hidden_dim_end = hidden_dim_start + HIDDEN_DIM_BLOCK_SIZE;
@@ -400,34 +393,17 @@ __global__ void prune_tokens_concrete_copy_hidden_state_kernel(
         hidden_dim_end = hidden_dim;
     }
 
-    int initial_new_seq_len_i = seq_len_block_idx * SEQ_LEN_BLOCK_SIZE;
-
-    int seq_len_i_start = seq_len_block_idx * SEQ_LEN_BLOCK_SIZE;
-    int seq_len_i_end = seq_len_block_idx * SEQ_LEN_BLOCK_SIZE + SEQ_LEN_BLOCK_SIZE;
-    if (seq_len_i_end > seq_len) {
-        seq_len_i_end = seq_len;
-    }
-
-    int new_seq_len_i = seq_len_i_end - 1;
-
-    for (int seq_len_i = seq_len_i_end - 1; seq_len_i >= seq_len_i_start; --seq_len_i) {
+    int current_seq_len = seq_len - 1;
+    for (int seq_len_i = seq_len - 1; seq_len_i >= 0; --seq_len_i) {
         if (!attention_mask[batch_i][seq_len_i]) {
             break;
         }
 
-        bool is_token_important = concrete_bool[batch_i][seq_len_i];
-
-        if (is_token_important) {
-            // [ bs, sl1, h ]
-            // [ emd1, emd2, emd3 ... ]
-            //
-            // [ bs, sl2, h ]
-            // [ emd1, emd2, emd3 ... ]
-            for (int i = hidden_dim_start; i < hidden_dim_end; ++i) {
-                merged_hidden_state[batch_i][new_seq_len_i][i] = hidden_state[batch_i][seq_len_i][i];
+        if (concrete_bool[batch_i][seq_len_i]) {
+            for (int hi = hidden_dim_start; hi < hidden_dim_end; ++hi) {
+                merged_hidden_state[batch_i][current_seq_len][hi] = hidden_state[batch_i][seq_len_i][hi];
             }
-
-            new_seq_len_i -= 1;
+            current_seq_len -= 1;
         }
     }
 }
@@ -535,10 +511,12 @@ void collapse_blocks(
 }
 
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cuda(
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cuda(
     const torch::Tensor& hidden_state,            // [ bs, seq_len, hidden_dim ]
     const torch::Tensor& concrete_bool,           // [ bs, seq_len ]
-    const torch::Tensor& attention_mask           // [ bs, seq_len ]
+    const torch::Tensor& attention_mask,          // [ bs, seq_len ]
+    const torch::Tensor& special_embeddings_mask, // [ bs, seq_len ]
+    const torch::Tensor& concrete                 // [ bs, seq_len ]
 ) {
     const int batch_size = concrete_bool.size(0);
     const int seq_len = concrete_bool.size(1);
@@ -546,7 +524,6 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cu
 
     // Launch the kernel
     int num_threads = (hidden_dim + HIDDEN_DIM_BLOCK_SIZE - 1) / HIDDEN_DIM_BLOCK_SIZE;
-    // int seq_len_threads = (seq_len + SEQ_LEN_BLOCK_SIZE - 1) / SEQ_LEN_BLOCK_SIZE;
     const dim3 block_size(num_threads, 1, 1);  // One thread per hidden_dim_span
     const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
 
@@ -559,10 +536,13 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cu
     auto merged_embeddings_counts_options = torch::TensorOptions().dtype(torch::kInt64).device(device);
     auto mask_options = torch::TensorOptions().dtype(torch::kBool).device(device);
     auto merged_hidden_state_options = torch::TensorOptions().dtype(torch::kFloat32).device(device);
+    auto concrete_options = torch::TensorOptions().dtype(torch::kFloat32).device(device);
 
     torch::Tensor merged_hidden_state = torch::zeros({batch_size, seq_len, hidden_dim}, merged_hidden_state_options);
     torch::Tensor merged_embeddings_counts = torch::zeros({batch_size, seq_len}, merged_embeddings_counts_options);
     torch::Tensor merged_attention_mask = torch::zeros({batch_size, seq_len}, mask_options);
+    torch::Tensor merged_special_embeddings_mask = torch::zeros({batch_size, seq_len}, mask_options);
+    torch::Tensor merged_concrete = torch::zeros({batch_size, seq_len}, concrete_options);
 
     torch::Tensor seq_len_blocks_lengths = torch::zeros({batch_size, 1}, merged_embeddings_counts_options);
 
@@ -574,12 +554,13 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cu
         hidden_state.packed_accessor64<float, 3, torch::RestrictPtrTraits>(),
         concrete_bool.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
         attention_mask.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
-
+        special_embeddings_mask.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
+        concrete.packed_accessor64<float, 2, torch::RestrictPtrTraits>(),
         merged_embeddings_counts.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
         merged_attention_mask.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
-
+        merged_special_embeddings_mask.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
+        merged_concrete.packed_accessor64<float, 2, torch::RestrictPtrTraits>(),
         seq_len_blocks_lengths.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
-
         batch_size, seq_len, hidden_dim
     );
 
@@ -587,26 +568,14 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cu
         hidden_state.packed_accessor64<float, 3, torch::RestrictPtrTraits>(),
         concrete_bool.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
         attention_mask.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
-
         merged_hidden_state.packed_accessor64<float, 3, torch::RestrictPtrTraits>(),
-
         batch_size, seq_len, hidden_dim
     );
 
     cudaStreamSynchronize(stream1);
     cudaStreamDestroy(stream1);
 
-    // this kernel could be parallelized only by 2 dimensions
-
     seq_len_blocks_lengths = seq_len_blocks_lengths.to(torch::kCPU);
-
-    // collapse_blocks(
-    //     seq_len_blocks_lengths,
-    //     merged_hidden_state,
-    //     merged_embeddings_counts,
-    //     merged_attention_mask
-    // );
-
 
     int64_t max_seq_len = seq_len_blocks_lengths.slice(1, 0, 1).max().item<int64_t>();
     int64_t slice_from = seq_len - max_seq_len;
@@ -615,15 +584,14 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> prune_tokens_concrete_cu
     torch::Tensor sliced_merged_hidden_state = merged_hidden_state.index({index::Slice(), index::Slice(slice_from, seq_len), index::Slice()});
     torch::Tensor sliced_merged_embeddings_counts = merged_embeddings_counts.index({index::Slice(), index::Slice(slice_from, seq_len)});
     torch::Tensor sliced_merged_attention_mask = merged_attention_mask.index({index::Slice(), index::Slice(slice_from, seq_len)});
-
-    // Error checking
-    // cudaDeviceSynchronize();
-    // check_cuda_errors();
+    torch::Tensor sliced_merged_special_embeddings_mask = merged_special_embeddings_mask.index({index::Slice(), index::Slice(slice_from, seq_len)});
+    torch::Tensor sliced_merged_concrete = merged_concrete.index({index::Slice(), index::Slice(slice_from, seq_len)});
 
     cudaStreamSynchronize(stream2);
     cudaStreamDestroy(stream2);
 
-    return std::make_tuple(sliced_merged_hidden_state, sliced_merged_embeddings_counts, sliced_merged_attention_mask);
+    return std::make_tuple(sliced_merged_hidden_state, sliced_merged_embeddings_counts, sliced_merged_attention_mask, 
+                          sliced_merged_special_embeddings_mask, sliced_merged_concrete);
 }
 
 
@@ -634,7 +602,7 @@ TORCH_LIBRARY(generate_merges, m) {
     m.def("batch_repeat_interleave_for_merges_count(Tensor a, Tensor b) -> Tensor");
     m.def("fan_out_restore_residuals(Tensor a, Tensor b, Tensor c, Tensor d) -> Tensor");
     m.def("backward_fan_out_restore_residuals(Tensor a, Tensor b, Tensor c) -> (Tensor, Tensor)");
-    m.def("prune_tokens_concrete_cuda(Tensor a, Tensor b, Tensor c) -> (Tensor, Tensor, Tensor)");
+    m.def("prune_tokens_concrete_cuda(Tensor a, Tensor b, Tensor c, Tensor d, Tensor e) -> (Tensor, Tensor, Tensor, Tensor, Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(generate_merges, CUDA, m) {
