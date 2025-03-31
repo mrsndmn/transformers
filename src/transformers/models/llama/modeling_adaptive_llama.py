@@ -53,12 +53,7 @@ from .modeling_llama import (
     LlamaDecoderLayer,
     LlamaRMSNorm,
     LlamaRotaryEmbedding,
-    LlamaLinearScalingRotaryEmbedding,
     apply_rotary_pos_emb,
-    LlamaMLP,
-    repeat_kv,
-    LlamaFlashAttention2,
-    LlamaSdpaAttention,
 )
 
 from transformers.models.llama.merges_transform.generate_merges import generate_merges_transform, fan_out_restore_residuals, prune_tokens_concrete
@@ -752,81 +747,23 @@ class AdaptiveFanInHCG(nn.Module):
         attention_mask_dtype = attention_mask.dtype
         concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
 
-        # if self.training:
-        # if True:
-        if False:
-            pass
-            # attention_mask = (attention_mask * concrete_bool).to(attention_mask_dtype)
-        else:
-            # print("concrete_bool pruned", (~(concrete[:, :, 0] > PRUNE_PERCENT)).sum())
-            # print("concrete           before", concrete[:, :, 0])
-            # print("hidden_state.shape before", hidden_state.mean(dim=-1)[:, 5:])
+        hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m, concrete_merged = prune_tokens_concrete(
+            hidden_state=hidden_state,
+            concrete_bool=concrete_bool,
+            attention_mask=attention_mask,
+            special_embeddings_mask=special_embeddings_mask.long(),
+            concrete=concrete.squeeze(-1).to(torch.float32),
+        )
 
-            # breakpoint()
+        if concrete_merged.dtype != hs_dtype:
+            concrete_merged = concrete_merged.to(hs_dtype)
 
-            # if True or self.training:
-            # concrete_bool = torch.rand(concrete_bool.shape, device=concrete_bool.device) < 0.8
-            # concrete_bool[:, 0] = True
+        concrete = concrete_merged.unsqueeze(-1)
 
-            # [ bs, seq_len ]
-            # assert mask is left-padded
-            # assert (attention_mask == 1).all() or attention_mask[:, -1].sum() == attention_mask.shape[0]
+        hidden_state = hidden_state_m
+        attention_mask = merged_attention_mask
+        special_embeddings_mask = special_embeddings_mask_m
 
-            # print("attention_mask", attention_mask.shape, attention_mask)
-            # [ bs, seq_len ]
-            # concrete_bool_cpu = concrete_bool.detach().cpu()
-            # print("concrete", concrete.shape, concrete)
-
-            # TODO not distributed
-            # hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m, concrete_merged = reorder_mask_for_concrete(concrete_bool=concrete_bool, concrete=concrete, hidden_state=hidden_state, attention_mask=attention_mask, distributed=distributed, special_embeddings_mask=special_embeddings_mask)            
-            # distributed = self.config.distributed
-            hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m, concrete_merged = prune_tokens_concrete(
-                hidden_state=hidden_state,
-                concrete_bool=concrete_bool,
-                attention_mask=attention_mask,
-                special_embeddings_mask=special_embeddings_mask.long(),
-                concrete=concrete.squeeze(-1).to(torch.float32),
-            )
-            # hidden_state_m, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(hidden_state, concrete_bool, attention_mask.bool())
-
-            # print("merged_embeddings_counts", merged_embeddings_counts[0, 49:52])
-            # print("hidden_state_m", hidden_state_m[0, 49:52].sum(-1))
-            # print("hidden_state", hidden_state[0, 49:52].sum(-1))
-            # print("concrete_bool", concrete_bool[0, 49:52])
-
-            # breakpoint()
-
-            if concrete_merged.dtype != hs_dtype:
-                concrete_merged = concrete_merged.to(hs_dtype)
-
-            concrete = concrete_merged.unsqueeze(-1)
-
-            hidden_state = hidden_state_m
-            attention_mask = merged_attention_mask
-            special_embeddings_mask = special_embeddings_mask_m
-
-            # merged_special_embeddings_mask = torch.zeros([batch_size, merged_attention_mask.shape[1]], device=hidden_state.device)
-            # merged_special_embeddings_mask[:, 0] = 1
-
-            # arange_buffer_merged = self.max_seq_len_buffer[:batch_size, :merged_attention_mask.shape[1]]
-            # merged_eos_mask = (arange_buffer_merged == merged_attention_mask.sum(dim=-1, keepdim=True).to(torch.long) - 1)
-
-            # merged_special_embeddings_mask[merged_eos_mask] = 1
-
-            # # assert (merged_special_embeddings_mask.sum(-1) == 2).all()
-
-            # special_embeddings_mask = merged_special_embeddings_mask
-
-        # print("hidden_state.shape after ", hidden_state.shape)
-        # print("attention_mask.shape", attention_mask.shape)
-        # print("merged_embeddings_counts", merged_embeddings_counts.shape)
-        # assert hidden_state.shape[1] == attention_mask.shape[1]
-
-        # assert hidden_state.dtype == torch.bfloat16
-        # assert residual_hidden_state.dtype == torch.bfloat16
-
-        # print("hidden_state         ", hidden_state.mean(dim=-1))
-        # print("residual_hidden_state", residual_hidden_state.mean(dim=-1))
 
         res = AdaptiveFanInOutput(
             hidden_state=hidden_state,

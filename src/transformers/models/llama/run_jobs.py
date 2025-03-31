@@ -104,7 +104,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
             n_workers=N_WORKERS,
             # conda_env="test_client_lib",
             processes_per_worker=1,
-            job_desc=f"{job_description_prefix}{output_dir} #rnd #multimodality",
+            job_desc=f"{job_description_prefix}{output_dir} #rnd #multimodality #tarasov",
             # stop_timer=600, # в минутах, = 10 часов
             env_variables={
                 "PATH": "/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/user/conda/bin",
@@ -850,7 +850,7 @@ def run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(**kwargs):
 
 def run_hcg_smollm2_360M_hcg_scale_token_frequency(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_fix_pretrain"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_fix_eval"
 
     common_params = {
         "freeze_lm_backbone": 0,
@@ -874,7 +874,7 @@ def run_hcg_smollm2_360M_hcg_scale_token_frequency(**kwargs):
     hcg_experiments = []
 
     # for hcg_loss_weight in [ 1.0, 2.0, 2.5, 3.0, 3.5 ]:
-    for hcg_loss_weight in [ 1.25, 1.5 ]:
+    for hcg_loss_weight in [ 1.5, 2.0 ]:
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}_no_eossp",

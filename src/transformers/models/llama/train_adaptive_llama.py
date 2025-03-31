@@ -14,6 +14,9 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 from transformers.utils import is_sagemaker_mp_enabled
 
+from transformers.trainer import _is_peft_model
+from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+
 from datasets import load_dataset
 import datasets
 
@@ -75,6 +78,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     learnt_temperature: bool = field(default=False)
     lr_scheduler_type: str = field(default='constant_with_warmup')
 
+    average_tokens_across_devices: bool = field(default=True)
 
     llama_checkpoint: str = field(default='')
 
@@ -269,12 +273,15 @@ class AdaptiveLlamaTrainer(Trainer):
 
 
 
-    def compute_loss(self, model: AdaptiveLlamaForCausalLM, inputs, return_outputs=False, log_metrics=True, log_prefix='debug', force_log=False):
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None, log_metrics=True, log_prefix='debug', force_log=False):
         """
         How the loss is computed by Trainer. By default, all models return the loss in the first element.
 
         Subclass and override for custom behavior.
         """
+
+        if (self.label_smoother is not None or self.compute_loss_func is not None) and "labels" in inputs:
+            labels = inputs.pop("labels")
 
         labels = inputs.get('labels', None)
         if labels is None:
@@ -296,6 +303,13 @@ class AdaptiveLlamaTrainer(Trainer):
             "output_attentions": False,
         }
 
+        if self.model_accepts_loss_kwargs:
+            loss_kwargs = {}
+            if num_items_in_batch is not None:
+                loss_kwargs["num_items_in_batch"] = num_items_in_batch
+            model_kwargs = {**model_kwargs, **loss_kwargs}
+
+
         if self.args.with_special_embeddings_mask:
             assert special_embeddings_mask is not None
             # assert special_embeddings_mask.sum() > 1
@@ -307,6 +321,41 @@ class AdaptiveLlamaTrainer(Trainer):
         outputs = model.forward(**model_kwargs)
         # [ bs, seq_len, 2 ]
 
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+
+        if labels is not None and self.label_smoother is not None or self.compute_loss_func is not None:
+            unwrapped_model = self.accelerator.unwrap_model(model)
+            if _is_peft_model(unwrapped_model):
+                model_name = unwrapped_model.base_model.model._get_name()
+            else:
+                model_name = unwrapped_model._get_name()
+            # User-defined compute_loss function
+            if self.compute_loss_func is not None:
+                loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch)
+            elif model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+                loss = self.label_smoother(outputs, labels, shift_labels=True)
+            else:
+                loss = self.label_smoother(outputs, labels)
+        else:
+            if isinstance(outputs, dict) and "loss" not in outputs:
+                raise ValueError(
+                    "The model did not return a loss from the inputs, only the following keys: "
+                    f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}."
+                )
+            # We don't use .loss here since the model may return tuples instead of ModelOutput.
+            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
+        if (
+            self.args.average_tokens_across_devices
+            and (self.model_accepts_loss_kwargs or self.compute_loss_func)
+            and num_items_in_batch is not None
+        ):
+            loss *= self.accelerator.num_processes
+
+        causal_lm_loss = loss
+
+
         # fan_in_merging_logits_sum = sum(x.sum(dim=[0, 1]) for x in fan_in_merging_logits)
         outputs_no_pruning = None
         model_unwrapped = model
@@ -315,12 +364,9 @@ class AdaptiveLlamaTrainer(Trainer):
 
         model_config = model_unwrapped.config
 
-        if model_config.full_unmerge is not None and sum(model_config.full_unmerge) > 0:
-            model_kwargs['full_unmerge'] = model_config.full_unmerge
-            outputs_no_pruning = model.forward(**model_kwargs)
+        assert sum(model_config.full_unmerge) == 0
 
-
-        ce_merging_loss_sum = torch.tensor(0.0, device=outputs.loss.device)
+        ce_merging_loss_sum = torch.tensor(0.0, device=causal_lm_loss.device)
         count_merging_losses = 0
         sum_pruned_tokens = 0
 
@@ -353,8 +399,8 @@ class AdaptiveLlamaTrainer(Trainer):
         ce_merging_loss_sum *= self.args.ce_merging_loss_weight
 
         if self.args.gumbel_loss_weight_dynamic:
-            exp_scale = 30 * max(outputs.loss.detach().item() - 1.8, 0)
-            ce_merging_loss_sum /= torch.exp(torch.tensor(exp_scale, device=outputs.loss.device))
+            exp_scale = 30 * max(causal_lm_loss.detach().item() - 1.8, 0)
+            ce_merging_loss_sum /= torch.exp(torch.tensor(exp_scale, device=causal_lm_loss.device))
 
 
         count_hcg_layers = 0
@@ -385,7 +431,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
         if self.args.hcg_loss_weight_dynamic:
             # print("sum_pruned_tokens / total_tokens", sum_pruned_tokens / total_tokens)
-            outputs_loss = outputs.loss
+            outputs_loss = causal_lm_loss
             if len(outputs_loss.shape) > 0:
                 outputs_loss = outputs_loss.mean()
 
@@ -400,26 +446,22 @@ class AdaptiveLlamaTrainer(Trainer):
         else:
             hcg_loss *= self.args.hcg_loss_weight
 
-        # loss = outputs.loss
-        pruning_loss = outputs.loss.mean()
+        # loss = causal_lm_loss
+        pruning_loss = causal_lm_loss.mean()
         loss = pruning_loss + ce_merging_loss_sum + hcg_loss
 
         # print("pruning_loss", pruning_loss)
         # print("ce_merging_loss", ce_merging_loss_sum)
         # print("hcg_loss", hcg_loss)
 
-        if outputs_no_pruning is not None:
-            # print("outputs_no_pruning_loss", outputs_no_pruning.loss.item())
-            loss += outputs_no_pruning.loss * self.args.full_unmerge_loss_weight
-
         outputs.loss = loss
 
         # assert ~ loss.isnan().any(), 'loss cant be none'
 
         if force_log or log_metrics and self.state.global_step % self.args.logging_steps == 0:
-            outputs_loss = outputs.loss
+            outputs_loss = causal_lm_loss
             if len(outputs_loss.shape) > 0:
-                outputs_loss = outputs.loss.mean()
+                outputs_loss = causal_lm_loss.mean()
 
             hcg_loss_to_log = hcg_loss
             if isinstance(hcg_loss_to_log, torch.Tensor):
@@ -1101,7 +1143,7 @@ if __name__ == "__main__":
             if training_args.select_train_dataset_items > 0:
                 smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items))
 
-            smollm_corpus = smollm_corpus.map(tokenize_function, batched=True, num_proc=16)
+            smollm_corpus = smollm_corpus.map(tokenize_function, batched=True, num_proc=32)
 
             # smollm_corpus = smollm_corpus.rename_column('special_tokens_mask', 'special_embeddings_mask')
             # print(smollm_corpus[0]['input_ids'])
