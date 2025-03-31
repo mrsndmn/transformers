@@ -408,6 +408,54 @@ __global__ void prune_tokens_concrete_copy_hidden_state_kernel(
     }
 }
 
+__global__ void backward_prune_tokens_concrete_kernel(
+    const torch::PackedTensorAccessor64<float, 3, torch::RestrictPtrTraits> grad_output_hidden_state,
+    const torch::PackedTensorAccessor64<float, 2, torch::RestrictPtrTraits> grad_output_concrete,
+    const torch::PackedTensorAccessor64<bool, 2, torch::RestrictPtrTraits> concrete_bool,
+    const torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> attention_mask,
+    torch::PackedTensorAccessor64<float, 3, torch::RestrictPtrTraits> grad_hidden_state,
+    torch::PackedTensorAccessor64<float, 2, torch::RestrictPtrTraits> grad_concrete,
+    int batch_size, int seq_len, int hidden_dim, int grad_output_seq_len
+) {
+    int batch_i = blockIdx.x; // Batch index
+    int thread_idx = threadIdx.x; // Index for hidden dim
+
+    if (batch_i >= batch_size) {
+        return; // Out of bounds check
+    }
+
+    int hidden_dim_start = thread_idx * HIDDEN_DIM_BLOCK_SIZE;
+    if (hidden_dim_start >= hidden_dim) {
+        return;
+    }
+    int hidden_dim_end = hidden_dim_start + HIDDEN_DIM_BLOCK_SIZE;
+    if (hidden_dim_end > hidden_dim) {
+        hidden_dim_end = hidden_dim;
+    }
+
+
+    // Start from the correct position in grad_output
+    int current_grad_pos = grad_output_seq_len - 1;
+    
+    // Iterate in reverse order to match forward pass
+    for (int seq_len_i = seq_len - 1; seq_len_i >= 0; --seq_len_i) {
+        if (attention_mask[batch_i][seq_len_i] == 0L) {
+            break;
+        }
+
+        if (concrete_bool[batch_i][seq_len_i]) {
+            if (current_grad_pos >= 0 && current_grad_pos < grad_output_seq_len) {
+                // Copy gradients for hidden states
+                for (int hi = hidden_dim_start; hi < hidden_dim_end; ++hi) {
+                    grad_hidden_state[batch_i][seq_len_i][hi] = grad_output_hidden_state[batch_i][current_grad_pos][hi];
+                }
+                // Copy gradients for concrete values
+                grad_concrete[batch_i][seq_len_i] = grad_output_concrete[batch_i][current_grad_pos];
+            }
+            current_grad_pos--;
+        }
+    }
+}
 
 void collapse_blocks(
     torch::Tensor seq_len_blocks_lengths,
@@ -594,6 +642,37 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
                           sliced_merged_special_embeddings_mask, sliced_merged_concrete);
 }
 
+std::tuple<torch::Tensor, torch::Tensor> backward_prune_tokens_concrete_cuda(
+    const torch::Tensor& grad_output_hidden_state,
+    const torch::Tensor& grad_output_concrete,
+    const torch::Tensor& concrete_bool,
+    const torch::Tensor& attention_mask
+) {
+    const int batch_size = concrete_bool.size(0);
+    const int seq_len = concrete_bool.size(1);
+    const int hidden_dim = grad_output_hidden_state.size(2);
+    const int grad_output_seq_len = grad_output_hidden_state.size(1);
+
+    // Launch the kernel
+    int num_threads = (hidden_dim + HIDDEN_DIM_BLOCK_SIZE - 1) / HIDDEN_DIM_BLOCK_SIZE;
+    const dim3 block_size(num_threads, 1, 1);  // One thread per hidden_dim_span
+    const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
+
+    torch::Tensor grad_hidden_state = torch::zeros({batch_size, seq_len, hidden_dim}, grad_output_hidden_state.options());
+    torch::Tensor grad_concrete = torch::zeros({batch_size, seq_len}, grad_output_concrete.options());
+
+    backward_prune_tokens_concrete_kernel<<<grid_size, block_size>>>(
+        grad_output_hidden_state.packed_accessor64<float, 3, torch::RestrictPtrTraits>(),
+        grad_output_concrete.packed_accessor64<float, 2, torch::RestrictPtrTraits>(),
+        concrete_bool.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
+        attention_mask.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
+        grad_hidden_state.packed_accessor64<float, 3, torch::RestrictPtrTraits>(),
+        grad_concrete.packed_accessor64<float, 2, torch::RestrictPtrTraits>(),
+        batch_size, seq_len, hidden_dim, grad_output_seq_len
+    );
+
+    return std::make_tuple(grad_hidden_state, grad_concrete);
+}
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {}
 
@@ -603,6 +682,7 @@ TORCH_LIBRARY(generate_merges, m) {
     m.def("fan_out_restore_residuals(Tensor a, Tensor b, Tensor c, Tensor d) -> Tensor");
     m.def("backward_fan_out_restore_residuals(Tensor a, Tensor b, Tensor c) -> (Tensor, Tensor)");
     m.def("prune_tokens_concrete_cuda(Tensor a, Tensor b, Tensor c, Tensor d, Tensor e) -> (Tensor, Tensor, Tensor, Tensor, Tensor)");
+    m.def("backward_prune_tokens_concrete_cuda(Tensor a, Tensor b, Tensor c, Tensor d) -> (Tensor, Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(generate_merges, CUDA, m) {
@@ -611,4 +691,5 @@ TORCH_LIBRARY_IMPL(generate_merges, CUDA, m) {
     m.impl("fan_out_restore_residuals", &fan_out_restore_residuals);
     m.impl("backward_fan_out_restore_residuals", &backward_fan_out_restore_residuals);
     m.impl("prune_tokens_concrete_cuda", &prune_tokens_concrete_cuda);
+    m.impl("backward_prune_tokens_concrete_cuda", &backward_prune_tokens_concrete_cuda);
 }

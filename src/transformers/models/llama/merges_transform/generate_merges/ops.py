@@ -256,3 +256,36 @@ def prune_tokens_concrete(
     return hidden_state_m, merged_embeddings_counts, merged_attention_mask, merged_special_embeddings_mask, merged_concrete
 
 
+def _backward_prune_tokens_concrete(ctx, grad_hidden_state, grad_merged_embeddings_counts, grad_merged_attention_mask, grad_merged_special_embeddings_mask, grad_merged_concrete):
+    # Unpack saved tensors
+    concrete_bool, attention_mask = ctx.saved_tensors
+    
+    # Initialize gradients
+    grad_hidden_state_output = None
+    grad_concrete_output = None
+    
+    if ctx.needs_input_grad[0] or ctx.needs_input_grad[4]:  # If we need gradients for hidden_state or concrete
+        grad_hidden_state_output, grad_concrete_output = torch.ops.generate_merges.backward_prune_tokens_concrete_cuda.default(
+            grad_hidden_state,
+            grad_merged_concrete,
+            concrete_bool,
+            attention_mask,
+        )
+    
+    # Return gradients for all inputs in order (None for those that don't need gradients)
+    return grad_hidden_state_output, None, None, None, grad_concrete_output
+
+def _setup_context_prune_tokens_concrete(ctx, inputs, output):
+    hidden_state, concrete_bool, attention_mask, special_embeddings_mask, concrete = inputs
+    
+    # Save tensors needed for backward
+    ctx.save_for_backward(concrete_bool, attention_mask)
+
+# Register the autograd function
+torch.library.register_autograd(
+    "generate_merges::prune_tokens_concrete_cuda", 
+    _backward_prune_tokens_concrete, 
+    setup_context=_setup_context_prune_tokens_concrete
+)
+
+
