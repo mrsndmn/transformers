@@ -144,8 +144,8 @@ class TrOCRAttention(nn.Module):
         config,
         embed_dim: int,
         num_heads: int,
-        kdim: int = None,
-        vdim: int = None,
+        kdim: Optional[int] = None,
+        vdim: Optional[int] = None,
         dropout: float = 0.0,
         is_decoder: bool = False,
         bias: bool = True,
@@ -953,3 +953,6 @@ class TrOCRForCausalLM(TrOCRPreTrainedModel, GenerationMixin):
                 tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past),
             )
         return reordered_past
+
+
+__all__ = ["TrOCRForCausalLM", "TrOCRPreTrainedModel"]

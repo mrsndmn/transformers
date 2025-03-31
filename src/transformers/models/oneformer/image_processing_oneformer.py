@@ -440,7 +440,7 @@ class OneFormerImageProcessor(BaseImageProcessor):
         ignore_index: Optional[int] = None,
         do_reduce_labels: bool = False,
         repo_path: Optional[str] = "shi-labs/oneformer_demo",
-        class_info_file: str = None,
+        class_info_file: Optional[str] = None,
         num_text: Optional[int] = None,
         num_labels: Optional[int] = None,
         **kwargs,
@@ -617,7 +617,7 @@ class OneFormerImageProcessor(BaseImageProcessor):
         """Preprocesses a single image."""
         # All transformations expect numpy arrays.
         image = to_numpy_array(image)
-        if is_scaled_image(image) and do_rescale:
+        if do_rescale and is_scaled_image(image):
             logger.warning_once(
                 "It looks like you are trying to rescale already rescaled images. If the input"
                 " images have pixel values between 0 and 1, set `do_rescale=False` to avoid rescaling them again."
@@ -1351,3 +1351,6 @@ class OneFormerImageProcessor(BaseImageProcessor):
 
             results.append({"segmentation": segmentation, "segments_info": segments})
         return results
+
+
+__all__ = ["OneFormerImageProcessor"]

@@ -24,10 +24,14 @@ from typing import List, Optional, Union
 from ...image_utils import ImageInput
 from ...processing_utils import ProcessingKwargs, ProcessorMixin, Unpack
 from ...tokenization_utils_base import PreTokenizedInput, TextInput
+from ...utils import logging
 
 
 class DonutProcessorKwargs(ProcessingKwargs, total=False):
     _defaults = {}
+
+
+logger = logging.get_logger(__name__)
 
 
 class DonutProcessor(ProcessorMixin):
@@ -82,9 +86,8 @@ class DonutProcessor(ProcessorMixin):
         When used in normal mode, this method forwards all its arguments to AutoImageProcessor's
         [`~AutoImageProcessor.__call__`] and returns its output. If used in the context
         [`~DonutProcessor.as_target_processor`] this method forwards all its arguments to DonutTokenizer's
-        [`~DonutTokenizer.__call__`]. Please refer to the doctsring of the above two methods for more information.
+        [`~DonutTokenizer.__call__`]. Please refer to the docstring of the above two methods for more information.
         """
-        # For backward compatibility
         if self._in_target_context_manager:
             return self.current_processor(images, text, **kwargs)
 
@@ -100,6 +103,8 @@ class DonutProcessor(ProcessorMixin):
         if images is not None:
             inputs = self.image_processor(images, **output_kwargs["images_kwargs"])
         if text is not None:
+            if images is not None:
+                output_kwargs["text_kwargs"].setdefault("add_special_tokens", False)
             encodings = self.tokenizer(text, **output_kwargs["text_kwargs"])
 
         if text is None:
@@ -210,3 +215,6 @@ class DonutProcessor(ProcessorMixin):
             FutureWarning,
         )
         return self.image_processor
+
+
+__all__ = ["DonutProcessor"]
