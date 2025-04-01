@@ -188,7 +188,7 @@ def test_prune_tokens_concrete_backward_basic():
     # Test gradient flow
     grad_output = torch.rand_like(merged_hidden_state)
     grad_concrete_output = torch.rand_like(merged_concrete)
-    
+
     loss = (merged_hidden_state * grad_output).sum() + (merged_concrete * grad_concrete_output).sum()
     loss.backward()
 
@@ -197,6 +197,10 @@ def test_prune_tokens_concrete_backward_basic():
     assert concrete.grad is not None
     assert hidden_state.grad.shape == hidden_state.shape
     assert concrete.grad.shape == concrete.shape
+
+    assert (hidden_state.grad == grad_output).all()
+    assert (concrete.grad == grad_concrete_output).all()
+
 
 def test_prune_tokens_concrete_backward_with_masking():
     batch_size = 1
@@ -242,6 +246,14 @@ def test_prune_tokens_concrete_backward_with_masking():
     assert hidden_state.grad[:, 0].abs().sum() > 0  # First token (special) should have gradient
     assert hidden_state.grad[:, -1].abs().sum() > 0  # Last token (special) should have gradient
 
+    assert hidden_state.grad[:, 4:6].sum() == 0, 'no grads for not concrete hidden states'
+
+    assert (hidden_state.grad[:, :4] == grad_output[:, :4]).all()
+    assert (hidden_state.grad[:, 6] == grad_output[:, 4]).all()
+
+    assert (concrete.grad[:, :4] == grad_concrete_output[:, :4]).all()
+    assert (concrete.grad[:, 6] == grad_concrete_output[:, 4]).all()
+
 def test_prune_tokens_concrete_backward_attention_mask():
     batch_size = 1
     seq_len = 7
@@ -286,6 +298,11 @@ def test_prune_tokens_concrete_backward_attention_mask():
     # Verify no gradients for masked tokens
     assert (hidden_state.grad[:, 5:] == 0).all()  # Masked tokens should have zero gradient
     assert (concrete.grad[:, 5:] == 0).all()  # Masked tokens should have zero gradient
+
+    assert (hidden_state.grad[:, 2:4] == grad_output).all()
+
+    assert (concrete.grad[:, 2:4] == grad_concrete_output).all()
+
 
 def test_prune_tokens_concrete_backward_dtype_consistency():
     batch_size = 1
