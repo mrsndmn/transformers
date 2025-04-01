@@ -20,6 +20,8 @@
 import math
 from typing import List, Optional, Tuple, Union
 
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -564,7 +566,7 @@ class HardConcreteGate(nn.Module):
         # print('attention_mask.numel()', attention_mask.numel())
         # print('attention_mask.sum / numel', attention_mask.sum() / attention_mask.numel())
 
-        if concrete.isnan().any():
+        if os.environ.get("DEBUG_NAN", "0") == "1" and concrete.isnan().any():
             print("found nan after hcg")
             print(f"concrete mean={concrete.mean().item():.2f} max={concrete.max().item():.2f} min={concrete.min().item():.2f}")
             breakpoint()

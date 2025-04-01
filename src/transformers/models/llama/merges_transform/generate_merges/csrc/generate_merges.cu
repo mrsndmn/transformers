@@ -248,12 +248,23 @@ __global__ void backward_fan_out_straight_hidden_states_kernel(
     int batch_size, int seq_len, int hidden_dim
 ) {
     int batch_i = blockIdx.x; // Batch index
+    int thread_idx = threadIdx.x; // Index for hidden dim
 
     if (batch_i >= batch_size) {
         return; // Out of bounds check
     }
 
-    int output_seq_len_i = residual_hidden_states_grad.size(1) - 1;
+    int hidden_dim_start = thread_idx * HIDDEN_DIM_BLOCK_SIZE_FAN_OUT;
+    if (hidden_dim_start >= hidden_dim) {
+        return;
+    }
+
+    int hidden_dim_end = hidden_dim_start + HIDDEN_DIM_BLOCK_SIZE_FAN_OUT;
+    if (hidden_dim_end > hidden_dim) {
+        hidden_dim_end = hidden_dim;
+    }
+
+    int output_seq_len_i = restored_hidden_states_grad.size(1) - 1;
     for (int seq_len_i = seq_len-1; seq_len_i >= 0; --seq_len_i) {
         auto num_repeats = merged_embeddings_counts[batch_i][seq_len_i];
         if (num_repeats == 0) {
@@ -262,7 +273,7 @@ __global__ void backward_fan_out_straight_hidden_states_kernel(
 
         // for hidden_states_grad
         int restored_idx = int(output_seq_len_i - num_repeats + 1);
-        for (int hi = 0; hi < hidden_dim; ++hi) {
+        for (int hi = hidden_dim_start; hi < hidden_dim_end; ++hi) {
             hidden_states_grad[batch_i][seq_len_i][hi] = restored_hidden_states_grad[batch_i][restored_idx][hi];
         }
 
@@ -279,12 +290,23 @@ __global__ void backward_fan_out_straight_residual_hidden_states_kernel(
     int batch_size, int seq_len, int hidden_dim
 ) {
     int batch_i = blockIdx.x; // Batch index
+    int thread_idx = threadIdx.x; // Index for hidden dim
 
     if (batch_i >= batch_size) {
         return; // Out of bounds check
     }
 
-    int output_seq_len_i = residual_hidden_states_grad.size(1) - 1;
+    int hidden_dim_start = thread_idx * HIDDEN_DIM_BLOCK_SIZE_FAN_OUT;
+    if (hidden_dim_start >= hidden_dim) {
+        return;
+    }
+
+    int hidden_dim_end = hidden_dim_start + HIDDEN_DIM_BLOCK_SIZE_FAN_OUT;
+    if (hidden_dim_end > hidden_dim) {
+        hidden_dim_end = hidden_dim;
+    }
+
+    int output_seq_len_i = restored_hidden_states_grad.size(1) - 1;
     for (int seq_len_i = seq_len-1; seq_len_i >= 0; --seq_len_i) {
         auto num_repeats = merged_embeddings_counts[batch_i][seq_len_i];
         if (num_repeats == 0) {
@@ -314,8 +336,10 @@ std::tuple<torch::Tensor, torch::Tensor> backward_fan_out_restore_residuals(
     const int seq_len = merged_embeddings_counts.size(1);
     const int hidden_dim = restored_hidden_states_grad.size(2);
 
+    int num_threads = (hidden_dim + HIDDEN_DIM_BLOCK_SIZE_FAN_OUT - 1) / HIDDEN_DIM_BLOCK_SIZE_FAN_OUT;
+
     // Launch the kernel
-    const dim3 block_size(1, 1, 1);  // One thread per sequence element
+    const dim3 block_size(num_threads, 1, 1);  // One thread per sequence element
     const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
 
     torch::Tensor hidden_states_grad = torch::zeros({batch_size, seq_len, hidden_dim}, restored_hidden_states_grad.options());

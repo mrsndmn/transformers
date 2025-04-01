@@ -63,6 +63,8 @@ import torch
 from typing import Any, Dict
 from typing import List, Optional
 
+import torch.profiler
+
 @dataclass
 class AdaptiveTrainingArguments(TrainingArguments):
     output_dir: str = field(default="llama_for_sequential_numbers",)
@@ -1128,7 +1130,7 @@ if __name__ == "__main__":
             smollm_corpus = datasets.Dataset.load_from_disk(disk_dataset_path)
         else:
             # load and tokenize
-            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(20) ]
+            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(10) ]
             smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files, num_proc=16)
 
             def tokenize_function(examples):
@@ -1214,8 +1216,19 @@ if __name__ == "__main__":
         project_name=trackers_project_name,
     )
 
-    with torch.autograd.set_detect_anomaly(True):
-        trainer.train(
-            # resume_from_checkpoint="adaptive_gumbel_2-2_1.7B_model_my_checkpoint-4995",
-            # resume_from_checkpoint='adaptive_13-13_hcg_temp_5.0/checkpoint-4995/',
-        )
+    trainer.train()
+
+    # Profile training
+    # with torch.profiler.profile(
+    #     activities=[
+    #         torch.profiler.ProfilerActivity.CPU,
+    #         torch.profiler.ProfilerActivity.CUDA,
+    #     ],
+    #     # on_trace_ready=torch.profiler.tensorboard_trace_handler('./profile'),
+    #     record_shapes=True,
+    #     profile_memory=True,
+    #     with_stack=True,
+    # ) as prof:
+    #     trainer.train()
+
+    # prof.export_chrome_trace("profile.prof")
