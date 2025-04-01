@@ -47,8 +47,6 @@ def test_fan_out_restore_residuals_with_merging_map():
     assert (grad_init[:, -1, :] == residual_hidden_states_projection.grad[:, -1, :]).all()
     assert (grad_init[:, :3, :] == hidden_states.grad[:, :3, :]).all()
 
-    breakpoint()
-
 
 def test_prune_tokens_concrete_simple():
 
@@ -161,3 +159,170 @@ def test_prune_tokens_concrete_end():
     assert merged_concrete.sum().item() == 4
 
     return
+
+def test_prune_tokens_concrete_backward_basic():
+    batch_size = 1
+    seq_len = 7
+    hidden_dim = 64
+
+    device = 'cuda'
+
+    hidden_state = torch.rand([batch_size, seq_len, hidden_dim], device=device, requires_grad=True)
+    concrete = torch.ones([batch_size, seq_len], dtype=torch.float32, device=device, requires_grad=True)
+    concrete_bool = concrete.bool()
+    attention_mask = torch.ones_like(concrete_bool).long()
+    special_embeddings_mask = torch.zeros_like(concrete_bool).long()
+
+    merged_hidden_state, merged_embeddings_counts, merged_attention_mask, merged_special_embeddings_mask, merged_concrete = prune_tokens_concrete(
+        hidden_state,
+        concrete_bool,
+        attention_mask,
+        special_embeddings_mask=special_embeddings_mask,
+        concrete=concrete,
+    )
+
+    # Verify shapes
+    assert merged_hidden_state.shape == hidden_state.shape
+    assert merged_concrete.shape == concrete.shape
+
+    # Test gradient flow
+    grad_output = torch.rand_like(merged_hidden_state)
+    grad_concrete_output = torch.rand_like(merged_concrete)
+    
+    loss = (merged_hidden_state * grad_output).sum() + (merged_concrete * grad_concrete_output).sum()
+    loss.backward()
+
+    # Verify gradients exist
+    assert hidden_state.grad is not None
+    assert concrete.grad is not None
+    assert hidden_state.grad.shape == hidden_state.shape
+    assert concrete.grad.shape == concrete.shape
+
+def test_prune_tokens_concrete_backward_with_masking():
+    batch_size = 1
+    seq_len = 7
+    hidden_dim = 64
+
+    device = 'cuda'
+
+    hidden_state = torch.rand([batch_size, seq_len, hidden_dim], device=device, requires_grad=True)
+    concrete = torch.ones([batch_size, seq_len], dtype=torch.float32, device=device, requires_grad=True)
+    concrete_bool = torch.tensor([[1, 1, 1, 1, 0, 0, 1]], dtype=torch.bool, device=device)
+    attention_mask = torch.ones_like(concrete_bool).long()
+    special_embeddings_mask = torch.zeros_like(concrete_bool).long()
+    special_embeddings_mask[:, 0] = 1
+    special_embeddings_mask[:, -1] = 1
+
+    merged_hidden_state, merged_embeddings_counts, merged_attention_mask, merged_special_embeddings_mask, merged_concrete = prune_tokens_concrete(
+        hidden_state,
+        concrete_bool,
+        attention_mask,
+        special_embeddings_mask=special_embeddings_mask,
+        concrete=concrete,
+    )
+
+    # Verify expected shapes after pruning
+    assert merged_hidden_state.shape[1] == 5  # Should have 5 tokens after pruning
+    assert merged_concrete.shape[1] == 5
+
+    # Test gradient flow
+    grad_output = torch.rand_like(merged_hidden_state)
+    grad_concrete_output = torch.rand_like(merged_concrete)
+    
+    loss = (merged_hidden_state * grad_output).sum() + (merged_concrete * grad_concrete_output).sum()
+    loss.backward()
+
+    # Verify gradients exist and have correct shapes
+    assert hidden_state.grad is not None
+    assert concrete.grad is not None
+    assert hidden_state.grad.shape == hidden_state.shape
+    assert concrete.grad.shape == concrete.shape
+
+    # Verify gradient flow for special tokens
+    assert hidden_state.grad[:, 0].abs().sum() > 0  # First token (special) should have gradient
+    assert hidden_state.grad[:, -1].abs().sum() > 0  # Last token (special) should have gradient
+
+def test_prune_tokens_concrete_backward_attention_mask():
+    batch_size = 1
+    seq_len = 7
+    hidden_dim = 64
+
+    device = 'cuda'
+
+    hidden_state = torch.rand([batch_size, seq_len, hidden_dim], device=device, requires_grad=True)
+    concrete = torch.ones([batch_size, seq_len], dtype=torch.float32, device=device, requires_grad=True)
+    concrete_bool = torch.tensor([[0, 0, 1, 1, 0, 0, 0]], dtype=torch.bool, device=device)
+    attention_mask = torch.ones([batch_size, seq_len], device=device, dtype=torch.long)
+    attention_mask[:, :2] = 0  # Mask out first 2 tokens
+    special_embeddings_mask = torch.zeros_like(concrete_bool).long()
+    special_embeddings_mask[:, 2] = 1
+    special_embeddings_mask[:, 3] = 1
+
+    merged_hidden_state, merged_embeddings_counts, merged_attention_mask, merged_special_embeddings_mask, merged_concrete = prune_tokens_concrete(
+        hidden_state,
+        concrete_bool,
+        attention_mask,
+        special_embeddings_mask=special_embeddings_mask,
+        concrete=concrete,
+    )
+
+    # Verify expected shapes after pruning
+    assert merged_hidden_state.shape[1] == 2  # Should have 2 tokens after pruning
+    assert merged_concrete.shape[1] == 2
+
+    # Test gradient flow
+    grad_output = torch.rand_like(merged_hidden_state)
+    grad_concrete_output = torch.rand_like(merged_concrete)
+
+    loss = (merged_hidden_state * grad_output).sum() + (merged_concrete * grad_concrete_output).sum()
+    loss.backward()
+
+    # Verify gradients exist and have correct shapes
+    assert hidden_state.grad is not None
+    assert concrete.grad is not None
+    assert hidden_state.grad.shape == hidden_state.shape
+    assert concrete.grad.shape == concrete.shape
+
+    # Verify no gradients for masked tokens
+    assert (hidden_state.grad[:, 5:] == 0).all()  # Masked tokens should have zero gradient
+    assert (concrete.grad[:, 5:] == 0).all()  # Masked tokens should have zero gradient
+
+def test_prune_tokens_concrete_backward_dtype_consistency():
+    batch_size = 1
+    seq_len = 7
+    hidden_dim = 64
+
+    device = 'cuda'
+    dtypes = [torch.float32, torch.float16, torch.bfloat16]
+
+    for dtype in dtypes:
+        hidden_state = torch.rand([batch_size, seq_len, hidden_dim], device=device, dtype=dtype, requires_grad=True)
+        concrete = torch.ones([batch_size, seq_len], dtype=torch.float32, device=device, requires_grad=True)
+        concrete_bool = concrete.bool()
+        attention_mask = torch.ones_like(concrete_bool).long()
+        special_embeddings_mask = torch.zeros_like(concrete_bool).long()
+
+        merged_hidden_state, merged_embeddings_counts, merged_attention_mask, merged_special_embeddings_mask, merged_concrete = prune_tokens_concrete(
+            hidden_state,
+            concrete_bool,
+            attention_mask,
+            special_embeddings_mask=special_embeddings_mask,
+            concrete=concrete,
+        )
+
+        # Verify output dtype matches input
+        assert merged_hidden_state.dtype == dtype
+
+        # Test gradient flow
+        grad_output = torch.rand_like(merged_hidden_state)
+        grad_concrete_output = torch.rand_like(merged_concrete)
+        
+        loss = (merged_hidden_state * grad_output).sum() + (merged_concrete * grad_concrete_output).sum()
+        loss.backward()
+
+        # Verify gradients exist and have correct dtype
+        assert hidden_state.grad is not None
+        assert concrete.grad is not None
+        assert hidden_state.grad.dtype == dtype
+        assert concrete.grad.dtype == torch.float32  # Concrete always uses float32
+
