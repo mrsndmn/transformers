@@ -240,12 +240,11 @@ torch::Tensor fan_out_restore_residuals(
 }
 
 
-__global__ void backward_fan_out_straight_kernel(
+__global__ void backward_fan_out_straight_hidden_states_kernel(
     const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
     const torch::PackedTensorAccessor64<float, 3> restored_hidden_states_grad,
     const torch::PackedTensorAccessor64<int64_t, 1> restored_hidden_states_seq_lengths,
     torch::PackedTensorAccessor64<float, 3> hidden_states_grad,
-    torch::PackedTensorAccessor64<float, 3> residual_hidden_states_grad,
     int batch_size, int seq_len, int hidden_dim
 ) {
     int batch_i = blockIdx.x; // Batch index
@@ -267,6 +266,31 @@ __global__ void backward_fan_out_straight_kernel(
             hidden_states_grad[batch_i][seq_len_i][hi] = restored_hidden_states_grad[batch_i][restored_idx][hi];
         }
 
+        output_seq_len_i -= num_repeats;
+    }
+
+}
+
+__global__ void backward_fan_out_straight_residual_hidden_states_kernel(
+    const torch::PackedTensorAccessor64<int64_t, 2> merged_embeddings_counts,
+    const torch::PackedTensorAccessor64<float, 3> restored_hidden_states_grad,
+    const torch::PackedTensorAccessor64<int64_t, 1> restored_hidden_states_seq_lengths,
+    torch::PackedTensorAccessor64<float, 3> residual_hidden_states_grad,
+    int batch_size, int seq_len, int hidden_dim
+) {
+    int batch_i = blockIdx.x; // Batch index
+
+    if (batch_i >= batch_size) {
+        return; // Out of bounds check
+    }
+
+    int output_seq_len_i = residual_hidden_states_grad.size(1) - 1;
+    for (int seq_len_i = seq_len-1; seq_len_i >= 0; --seq_len_i) {
+        auto num_repeats = merged_embeddings_counts[batch_i][seq_len_i];
+        if (num_repeats == 0) {
+            break;
+        }
+
         // for residual_hidden_states_grad
         for (int residuals_grad_i = 0; residuals_grad_i < num_repeats - 1; ++residuals_grad_i) {
             int restore_idx = output_seq_len_i - residuals_grad_i;
@@ -278,17 +302,8 @@ __global__ void backward_fan_out_straight_kernel(
         output_seq_len_i -= num_repeats;
     }
 
-    // For left-side padding is not necessary
-    // if last tokens were skipped
-    // we need to copy gradients for them
-    // int output_seq_len_total = restored_hidden_states_seq_lengths[batch_i];
-    // for (int residuals_grad_i = output_seq_len_i; residuals_grad_i < output_seq_len_total; ++residuals_grad_i) {
-    //     for (int hi = 0; hi < hidden_dim; ++hi) {
-    //         residual_hidden_states_grad[batch_i][residuals_grad_i][hi] = restored_hidden_states_grad[batch_i][residuals_grad_i][hi];
-    //     }
-    // }
-
 }
+
 
 std::tuple<torch::Tensor, torch::Tensor> backward_fan_out_restore_residuals(
     const torch::Tensor& merged_embeddings_counts,
@@ -306,11 +321,18 @@ std::tuple<torch::Tensor, torch::Tensor> backward_fan_out_restore_residuals(
     torch::Tensor hidden_states_grad = torch::zeros({batch_size, seq_len, hidden_dim}, restored_hidden_states_grad.options());
     torch::Tensor residual_hidden_states_grad = torch::zeros_like(restored_hidden_states_grad, restored_hidden_states_grad.options());
 
-    backward_fan_out_straight_kernel<<<grid_size, block_size>>>(
+    backward_fan_out_straight_hidden_states_kernel<<<grid_size, block_size>>>(
         merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
         restored_hidden_states_grad.packed_accessor64<float, 3>(),
         restored_hidden_states_seq_lengths.packed_accessor64<int64_t, 1>(),
         hidden_states_grad.packed_accessor64<float, 3>(),
+        batch_size, seq_len, hidden_dim
+    );
+
+    backward_fan_out_straight_residual_hidden_states_kernel<<<grid_size, block_size>>>(
+        merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
+        restored_hidden_states_grad.packed_accessor64<float, 3>(),
+        restored_hidden_states_seq_lengths.packed_accessor64<int64_t, 1>(),
         residual_hidden_states_grad.packed_accessor64<float, 3>(),
         batch_size, seq_len, hidden_dim
     );
@@ -594,11 +616,11 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 
     torch::Tensor seq_len_blocks_lengths = torch::zeros({batch_size, 1}, merged_embeddings_counts_options);
 
-    cudaStream_t stream1, stream2;
-    cudaStreamCreate(&stream1);
-    cudaStreamCreate(&stream2);
+    // cudaStream_t stream1, stream2;
+    // cudaStreamCreate(&stream1);
+    // cudaStreamCreate(&stream2);
 
-    prune_tokens_concrete_kernel<<<grid_size_prune, block_size_prune, 0, stream1>>>(
+    prune_tokens_concrete_kernel<<<grid_size_prune, block_size_prune, 0>>>(
         hidden_state.packed_accessor64<float, 3, torch::RestrictPtrTraits>(),
         concrete_bool.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
         attention_mask.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
@@ -612,7 +634,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
         batch_size, seq_len, hidden_dim
     );
 
-    prune_tokens_concrete_copy_hidden_state_kernel<<<grid_size, block_size, 0, stream2>>>(
+    prune_tokens_concrete_copy_hidden_state_kernel<<<grid_size, block_size, 0>>>(
         hidden_state.packed_accessor64<float, 3, torch::RestrictPtrTraits>(),
         concrete_bool.packed_accessor64<bool, 2, torch::RestrictPtrTraits>(),
         attention_mask.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
@@ -620,8 +642,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
         batch_size, seq_len, hidden_dim
     );
 
-    cudaStreamSynchronize(stream1);
-    cudaStreamDestroy(stream1);
+    // cudaStreamSynchronize(stream1);
+    // cudaStreamDestroy(stream1);
 
     seq_len_blocks_lengths = seq_len_blocks_lengths.to(torch::kCPU);
 
@@ -635,8 +657,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
     torch::Tensor sliced_merged_special_embeddings_mask = merged_special_embeddings_mask.index({index::Slice(), index::Slice(slice_from, seq_len)});
     torch::Tensor sliced_merged_concrete = merged_concrete.index({index::Slice(), index::Slice(slice_from, seq_len)});
 
-    cudaStreamSynchronize(stream2);
-    cudaStreamDestroy(stream2);
+    // cudaStreamSynchronize(stream2);
+    // cudaStreamDestroy(stream2);
 
     return std::make_tuple(sliced_merged_hidden_state, sliced_merged_embeddings_counts, sliced_merged_attention_mask, 
                           sliced_merged_special_embeddings_mask, sliced_merged_concrete);
