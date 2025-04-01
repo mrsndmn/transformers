@@ -239,6 +239,7 @@ def prune_tokens_concrete(
     torch._check(concrete_bool.shape == special_embeddings_mask.shape)
     torch._check(concrete_bool.shape == concrete.shape)
     torch._check(concrete_bool.dtype == torch.bool)
+    torch._check(concrete.dtype in (torch.float32, torch.bfloat16, torch.float16))
     torch._check(attention_mask.dtype == torch.long)
     torch._check(special_embeddings_mask.dtype == torch.long)
 

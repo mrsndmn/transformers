@@ -50,7 +50,7 @@ def test_fan_out_restore_residuals_with_merging_map():
     breakpoint()
 
 
-def test_prune_tokens_concrete():
+def test_prune_tokens_concrete_simple():
 
     batch_size = 1
     seq_len = 7
@@ -59,18 +59,26 @@ def test_prune_tokens_concrete():
     device = 'cuda'
 
     hidden_state = torch.rand([ batch_size, seq_len, hidden_dim ], device=device)
-    concrete_bool = torch.tensor([[ 1, 1, 1, 1, 1, 1, 1 ]], dtype=torch.bool, device=device)
-    attention_mask = torch.ones_like(concrete_bool)
+    concrete = torch.tensor([[ 1, 1, 1, 1, 1, 1, 1 ]], dtype=torch.float32, device=device)
+    concrete_bool = concrete.bool()
+    attention_mask = torch.ones_like(concrete_bool).long()
+    special_embeddings_mask = torch.zeros_like(concrete_bool).long()
+    special_embeddings_mask[:, 0] = 1
+    special_embeddings_mask[:, -1] = 1
 
-    merged_hidden_state, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(
+    merged_hidden_state, merged_embeddings_counts, merged_attention_mask, merged_special_embeddings_mask, merged_concrete = prune_tokens_concrete(
         hidden_state,
         concrete_bool,
         attention_mask,
+        concrete=concrete,
+        special_embeddings_mask=special_embeddings_mask,
     )
 
     assert (hidden_state == merged_hidden_state).all()
     assert (merged_embeddings_counts == attention_mask.long()).all()
     assert (merged_attention_mask == attention_mask).all()
+    assert (merged_special_embeddings_mask == special_embeddings_mask).all()
+    assert (merged_concrete == concrete).all()
 
     return
 
@@ -84,12 +92,18 @@ def test_prune_tokens_concrete_middle():
 
     hidden_state = torch.rand([ batch_size, seq_len, hidden_dim ], device=device, requires_grad=True)
     concrete_bool = torch.tensor([[ 1, 1, 1, 1, 0, 0, 1 ]], dtype=torch.bool, device=device)
-    attention_mask = torch.ones_like(concrete_bool)
+    attention_mask = torch.ones_like(concrete_bool).long()
+    concrete = concrete_bool.float()
+    special_embeddings_mask = torch.zeros_like(concrete_bool).long()
+    special_embeddings_mask[:, 0] = 1
+    special_embeddings_mask[:, -1] = 1
 
-    merged_hidden_state, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(
+    merged_hidden_state, merged_embeddings_counts, merged_attention_mask, merged_special_embeddings_mask, merged_concrete = prune_tokens_concrete(
         hidden_state,
         concrete_bool,
         attention_mask,
+        concrete=concrete,
+        special_embeddings_mask=special_embeddings_mask,
     )
 
     expected_merged_emb_counts = torch.tensor([[ 1, 1, 1, 3, 1 ]], dtype=torch.long, device=device)
@@ -101,6 +115,9 @@ def test_prune_tokens_concrete_middle():
 
     assert (merged_embeddings_counts == expected_merged_emb_counts).all()
     assert (merged_attention_mask == expected_attention_mask).all()
+    assert merged_special_embeddings_mask.sum().item() == 2
+    assert merged_concrete.shape[1] == 5
+    assert merged_concrete.sum().item() == 5
 
     return
 
@@ -115,13 +132,20 @@ def test_prune_tokens_concrete_end():
 
     hidden_state = torch.rand([ batch_size, seq_len, hidden_dim ], device=device)
     concrete_bool = torch.tensor([[ 1, 1, 1, 1, 0, 0, 0 ]], dtype=torch.bool, device=device)
-    attention_mask = torch.ones_like(concrete_bool)
+    attention_mask = torch.ones_like(concrete_bool).long()
+    concrete = concrete_bool.float()
+    special_embeddings_mask = torch.zeros_like(concrete_bool).long()
+    special_embeddings_mask[:, 0] = 1
+    special_embeddings_mask[:, 3] = 1
 
-    merged_hidden_state, merged_embeddings_counts, merged_attention_mask = prune_tokens_concrete(
+    merged_hidden_state, merged_embeddings_counts, merged_attention_mask, merged_special_embeddings_mask, merged_concrete = prune_tokens_concrete(
         hidden_state,
         concrete_bool,
         attention_mask,
+        concrete=concrete,
+        special_embeddings_mask=special_embeddings_mask,
     )
+
 
     expected_merged_emb_counts = torch.tensor([[ 1, 1, 1, 4 ]], dtype=torch.long, device=device)
     expected_attention_mask = torch.ones_like(expected_merged_emb_counts)
@@ -131,5 +155,9 @@ def test_prune_tokens_concrete_end():
 
     assert (merged_embeddings_counts == expected_merged_emb_counts).all()
     assert (merged_attention_mask == expected_attention_mask).all()
+
+    assert merged_special_embeddings_mask.sum().item() == 2
+    assert merged_concrete.shape[1] == 4
+    assert merged_concrete.sum().item() == 4
 
     return
