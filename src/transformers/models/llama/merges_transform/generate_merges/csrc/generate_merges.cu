@@ -194,7 +194,7 @@ __global__ void fan_out_restore_residuals_kernel(
     __syncthreads();
     // Write from thread's portion of shared memory to global memory
     for (int hi = hidden_dim_start; hi < hidden_dim_end; ++hi) {
-        restored_hidden_states[batch_i][restored_idx][hi] = thread_shared_mem[hi - hidden_dim_start];
+        restored_hidden_states[batch_i][restored_idx][hi] += thread_shared_mem[hi - hidden_dim_start];
     }
 }
 
