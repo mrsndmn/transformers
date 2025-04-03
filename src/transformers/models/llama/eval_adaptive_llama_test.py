@@ -18,22 +18,25 @@ def test_eval_adaptive_hcg_llama():
     torch.set_default_dtype(bench_dtype)
     torch.set_default_device(device)
 
-    model_orig = LlamaForCausalLM.from_pretrained("HuggingFaceTB/SmolLM-360M")
+    # model_orig = LlamaForCausalLM.from_pretrained("HuggingFaceTB/SmolLM-360M")
 
-    # checkpoint = './adaptive_gumbel_8/checkpoint-996/'
-    checkpoint = './adaptive_hcg_8_maintain_loss_nofanoutproj/checkpoint-24996'
+    # checkpoint = './adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/checkpoint-3118'
+    checkpoint = 'adaptive_hcg_slm2_360M_hcg_smooth_no_detach_2gpu_1.5_1SKDWQXE/checkpoint-79996/'
 
     model = AdaptiveLlamaForCausalLM.from_pretrained(
         checkpoint,
         torch_dtype=bench_dtype,
     )
 
+    model.config.pretrain_fan_out_projection = False
+    model.config.use_cache = False
+
     model.to(device)
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint)
 
     text = "<|im_start|> Who are you? And what are you going to do?"
-    text *= 60
+    text *= 2
     text_inputs = tokenizer([ text ], return_tensors='pt').to(device)
 
     special_embeddings_mask = torch.zeros_like(text_inputs['input_ids'])
@@ -41,6 +44,7 @@ def test_eval_adaptive_hcg_llama():
     special_embeddings_mask[:, -1] = 1
     text_inputs['special_embeddings_mask'] = special_embeddings_mask
     text_inputs['labels'] = text_inputs['input_ids']
+    text_inputs['output_hidden_states'] = True
 
     with torch.no_grad():
 
@@ -48,17 +52,33 @@ def test_eval_adaptive_hcg_llama():
         eval_output = model.forward(**text_inputs)
         print(eval_output['loss'])
 
-        model.train()
+        # Train mode for part of my modules
+        for adaptive_down in model.model.adaptive_down:
+            adaptive_down.train()
+
+        for adaptive_up in model.model.adaptive_up:
+            adaptive_up.train()
+
+        for adaptive_down in model.model.adaptive_down:
+            if hasattr(adaptive_down, 'hcg'):
+                adaptive_down.hcg.eval()
+
         train_output = model.forward(**text_inputs)
         print(train_output['loss'])
 
+        assert eval_output.fan_in_merging_maps[3].sum().item() == eval_output.fan_in_merging_logits[3].sum().item()
+
+        for i, (eval_hidden_state, concrete, train_hidden_state) in enumerate(zip(eval_output.hidden_states, eval_output.fan_in_merging_logits, train_output.hidden_states)):
+            assert (eval_hidden_state == train_hidden_state[concrete != 0]).all(), f'{i}\'th hidden state mismatch'
+            # if i <= 4 or i > 28:
+            # else:
+            #     assert (eval_hidden_state[:, 1:] == train_hidden_state[:, 2:]).all(), f'{i}\'th hidden state mismatch'
+
         assert train_output['loss'].item() == eval_output['loss'].item()
 
-        del text_inputs['special_embeddings_mask']
-        orig_output = model_orig.forward(**text_inputs)
-        print("orig_output", orig_output['loss'])
-
-    breakpoint()
+        # del text_inputs['special_embeddings_mask']
+        # orig_output = model_orig.forward(**text_inputs)
+        # print("orig_output", orig_output['loss'])
 
 
 def test_prune_tokens_concrete():

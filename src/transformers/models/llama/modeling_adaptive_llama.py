@@ -148,349 +148,6 @@ class NoOpFanIn(nn.Module):
         return
 
 
-def gumbel_softmax(logits: torch.Tensor, tau: float = 1, hard: bool = False, dim: int = -1) -> torch.Tensor:
-    # more stable https://github.com/pytorch/pytorch/issues/41663
-    gumbel_dist = torch.distributions.gumbel.Gumbel(
-        torch.tensor(0.0, device=logits.device, dtype=logits.dtype),
-        torch.tensor(1.0, device=logits.device, dtype=logits.dtype),
-    )
-    gumbels = gumbel_dist.sample(logits.shape)
-
-    gumbels = (logits + gumbels) / tau  # ~Gumbel(logits,tau)
-    y_soft = gumbels.softmax(dim)
-
-    if hard:
-        # Straight through.
-        index = y_soft.max(dim, keepdim=True)[1]
-        y_hard = torch.zeros_like(logits, memory_format=torch.legacy_contiguous_format).scatter_(dim, index, 1.0)
-        ret = y_hard - y_soft.detach() + y_soft
-    else:
-        # Reparametrization trick.
-        ret = y_soft
-    return ret
-
-
-
-# def gumbel_softmax(
-#         logits,
-#         tau: float = 1.,
-#         hard = False,
-#         dim: int = -1,
-#     ):
-
-#     gumbels = (
-#         -torch.empty_like(logits, memory_format=torch.legacy_contiguous_format)
-#         .exponential_()
-#         .log()
-#     )  # ~Gumbel(0,1)
-#     if not gumbels.isfinite().all():
-#         print("gumbels are infinite")
-#         breakpoint()
-
-#     gumbels = (logits + gumbels) / tau  # ~Gumbel(logits,tau)
-#     y_soft = gumbels.softmax(dim)
-
-#     if hard:
-#         # Straight through.
-#         index = y_soft.max(dim, keepdim=True)[1]
-
-#         y_hard = torch.zeros_like(
-#             logits, memory_format=torch.legacy_contiguous_format
-#         ).scatter_(dim, index, 1.0)
-#         ret = y_hard - y_soft.detach() + y_soft
-#     else:
-#         ret = y_soft
-
-#     return ret
-
-class AdaptiveFanInGumbel(nn.Module):
-    def __init__(self, config: LlamaConfig):
-        super().__init__()
-        self.config = config
-        self.hidden_size = config.hidden_size
-        
-        self.gumbel_tau = config.gumbel_tau
-
-        self.merging_type = self.config.merging_type
-        self.scale_not_pruned_gradients = self.config.scale_not_pruned_gradients
-        print("self.merging_type", self.merging_type)
-        print("self.scale_not_pruned_gradients", self.scale_not_pruned_gradients)
-        
-        if self.merging_type == 'next_token_merge_mlp':
-            self.fan_in_mlp = nn.Linear(self.hidden_size * 2, 2, bias=True)
-        else:
-            self.fan_in_mlp = nn.Linear(self.hidden_size, 2, bias=True)
-
-        assert config.generate_merges_transform_impl in [ 'python', 'cuda_kernel', 'python_selective_not_merge' ]
-        self.generate_merges_transform_impl = config.generate_merges_transform_impl
-        print("AdaptiveFanInGumbel generate_merges_transform_impl:", self.generate_merges_transform_impl)
-        
-        approximate_batch_size_length = 100
-        max_seq_len_buffer = torch.arange(config.max_position_embeddings).unsqueeze(0).repeat(approximate_batch_size_length, 1)
-        self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
-        
-    
-    def set_gumbel_tau(self, new_tau):
-        self.gumbel_tau = new_tau
-
-    def generate_merges_transform(self, merging_map, attention_mask, special_embeddings_mask):
-        
-        if self.generate_merges_transform_impl == 'python':
-            return self._generate_merges_transform(merging_map, attention_mask, special_embeddings_mask)
-        elif self.generate_merges_transform_impl == 'cuda_kernel':
-            # call cuda implementation
-            merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = generate_merges_transform(merging_map, attention_mask.bool(), special_embeddings_mask.bool())
-
-            if CHECK_WITH_PYTHON:
-                py_merged_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = self._generate_merges_transform(merging_map, attention_mask)
-                
-                assert (merged_embeddings_transform == py_merged_embeddings_transform).all()
-                assert (merged_embeddings_counts == py_merged_embeddings_counts).all()
-                assert (merged_attention_mask == py_merged_attention_mask).all()
-            
-            return merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask
-        else:
-            raise ValueError(f"invalid value for self.generate_merges_transform_impl={self.generate_merges_transform_impl}")
-
-    @classmethod
-    def _generate_merges_transform(klass, merging_map, attention_mask, special_embeddings_mask):
-        """Generates differentiable merges transform matrix
-
-        Args:
-            merging_map (torch.LongTensor ~ [ bs, seq_len, 2 ]): One-Hot-Encoded logits of probabilities either token should be merged
-            attention_mask (torch.BoolTensor ~ [ bs, seq_len ]): Attention mask
-
-        Returns:
-            aggregated_embeddings_transform (torch.Tensor ~ [ bs, new_seq_len, seq_len ]): Matrix for merging tokens
-            merged_embeddings_counts (torch.Tensor ~ [batch_size, new_seq_len]): Count of merged tokens for corresponding new tokens
-            merged_attention_mask (torch.Tensor ~ [batch_size, new_seq_len]: Attention mask for new sequence length embeddings
-        """
-
-        # merging_map ~ [ bs, seq_len, 2 ]
-        batch_size, seq_len = merging_map.shape[:2]
-        device = merging_map.device
-
-        # Example:
-        # [
-        #   [ 1, 2, 2, 3, 1, 0 ],
-        #   [ 1, 2, 2, 1, 0, 0 ],
-        # ]
-        merged_embeddings_counts = torch.zeros([batch_size, seq_len], dtype=torch.long, device=device)
-
-        # Example
-        # [
-        #   [ 1, 1, 1, 1, 1, 0 ],
-        #   [ 1, 1, 1, 1, 0, 0 ],
-        # ]
-        merged_attention_mask = torch.zeros([batch_size, seq_len], device=device)
-
-        aggregated_embeddings_transform = torch.zeros([batch_size, seq_len, seq_len], device=device)
-        # aggregated_embeddings_transform[:, 0, 0] = 1
-
-        total_initial_num_embeddings = attention_mask.sum(dim=-1).to(torch.long)
-
-        max_new_seq_len = 0
-        for batch_i in range(batch_size):
-            new_seq_len_i = 0
-            total_tokens_count = total_initial_num_embeddings[batch_i].item()
-
-            for seq_len_i in range(0, total_tokens_count):
-                want_merge = merging_map[batch_i, seq_len_i, 1].item() > merging_map[batch_i, seq_len_i, 0].item()
-
-                if want_merge or seq_len_i == total_tokens_count - 1:
-                    merged_embeddings_counts[batch_i, new_seq_len_i] += 1
-                    aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 1]
-                    new_seq_len_i += 1
-                else:
-                    merged_embeddings_counts[batch_i, new_seq_len_i] += 1
-                    # aggregated_embeddings_transform[batch_i, new_seq_len_i, seq_len_i] = merging_map[batch_i, seq_len_i, 0]
-                    # new_seq_len_i += 1
-
-            merged_attention_mask[batch_i, :new_seq_len_i] = 1
-            max_new_seq_len = max(max_new_seq_len, new_seq_len_i)
-            # breakpoint()
-
-        # [ bs, new_seq_len ]
-        merged_embeddings_counts = merged_embeddings_counts[:, :max_new_seq_len]
-        merged_attention_mask = merged_attention_mask[:, :max_new_seq_len]
-        # [ bs, new_seq_len, seq_len ]
-        aggregated_embeddings_transform = aggregated_embeddings_transform[:, :max_new_seq_len, :]
-
-        return aggregated_embeddings_transform, merged_embeddings_counts, merged_attention_mask
-
-
-    # @torch.compiler.disable(recursive=True)
-    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, full_unmerge=False) -> AdaptiveFanInOutput:
-        """_summary_
-
-        Args:
-            hidden_state (torch.Tensor ~ [ bs, seq_len, hidden_size ]): Transformer hidden states
-            attention_mask (torch.Tensor ~ [ bs, seq_len ]): Hidden states padding attention mask
-            special_embeddings_mask (torch.Tensor ~ [ bs, seq_len ]): Mask for BOS / EOS tokens that could not be merged
-
-            merging_log_probas (torch.Tensor, optional): Force probabilities of merging. Should be used only for tests. Defaults to None.
-
-        Returns:
-            AdaptiveFanInOutput: outputs of the module
-        """
-
-        # hidden_state ~ [ bs, seq_len, hidden_size ]
-        assert hidden_state.shape[-1] == self.hidden_size
-
-        # attention_mask ~ [ bs, seq_len ]
-        assert hidden_state.shape[:2] == attention_mask.shape
-        assert attention_mask is not None
-
-        if special_embeddings_mask is None:
-            special_embeddings_mask = torch.zeros([hidden_state.shape[0], hidden_state.shape[1]], device=hidden_state.device)
-            special_embeddings_mask[:, 0] = 1
-
-        assert special_embeddings_mask is not None
-        assert special_embeddings_mask.shape == attention_mask.shape
-
-        batch_size = hidden_state.shape[0]
-        seq_len = hidden_state.shape[1]
-        hidden_dim = hidden_state.shape[2]
-        assert seq_len <= self.config.max_position_embeddings
-
-        if self.merging_type == 'next_token_merge_mlp':
-            merging_mask_stub = torch.zeros([batch_size, 1, hidden_dim * 2], device=hidden_state.device, dtype=hidden_state.dtype)
-
-            # joined prev and next tokens
-            # each embedding could be explained as: should it be merged with the next one embedding?
-            # [ bs, seq_len - 1, hidden_size * 2 ]
-            attn_output_pairs = torch.cat([ hidden_state[:, :-1], hidden_state[:, 1:] ], dim=-1)
-            # [ bs, seq_len, hidden_size * 2 ]
-            attn_output_pairs = torch.cat([ attn_output_pairs, merging_mask_stub ], dim=1)
-
-            # [ bs, seq_len, 2 ] # should be merged or not (probas)?
-            if merging_log_probas is None:
-                merging_log_probas = self.fan_in_mlp(attn_output_pairs)
-        elif self.merging_type == 'attention_output_mlp':
-            if merging_log_probas is None:
-                # def bp(grad):
-                #     strself = str(self)
-                #     # print("self", )
-                #     breakpoint()
-                #     return grad
-                # if self.training:
-                #     hidden_state.requires_grad = True
-                #     hidden_state.register_hook(bp)
-                merging_log_probas = self.fan_in_mlp(hidden_state)
-        elif self.merging_type == 'no_merging':
-            merging_log_probas = torch.zeros([batch_size, seq_len, 2], device=hidden_state.device)
-            merging_log_probas[:, :, 1] = 1
-            merging_log_probas += 1e-4
-            merging_log_probas = merging_log_probas.log()
-        else:
-            raise ValueError(f"unknown self.merging_type: {self.merging_type}")
-
-        # OHE: [ bs, seq_len, 2 ]
-        if self.training:
-            merging_map = gumbel_softmax(merging_log_probas, hard=True, dim=-1, tau=self.gumbel_tau)
-            # if merging_map.requires_grad:
-            #     def scale_gradients_by_count_of_non_zero_tokens(grad):
-            #         # grad ~ [ bs, seq_len, 2 ]
-            #         # [ 2 ]
-            #         grad_non_zero = (grad != 0).sum(dim=[0, 1])
-            #         grad_clone = grad.clone()
-            #         print("grad before", grad_clone.abs().sum(dim=[0, 1]))
-            #         grad_clone[:, :, 0] /= (grad_non_zero[0] + 1) / ((grad_non_zero.sum() + 1) / 2)
-            #         # grad_clone[:, :, 0] *= 2
-            #         grad_clone[:, :, 1] /= (grad_non_zero[1] + 1) / ((grad_non_zero.sum() + 1) / 2)
-            #         # grad_clone[:, :, 1] *= 100
-            #         print("grad after", grad_clone.abs().sum(dim=[0, 1]))
-            #         return grad_clone
-            #     merging_map.register_hook(scale_gradients_by_count_of_non_zero_tokens)
-        else:
-            merging_map = torch.zeros_like(merging_log_probas)
-            merging_map[:, :, 0] = (merging_log_probas[:, :, 0] > merging_log_probas[:, :, 1]).to(merging_map.dtype)
-            merging_map[:, :, 1] = 1 - merging_map[:, :, 0]
-
-        # def debug_hook(grad):
-        #     print("merging_map[0, :10]", merging_map[0, :10])
-        #     print("grad[0, :10]\n", grad[0, :10])
-        #     breakpoint()
-        #     return grad
-        # merging_map.register_hook(debug_hook)
-
-        # scale_not_pruned_gradients = self.scale_not_pruned_gradients
-        # def merging_map_hook(grad):
-        #     grad_0 = grad[:, :, 0]
-        #     grad_0_non_zero = (grad_0 != 0).sum()
-        #     grad_0_norm_l2 = grad_0.norm(2) / grad_0_non_zero
-        #     grad_1 = grad[:, :, 1]
-        #     grad_1_non_zero = (grad_1 != 0).sum()
-        #     grad_1_norm_l2 = grad_1.norm(2) / grad_1_non_zero
-            
-        #     print("grad_0_norm_l2", grad_0_norm_l2, "grad_1_norm_l2", grad_1_norm_l2)
-
-        #     if grad_0_norm_l2.item() > grad_1_norm_l2.item():
-        #         grad[:, :, 0] *= scale_not_pruned_gradients * grad_1_norm_l2 / grad_0_norm_l2
-            
-        #     return grad
-
-        # if scale_not_pruned_gradients > 0 and merging_map.requires_grad:
-        #     merging_map.register_hook(merging_map_hook)
-
-        # print("special_embeddings_mask", special_embeddings_mask)
-
-        # OHE: [ bs, seq_len, 2 ]
-        merging_map[~attention_mask.bool()] = 0
-        merging_map[special_embeddings_mask.bool()] = torch.tensor([0., 1.], dtype=merging_map.dtype, device=merging_map.device)
-
-        if self.max_seq_len_buffer.shape[0] < attention_mask.shape[0]:
-            self.max_seq_len_buffer.data = self.max_seq_len_buffer.data[:1].repeat(attention_mask.shape[0], 1)
-
-        # [ bs, new_seq_len, seq_len ] - состоит из нулей и единичек
-        merged_embeddings_transform, merged_embeddings_counts, merged_attention_mask = self.generate_merges_transform(merging_map, attention_mask, special_embeddings_mask)
-        
-        merged_special_embeddings_mask = torch.zeros([batch_size, merged_embeddings_transform.shape[1]], device=hidden_state.device)
-        merged_special_embeddings_mask[:, 0] = 1
-
-        arange_buffer_merged = self.max_seq_len_buffer[:batch_size, :merged_attention_mask.shape[1]]
-        merged_eos_mask = (arange_buffer_merged == merged_attention_mask.sum(dim=-1, keepdim=True).to(torch.long) - 1)
-
-        merged_special_embeddings_mask[merged_eos_mask] = 1
-        
-        # assert (merged_special_embeddings_mask.sum(-1) == 2).all()
-        
-        merged_embeddings_transform = merged_embeddings_transform.to(hidden_state.dtype)
-
-        # [ bs, new_seq_len, emb_dim ] = [ bs, new_seq_len, seq_len ] @ [ bs, seq_len, emb_dim ]
-        merged_hidden_states = torch.bmm(merged_embeddings_transform, hidden_state)
-
-        # gradients for a first merging
-        residual_hidden_state = hidden_state * merging_map[:, :, 0:1]
-        # residual_hidden_state = residual_hidden_state.detach()
-
-        # if merging_map.requires_grad:
-        #     def merged_hidden_states_hook(grad):
-        #         print("merged_hidden_states_hook grad norm:", grad.norm(2))
-        #         return grad
-
-        #     def residual_hidden_state_register_hook(grad):
-        #         print("residual_hidden_state grad norm:", grad.norm(2))
-        #         return grad
-
-        #     merged_hidden_states.register_hook(merged_hidden_states_hook)
-        #     residual_hidden_state.register_hook(residual_hidden_state_register_hook)
-
-        # breakpoint()
-
-        res = AdaptiveFanInOutput(
-            hidden_state=merged_hidden_states,
-            residual_hidden_state=residual_hidden_state,
-            attention_mask=merged_attention_mask,
-            merged_embeddings_counts=merged_embeddings_counts,
-            special_embeddings_mask=merged_special_embeddings_mask,
-            merging_map=merging_map,
-            merging_map_logits=merging_log_probas,
-        )
-
-        return res
-
-
 class HardConcreteGate(nn.Module):
     def __init__(self,
                  max_seq_len=2048,
@@ -517,9 +174,6 @@ class HardConcreteGate(nn.Module):
         self.register_buffer("random_buffer", torch.rand(1, max_seq_len, 1, dtype=torch.float32), persistent=False)
 
         self.activation = nn.Sigmoid()
-        # self.activation = nn.LeakyReLU()
-
-        # self.p_open = self.get_p_open()
 
         return
 
@@ -741,30 +395,49 @@ class AdaptiveFanInHCG(nn.Module):
         # print("concrete_bool", concrete[0, 49:52])
         # print("hidden_state before scale", hidden_state[0, 49:52].sum(dim=-1))
 
+        # TODO REMOVE!
+        # concrete[0, 1, 0] = 0.0
+        # print("TODO REMOVE! concrete", concrete[:, :, 0])
+
+        # 4 - [ 0, 0,0 ,  ]
+        # 5 - [ 0.4, 0.5, 0.6,  ]
+        # 6 - [ 0.4, 0.4, 0.2,  ]
+
         hidden_state = concrete * hidden_state
 
         # print("hidden_state.shape", hidden_state.shape)
 
-        PRUNE_PERCENT = 0.0
-        attention_mask_dtype = attention_mask.dtype
-        concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
+        # print("self.training", self.training)
+        if self.training:
+            # attention_mask[0, 1] = 0
+            pass
+        else:
+            PRUNE_PERCENT = 0.0
+            attention_mask_dtype = attention_mask.dtype
+            concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
+            # print("concrete_bool", concrete_bool.sum().item(), '/', concrete_bool.numel())
 
-        hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m, concrete_merged = prune_tokens_concrete(
-            hidden_state=hidden_state,
-            concrete_bool=concrete_bool,
-            attention_mask=attention_mask,
-            special_embeddings_mask=special_embeddings_mask.long(),
-            concrete=concrete.squeeze(-1).to(torch.float32),
-        )
+            hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m, concrete_merged = prune_tokens_concrete(
+                hidden_state=hidden_state,
+                concrete_bool=concrete_bool,
+                attention_mask=attention_mask,
+                special_embeddings_mask=special_embeddings_mask.long(),
+                concrete=concrete.squeeze(-1).to(torch.float32),
+            )
 
-        if concrete_merged.dtype != hs_dtype:
-            concrete_merged = concrete_merged.to(hs_dtype)
+            if concrete_merged.dtype != hs_dtype:
+                concrete_merged = concrete_merged.to(hs_dtype)
 
-        concrete = concrete_merged.unsqueeze(-1)
+            # print("hidden_state_m", hidden_state_m.shape)
+            # assert (hidden_state_m == hidden_state).all()
+            # assert (merged_attention_mask == attention_mask).all()
+            # assert (special_embeddings_mask_m == special_embeddings_mask).all()
+            # assert (concrete_merged == concrete).all()
 
-        hidden_state = hidden_state_m
-        attention_mask = merged_attention_mask
-        special_embeddings_mask = special_embeddings_mask_m
+            concrete = concrete_merged.unsqueeze(-1)
+            hidden_state = hidden_state_m
+            attention_mask = merged_attention_mask
+            special_embeddings_mask = special_embeddings_mask_m
 
 
         res = AdaptiveFanInOutput(
@@ -910,33 +583,15 @@ class AdaptiveFanOutHCG(nn.Module):
             AdaptiveFanOutOutput: input hidden states
         """
 
-        # print("fanout hcg residual_hidden_states", residual_hidden_states[0, 49:52].sum(dim=-1))
-        # print("fanout hcg hidden_states", hidden_states[0, 49:52].sum(dim=-1))
-
         if self.projection_enabled:
             residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
         else:
             residual_hidden_states_projection = residual_hidden_states
 
-        # print("fanout hcg residual_hidden_states_projection", residual_hidden_states_projection[0, 49:52].sum(dim=-1))
-
-        # if not self.training:
-        # if False:
-            # print("merged_embeddings_counts", merged_embeddings_counts.shape, merged_embeddings_counts)
-            # print("merged_embeddings_counts_flip_cumsum_flip", merged_embeddings_counts.flip(-1).cumsum(-1).flip(-1))
-            # breakpoint()
-            # print("residual_attention_mask", residual_attention_mask.shape, residual_attention_mask)
-            # print("hidden_states", hidden_states.shape)
-            # print("residual_hidden_states_projection", residual_hidden_states_projection.shape)
-            # assert (merged_embeddings_counts.sum(dim=-1) == residual_attention_mask.sum(dim=-1)).all()
-
-        hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection, residual_attention_mask)
-
-        # else:
-        #     hidden_states = hidden_states + residual_hidden_states_projection
-
-        # print("fanout hcg  hidden_states restored", hidden_states[0, 49:52].sum(dim=-1))
-        # breakpoint()
+        if self.training:
+            hidden_states = hidden_states + residual_hidden_states_projection
+        else:
+            hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection, residual_attention_mask)
 
         return AdaptiveFanOutOutput(hidden_state=hidden_states)
 
@@ -1097,7 +752,9 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             if config.merging_type == 'hcg':
                 return AdaptiveFanInHCG(config)
 
-            return AdaptiveFanInGumbel(config)
+            raise ValueError(f"Unknown merging type: {config.merging_type}")
+
+
         self.adaptive_down = nn.ModuleList(
             [get_fan_in_module(is_dummy_fan_in[i]) for i in range(num_hidden_layers_half)]
         )
@@ -1273,7 +930,8 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
         for i, (decoder_layer, adaptive_down_layer) in enumerate(zip(self.layers_down, self.adaptive_down)):
 
-            # print("down layers", i, "current_concrete", current_concrete is not None)
+            # if current_concrete is not None:
+            #     print("down layers", i, "current_concrete", current_concrete.sum(), '/', current_concrete.numel())
 
             if current_concrete is not None:
                 hidden_states = hidden_states * current_concrete
@@ -1300,6 +958,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                     use_cache,
                     cache_position,
                     loop_down_position_embeddings,
+                    current_concrete, # TODO not supported for gradient checkpointing
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -1311,11 +970,12 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                     use_cache=use_cache,
                     cache_position=cache_position,
                     position_embeddings=loop_down_position_embeddings,
+                    concrete=current_concrete,
                 )
 
             hidden_states = layer_outputs[0]
 
-            adaptive_down_layer: AdaptiveFanInGumbel
+            adaptive_down_layer: AdaptiveFanInHCG
 
             current_full_unmerge = False
             if full_unmerge is not None:
@@ -1351,22 +1011,34 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             loop_down_special_embeddings_mask = adaptive_down_output.special_embeddings_mask
 
             if not isinstance(adaptive_down_layer, NoOpFanIn):
-            # if not self.training and not isinstance(adaptive_down_layer, NoOpFanIn):
-                past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+                if not adaptive_down_layer.training:
+                    # TODO
+                    print("TODO FIX ME - use merging kernel here")
+                    cache_position = cache_position[:hidden_states.shape[1]]
+                    loop_down_position_ids = loop_down_position_ids[:, :hidden_states.shape[1]]
+                    loop_down_position_embeddings = (loop_down_position_embeddings[0][:, :hidden_states.shape[1]], loop_down_position_embeddings[1][:, :hidden_states.shape[1]])
 
-                cache_position = cache_position[:hidden_states.shape[1]]
-                loop_down_position_ids = loop_down_position_ids[:, :hidden_states.shape[1]]
-                loop_down_position_embeddings = (loop_down_position_embeddings[0][:, :hidden_states.shape[1]], loop_down_position_embeddings[1][:, :hidden_states.shape[1]])
+                    # cache_position = torch.cat([cache_position[:1], cache_position[2:]], dim=0)
+                    # loop_down_position_ids = torch.cat([loop_down_position_ids[:, :1], loop_down_position_ids[:, 2:]], dim=1)
+                    # loop_down_position_embeddings = (torch.cat([loop_down_position_embeddings[0][:, :1], loop_down_position_embeddings[0][:, 2:]], dim=1), torch.cat([loop_down_position_embeddings[1][:, :1], loop_down_position_embeddings[1][:, 2:]], dim=1))
+                else:
+                    # TODO Для того, чтобы по-честному посчитать это, надо
+                    # сделать cache_position батчовым. Но он не батчовый сейчас
+                    cache_position = cache_position[:hidden_states.shape[1]]
+                    loop_down_position_ids = loop_down_position_ids * current_concrete
+                    loop_down_position_embeddings = (loop_down_position_embeddings[0] * current_concrete, loop_down_position_embeddings[1] * current_concrete)
+
 
                 # concrete = adaptive_down_output.merging_map.bool().flatten()
                 # cache_position = cache_position[concrete]
                 # loop_down_position_ids = loop_down_position_ids[:, concrete]
                 # loop_down_position_embeddings = (loop_down_position_embeddings[0][:, concrete], loop_down_position_embeddings[1][:, concrete])
 
-                if loop_down_causal_mask is not None:
-                    loop_down_causal_mask = self._update_causal_mask(
-                        loop_down_attention_mask, hidden_states, cache_position, past_key_values, output_attentions
-                    )
+                loop_down_causal_mask = loop_down_attention_mask
+                # if loop_down_causal_mask is not None:
+                #     loop_down_causal_mask = self._update_causal_mask(
+                #         loop_down_attention_mask, hidden_states, cache_position, past_key_values, output_attentions
+                #     )
 
 
             # else leave it not changed
@@ -1388,7 +1060,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
             # print("up layers", i, "current_concrete", current_concrete is not None)
 
-            if current_concrete is not None:
+            if current_concrete is not None and i > 0: # i > 0 to avoid double application of concrete
                 hidden_states = hidden_states * current_concrete
 
             if output_hidden_states:
@@ -1770,7 +1442,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
             sum_pruned_tokens=torch.tensor(outputs.sum_pruned_tokens, device=logits.device),
-            # fan_in_merging_maps=outputs.fan_in_merging_maps,
+            fan_in_merging_maps=outputs.fan_in_merging_maps,
             fan_in_merging_logits=outputs.fan_in_merging_logits,
             fan_in_merging_logits_attention_mask=outputs.fan_in_merging_logits_attention_mask,
         )

@@ -269,6 +269,7 @@ class LlamaAttention(nn.Module):
         attention_mask: Optional[torch.Tensor],
         past_key_value: Optional[Cache] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        concrete: Optional[torch.Tensor] = None,
         **kwargs: Unpack[FlashAttentionKwargs],
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         input_shape = hidden_states.shape[:-1]
@@ -278,9 +279,18 @@ class LlamaAttention(nn.Module):
         key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
+        concrete_view = None
+        if concrete is not None:
+            batch_size = concrete.shape[0]
+            concrete_view = concrete.view(batch_size, 1, -1, 1)
+            query_states = query_states * concrete_view
+            key_states = key_states * concrete_view
+            value_states = value_states * concrete_view
+
         cos, sin = position_embeddings
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
+        assert past_key_value is None, 'past kv is not supported by TWLH'
         if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
@@ -296,19 +306,25 @@ class LlamaAttention(nn.Module):
             else:
                 attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
 
-        attn_output, attn_weights = attention_interface(
-            self,
-            query_states,
-            key_states,
-            value_states,
-            attention_mask,
-            dropout=0.0 if not self.training else self.attention_dropout,
-            scaling=self.scaling,
-            **kwargs,
-        )
+        # if concrete is not None and concrete.sum().item() < concrete.numel():
+        #     print("attention layer", self.layer_idx)
+        #     breakpoint()
+        #     extra_query_row = torch.zeros([*query_states.shape[:3], 1], device=query_states.device, dtype=query_states.dtype  )
+        #     extra_key_row   = torch.zeros([*key_states.shape[:3], 1], device=key_states.device, dtype=key_states.dtype)
+        #     extra_value_row = torch.zeros([*value_states.shape[:3], 1], device=value_states.device, dtype=value_states.dtype)
+
+        #     query_states = torch.cat([query_states, extra_query_row], dim=-1)
+        #     key_states = torch.cat([key_states, extra_key_row], dim=-1)
+        #     value_states = torch.cat([value_states, extra_value_row], dim=-1)
+
+        #     query_concrete = concrete.unsqueeze(0).repeat(query_states.shape[0], query_states.shape[1], 1, query_states.shape[3])
+        #     query_states[:, :, concrete.bool(), -1] = 1
+
+        attn_output, attn_weights = attention_interface( self, query_states, key_states, value_states, attention_mask, dropout=0.0 if not self.training else self.attention_dropout, scaling=self.scaling, **kwargs,)
 
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
+
         return attn_output, attn_weights
 
 
@@ -317,6 +333,7 @@ class LlamaDecoderLayer(nn.Module):
         super().__init__()
         self.hidden_size = config.hidden_size
 
+        self.layer_idx = layer_idx
         config._attn_implementation = 'flash_attention_2'
         self.self_attn = LlamaAttention(config=config, layer_idx=layer_idx)
 
@@ -334,11 +351,18 @@ class LlamaDecoderLayer(nn.Module):
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        concrete=None,
         **kwargs: Unpack[FlashAttentionKwargs],
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
 
+        if concrete is not None:
+            hidden_states = hidden_states * concrete
+
         hidden_states = self.input_layernorm(hidden_states)
+
+        if concrete is not None:
+            hidden_states = hidden_states * concrete
 
         # Self Attention
         hidden_states, self_attn_weights = self.self_attn(
@@ -350,15 +374,25 @@ class LlamaDecoderLayer(nn.Module):
             use_cache=use_cache,
             cache_position=cache_position,
             position_embeddings=position_embeddings,
+            concrete=concrete,
             **kwargs,
         )
+
         hidden_states = residual + hidden_states
 
         # Fully Connected
         residual = hidden_states
+
+        if concrete is not None:
+            hidden_states = hidden_states * concrete
+
         hidden_states = self.post_attention_layernorm(hidden_states)
+
         hidden_states = self.mlp(hidden_states)
         hidden_states = residual + hidden_states
+
+        if concrete is not None:
+            hidden_states = hidden_states * concrete
 
         outputs = (hidden_states,)
         if output_attentions:

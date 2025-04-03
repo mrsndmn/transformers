@@ -9,7 +9,7 @@ import torch
 
 from transformers import TrainerCallback
 from transformers.models.llama.configuration_llama import LlamaConfig
-from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInGumbel, AdaptiveFanInGumbel, AdaptiveLlamaForCausalLM, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel, AdaptiveCausalLMOutputWithPast
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel, AdaptiveCausalLMOutputWithPast
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 from transformers.utils import is_sagemaker_mp_enabled
@@ -89,7 +89,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     eval_steps: int = field(default=1000)
     save_strategy: str = field(default="no")
     save_steps: int = 10000
-    save_total_limit: Optional[int] = field(default=5)
+    save_total_limit: Optional[int] = field(default=1)
 
     prohibit_end_of_sentence_pruning: bool = field(default=False)
     scale_token_frequency: bool = field(default=False)
@@ -110,7 +110,6 @@ class AdaptiveTrainingArguments(TrainingArguments):
     training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
     model_type: str = "dummy" # dummy | pretrained | SmolLM-1.7B
     
-    ce_merging_loss_weight: float = 0.0
     full_unmerge_loss_weight: float = 1.0
     hcg_loss_weight: float = 0.0
     hcg_loss_weight_dynamic: bool = False
@@ -368,46 +367,10 @@ class AdaptiveLlamaTrainer(Trainer):
 
         assert sum(model_config.full_unmerge) == 0
 
-        ce_merging_loss_sum = torch.tensor(0.0, device=causal_lm_loss.device)
         count_merging_losses = 0
-        sum_pruned_tokens = 0
-
-        if self.args.ce_merging_loss_weight > 0.0:
-            for i, (fan_in_merging_logits, fan_in_merging_logits_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
-                # ce_targets = outputs.fan_in_merging_maps[i][:, :, 1].flatten()
-                if fan_in_merging_logits is None:
-                    continue
-
-                fan_in_merging_logits = fan_in_merging_logits.flatten(0, 1)
-                ce_targets = torch.zeros([ fan_in_merging_logits.shape[0] ], device=fan_in_merging_logits.device, dtype=torch.long)
-                ce_targets[fan_in_merging_logits_attention_mask.flatten().bool() == False] = -100
-                ce_merging_loss_sum += torch.nn.functional.cross_entropy(fan_in_merging_logits, ce_targets, label_smoothing=0.1)
-
-                # def debug_grad(grad):
-                #     print(grad)
-                #     breakpoint()
-                #     return grad
-                # ce_merging_loss_sum.register_hook(debug_grad)
-
-                count_merging_losses+=1
-                # breakpoint()
-                # print("fan_in_merging_logits", fan_in_merging_logits[:2])
-                # print("ce_merging_loss_sum", i, ce_merging_loss_sum)
-                    # print(fan_in_merging_logits[:10])
-
-            if count_merging_losses > 0:
-                ce_merging_loss_sum /= count_merging_losses
-
-        ce_merging_loss_sum *= self.args.ce_merging_loss_weight
-
-        if self.args.gumbel_loss_weight_dynamic:
-            exp_scale = 30 * max(causal_lm_loss.detach().item() - 1.8, 0)
-            ce_merging_loss_sum /= torch.exp(torch.tensor(exp_scale, device=causal_lm_loss.device))
-
 
         count_hcg_layers = 0
         hcg_loss = 0
-        sum_pruned_tokens = 0
         if self.args.hcg_loss_weight != 0.0 and  model_config.merging_type == 'hcg':
             for i, (hcg_p_open, hcg_p_open_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                 if hcg_p_open is None:
@@ -416,17 +379,13 @@ class AdaptiveLlamaTrainer(Trainer):
                 count_hcg_layers += 1
                 # [ bs * seq_len ]
                 hcg_p_open = hcg_p_open.squeeze(2).flatten()
-                concrete_non_masked = hcg_p_open[hcg_p_open_attention_mask.flatten().bool()]
+                p_open_non_masked = hcg_p_open[hcg_p_open_attention_mask.flatten().bool()]
 
-                hcg_loss += concrete_non_masked.mean()
-
-            sum_pruned_tokens = sum([ x[:, :, 0].sum().item() for x in outputs.fan_in_merging_logits if x is not None])
-
+                hcg_loss += p_open_non_masked.mean()
 
             if count_hcg_layers > 0:
                 hcg_loss /= count_hcg_layers
 
-        total_tokens = attention_mask.sum().item()
 
         if self.args.hcg_loss_weight_dynamic and self.args.hcg_loss_max_value > 0:
             raise ValueError("hcg_loss_max_value cant be used with hcg_loss_max_value")
@@ -449,16 +408,17 @@ class AdaptiveLlamaTrainer(Trainer):
             hcg_loss *= self.args.hcg_loss_weight
 
         # loss = causal_lm_loss
-        pruning_loss = causal_lm_loss.mean()
-        loss = pruning_loss + ce_merging_loss_sum + hcg_loss
+        lm_loss = causal_lm_loss.mean()
+        loss = lm_loss + hcg_loss
 
         # print("pruning_loss", pruning_loss)
-        # print("ce_merging_loss", ce_merging_loss_sum)
         # print("hcg_loss", hcg_loss)
 
         outputs.loss = loss
 
         # assert ~ loss.isnan().any(), 'loss cant be none'
+        total_tokens = attention_mask.sum().item()
+        sum_pruned_tokens = 0
 
         if force_log or log_metrics and self.state.global_step % self.args.logging_steps == 0:
             outputs_loss = causal_lm_loss
@@ -469,47 +429,52 @@ class AdaptiveLlamaTrainer(Trainer):
             if isinstance(hcg_loss_to_log, torch.Tensor):
                 hcg_loss_to_log = hcg_loss_to_log.item()
 
-            ce_merging_loss_sum_float = ce_merging_loss_sum
-            if isinstance(ce_merging_loss_sum_float, torch.Tensor):
-                ce_merging_loss_sum_float = ce_merging_loss_sum_float.item()
-
             log_info = {
-                f"{log_prefix}/pruning_loss": pruning_loss.detach().item(),
+                f"{log_prefix}/lm_loss": lm_loss.detach().item(),
                 f"{log_prefix}/hcg_loss": hcg_loss_to_log,
-                f"{log_prefix}/ce_merging_loss": ce_merging_loss_sum_float,
-                f"{log_prefix}/sum_pruned_tokens": (total_tokens - sum_pruned_tokens),
-                f"{log_prefix}/not_pruned_tokens": sum_pruned_tokens,
                 f"{log_prefix}/total_tokens": total_tokens,
-                f"{log_prefix}/not_pruned_tokens_percent": (sum_pruned_tokens / (total_tokens + 1e-4)),
             }
 
-            if model_config.merging_type == 'hcg':
-                for i, (hcg_p_open, fan_in_merging_logits_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
-                    if hcg_p_open is None:
-                        continue
+            assert model_config.merging_type == 'hcg'
+            for i, (concrete, hcg_p_open, fan_in_merging_logits_attention_mask) in enumerate(zip(outputs.fan_in_merging_maps, outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
+                if hcg_p_open is None:
+                    continue
 
-                    # [ bs * seq_len ]
-                    hcg_p_open = hcg_p_open.squeeze(2).flatten()
-                    concrete_non_masked = hcg_p_open[fan_in_merging_logits_attention_mask.flatten().bool()]
-                    log_info[f'{log_prefix}/concrete_mean_{i}'] = concrete_non_masked.mean().item()
-                    log_info[f'{log_prefix}/concrete_lt_0.01'] = (concrete_non_masked < 0.01).sum().item()
-                    log_info[f'{log_prefix}/concrete_lt_0.1'] = (concrete_non_masked < 0.1).sum().item()
-                    log_info[f'{log_prefix}/concrete_lt_0.5'] = (concrete_non_masked < 0.5).sum().item()
-                    q = torch.tensor([0.1, 0.5, 0.9], device=concrete_non_masked.device)
+                # [ bs * seq_len ]
+                hcg_p_open = hcg_p_open.squeeze(2).flatten()
+                p_open_non_masked = hcg_p_open[fan_in_merging_logits_attention_mask.flatten().bool()]
+                concrete_non_masked = concrete.flatten()[fan_in_merging_logits_attention_mask.flatten().bool()]
 
-                    # [ 3 ]
-                    concrete_quantiles = torch.quantile(concrete_non_masked.float(), q, dim=0, keepdim=False)
-                    # [ 3 ]
-                    log_info[f'{log_prefix}/concrete_q10_mean_{i}'] = concrete_quantiles[0].item()
-                    log_info[f'{log_prefix}/concrete_q50_mean_{i}'] = concrete_quantiles[1].item()
-                    log_info[f'{log_prefix}/concrete_q90_mean_{i}'] = concrete_quantiles[2].item()
+                log_info[f'{log_prefix}/concrete_mean_{i}'] = p_open_non_masked.mean().item()
+                log_info[f'{log_prefix}/concrete_lt_0.01'] = (p_open_non_masked < 0.01).sum().item()
+                log_info[f'{log_prefix}/concrete_lt_0.1'] = (p_open_non_masked < 0.1).sum().item()
+                log_info[f'{log_prefix}/concrete_lt_0.5'] = (p_open_non_masked < 0.5).sum().item()
 
-                    if self.args.learnt_temperature:
-                        log_info[f'{log_prefix}/concrete_{i}_temperature'] = model.model.adaptive_down[i].hcg.temperature.item()
+                pruned_tokens_p_open = (p_open_non_masked == 0).sum().item()
+                not_pruned_tokens_p_open = total_tokens - pruned_tokens_p_open
 
-                for i, adaptive_down in enumerate(model_unwrapped.model.adaptive_down):
-                    if isinstance(adaptive_down, AdaptiveFanInGumbel):
-                        log_info[f'{log_prefix}/gumbel_tau_{i}'] = adaptive_down.gumbel_tau
+                pruned_tokens_concrete = (concrete_non_masked == 0).sum().item()
+                not_pruned_tokens_concrete = total_tokens - pruned_tokens_concrete
+
+                log_info[f'{log_prefix}/p_open_pruned_tokens'] = pruned_tokens_p_open
+                log_info[f'{log_prefix}/p_open_not_pruned_tokens'] = not_pruned_tokens_p_open
+                log_info[f'{log_prefix}/p_open_pruned_tokens_percent'] = pruned_tokens_p_open / total_tokens
+
+                log_info[f'{log_prefix}/concrete_pruned_tokens'] = pruned_tokens_concrete
+                log_info[f'{log_prefix}/concrete_not_pruned_tokens'] = not_pruned_tokens_concrete
+                log_info[f'{log_prefix}/concrete_pruned_tokens_percent'] = pruned_tokens_concrete / total_tokens
+
+                q = torch.tensor([0.1, 0.5, 0.9], device=p_open_non_masked.device)
+
+                # [ 3 ]
+                concrete_quantiles = torch.quantile(p_open_non_masked.float(), q, dim=0, keepdim=False)
+                # [ 3 ]
+                log_info[f'{log_prefix}/concrete_q10_mean_{i}'] = concrete_quantiles[0].item()
+                log_info[f'{log_prefix}/concrete_q50_mean_{i}'] = concrete_quantiles[1].item()
+                log_info[f'{log_prefix}/concrete_q90_mean_{i}'] = concrete_quantiles[2].item()
+
+                if self.args.learnt_temperature:
+                    log_info[f'{log_prefix}/concrete_{i}_temperature'] = model.model.adaptive_down[i].hcg.temperature.item()
 
             if outputs_no_pruning:
                 log_info[f"{log_prefix}/no_pruning_loss"] = outputs_no_pruning.loss.detach().item()
@@ -517,48 +482,6 @@ class AdaptiveLlamaTrainer(Trainer):
             self.log(log_info)
 
         return (loss, outputs) if return_outputs else loss
-
-    def training_step(self, model: AdaptiveLlamaForCausalLM, *args, **kwargs):
-        result = super().training_step(model, *args, **kwargs)
-        
-        base_temperature_value = 1.0
-        current_tau = base_temperature_value + abs(math.sin(math.pi * self.state.global_step / 2000)) * (self.args.temperature_schedule_max_value - base_temperature_value)
-        
-        if self.state.global_step % self.args.logging_steps == 0:
-            extra_log = dict()
-            if self.args.temperature_schedule:
-                extra_log['tau'] = current_tau
-
-            if False and hasattr(model.model, "adaptive_down"):
-                for i, adown in enumerate(model_unwrapped.model.adaptive_down):
-                    if isinstance(adown, (AdaptiveFanInGumbel)):
-                        merger_mpl_grad = adown.fan_in_mlp.weight.grad.norm(2).item()
-                        fan_in_mlp_weight_grad_sum = adown.fan_in_mlp.weight.grad.sum(1)
-                        fan_in_mlp_weight_sum = adown.fan_in_mlp.weight.sum(1)
-                        fan_in_mlp_bias = adown.fan_in_mlp.bias
-                        assert merger_mpl_grad is not None, "merger_mpl_grad is expected to be not none"
-                        extra_log[f"merger_mpl_grad_norm_{i}"] = merger_mpl_grad
-                        extra_log[f"merger_mpl_weight_grad_sum_0_{i}"] = fan_in_mlp_weight_grad_sum[0].item()
-                        extra_log[f"merger_mpl_weight_grad_sum_1_{i}"] = fan_in_mlp_weight_grad_sum[1].item()
-
-                        extra_log[f"merger_mpl_weight_sum_0_{i}"] = fan_in_mlp_weight_sum[0].item()
-                        extra_log[f"merger_mpl_weight_sum_1_{i}"] = fan_in_mlp_weight_sum[1].item()
-                        
-                        if fan_in_mlp_bias is not None:
-                            extra_log[f"merger_mpl_bias_0_{i}"] = fan_in_mlp_bias[0].item()
-                            extra_log[f"merger_mpl_bias_1_{i}"] = fan_in_mlp_bias[1].item()
-
-            self.log(extra_log)
-
-        if self.args.temperature_schedule:
-            if hasattr(model.model, "adaptive_down"):
-                # if self.state.global_step % 50 == 0:
-                #     print("self.state.global_step, tau=", current_tau, "global_step", self.state.global_step)
-                for i, adown in enumerate(model_unwrapped.model.adaptive_down):
-                    adown.set_gumbel_tau(current_tau)
-        
-        return result
-
 
     def update_eval_set_kwargs_containers(self, model, inputs):
 
