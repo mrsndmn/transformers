@@ -316,7 +316,7 @@ __global__ void backward_fan_out_straight_residual_hidden_states_kernel(
         // for residual_hidden_states_grad
         for (int residuals_grad_i = 0; residuals_grad_i < num_repeats - 1; ++residuals_grad_i) {
             int restore_idx = output_seq_len_i - residuals_grad_i;
-            for (int hi = 0; hi < hidden_dim; ++hi) {
+            for (int hi = hidden_dim_start; hi < hidden_dim_end; ++hi) {
                 residual_hidden_states_grad[batch_i][restore_idx][hi] = restored_hidden_states_grad[batch_i][restore_idx][hi];
             }
         }
@@ -343,7 +343,6 @@ std::tuple<torch::Tensor, torch::Tensor> backward_fan_out_restore_residuals(
     const dim3 grid_size(batch_size, 1, 1);   // One block per batch element
 
     torch::Tensor hidden_states_grad = torch::zeros({batch_size, seq_len, hidden_dim}, restored_hidden_states_grad.options());
-    torch::Tensor residual_hidden_states_grad = torch::zeros_like(restored_hidden_states_grad, restored_hidden_states_grad.options());
 
     backward_fan_out_straight_hidden_states_kernel<<<grid_size, block_size>>>(
         merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
@@ -353,13 +352,7 @@ std::tuple<torch::Tensor, torch::Tensor> backward_fan_out_restore_residuals(
         batch_size, seq_len, hidden_dim
     );
 
-    backward_fan_out_straight_residual_hidden_states_kernel<<<grid_size, block_size>>>(
-        merged_embeddings_counts.packed_accessor64<int64_t, 2>(),
-        restored_hidden_states_grad.packed_accessor64<float, 3>(),
-        restored_hidden_states_seq_lengths.packed_accessor64<int64_t, 1>(),
-        residual_hidden_states_grad.packed_accessor64<float, 3>(),
-        batch_size, seq_len, hidden_dim
-    );
+    torch::Tensor residual_hidden_states_grad = torch::clone(restored_hidden_states_grad);
 
     // Error checking
     // cudaDeviceSynchronize();

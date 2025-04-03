@@ -856,7 +856,7 @@ def run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(**kwargs):
 
 def run_hcg_smollm2_360M_hcg_scale_token_frequency(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_hcg_smooth_no_detach_2gpu"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_2gpu_no_stf"
 
     common_params = {
         "freeze_lm_backbone": 0,
@@ -875,13 +875,13 @@ def run_hcg_smollm2_360M_hcg_scale_token_frequency(**kwargs):
         "fan_out_projection": "1",
         "pretrain_fan_out_projection": '0',
 
-        "scale_token_frequency": 1,
+        "scale_token_frequency": '0',
     }
 
     hcg_experiments = []
 
     # for hcg_loss_weight in [ 1.0, 2.0, 2.5, 3.0, 3.5 ]:
-    for hcg_loss_weight in [ 1.5, 2.0, 2.5 ]:
+    for hcg_loss_weight in [ 1.1, 1.5 ]:
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}",

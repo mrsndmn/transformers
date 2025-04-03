@@ -317,7 +317,7 @@ class AdaptiveFanInHCG(nn.Module):
         self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
 
     # @torch.compiler.disable(recursive=True)
-    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, token_frequency: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, full_unmerge=False) -> AdaptiveFanInOutput:
+    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, token_frequency: torch.Tensor=None, merging_log_probas: torch.Tensor=None, full_unmerge=False) -> AdaptiveFanInOutput:
         """_summary_
 
         Args:
@@ -476,7 +476,7 @@ class AdaptiveFanOut(nn.Module):
                 current_hidden_state = hidden_states[batch_i, seq_len_i]
 
                 restored_idx = int(restored_seq_len + num_repeats - 1)
-                restored_hidden_states[batch_i, restored_idx] = current_hidden_state
+                restored_hidden_states[batch_i, restored_idx] += current_hidden_state
 
                 restored_seq_len += num_repeats
 

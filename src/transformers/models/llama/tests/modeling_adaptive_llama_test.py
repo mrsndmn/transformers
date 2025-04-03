@@ -5,12 +5,12 @@ import pytest
 import torch
 
 from transformers.models.llama.configuration_llama import LlamaConfig
-from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInGumbel, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInHCG, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel
 
 def test_adaptive_fan_in_no_merge():
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2)
 
-    adaptive_fan_in = AdaptiveFanInGumbel(config)
+    adaptive_fan_in = AdaptiveFanInHCG(config)
 
     batch_size, seq_len = 3, 6
     hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ])
@@ -34,7 +34,7 @@ def test_adaptive_fan_in_no_merge():
 def test_adaptive_fan_in_all_merge():
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2, generate_merges_transform_impl='python')
 
-    adaptive_fan_in = AdaptiveFanInGumbel(config)
+    adaptive_fan_in = AdaptiveFanInHCG(config)
 
     batch_size, seq_len = 3, 6
     hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ])
@@ -60,7 +60,7 @@ def test_adaptive_fan_in_all_merge():
 def test_adaptive_fan_in_all_but_last_merge():
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2, generate_merges_transform_impl='python')
 
-    adaptive_fan_in = AdaptiveFanInGumbel(config)
+    adaptive_fan_in = AdaptiveFanInHCG(config)
 
     batch_size, seq_len = 3, 6
     hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ])
@@ -130,7 +130,7 @@ def test_adaptive_fan_out():
 def test_adaptive_fan_in_fan_out():
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2)
 
-    adaptive_fan_in = AdaptiveFanInGumbel(config)
+    adaptive_fan_in = AdaptiveFanInHCG(config)
     adaptive_fan_out = AdaptiveFanOut(config)
 
     batch_size, seq_len = 3, 6
@@ -182,8 +182,8 @@ def test_cuda_kernel_merges_transform_generate_merges_transform():
     config_py = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
     config_cuda_kernel = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="cuda_kernel")
     
-    py_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_py)
-    cuda_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_cuda_kernel)
+    py_adaptive_fan_in_gumbel = AdaptiveFanInHCG(config_py)
+    cuda_adaptive_fan_in_gumbel = AdaptiveFanInHCG(config_cuda_kernel)
 
     batch_size = 3
     seq_len = 5
@@ -299,8 +299,8 @@ def test_cuda_kernel_merges_transform_benchmark():
     config_py = LlamaConfig(hidden_size=1024, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
     config_cuda_kernel = LlamaConfig(hidden_size=1024, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="cuda_kernel")
 
-    py_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_py)
-    cuda_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_cuda_kernel)
+    py_adaptive_fan_in_gumbel = AdaptiveFanInHCG(config_py)
+    cuda_adaptive_fan_in_gumbel = AdaptiveFanInHCG(config_cuda_kernel)
     
     batch_sizes = [ 100 ]
     seq_lens = [ 128 ]
@@ -408,8 +408,8 @@ def test_cuda_kernel_merges_transform_backward():
     config_py = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
     config_cuda_kernel = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="cuda_kernel")
 
-    py_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_py)
-    cuda_adaptive_fan_in_gumbel = AdaptiveFanInGumbel(config_cuda_kernel)
+    py_adaptive_fan_in_gumbel = AdaptiveFanInHCG(config_py)
+    cuda_adaptive_fan_in_gumbel = AdaptiveFanInHCG(config_cuda_kernel)
     
     cuda_adaptive_fan_in_gumbel.fan_in_mlp.weight.data.copy_(py_adaptive_fan_in_gumbel.fan_in_mlp.weight.data)
     
@@ -473,28 +473,34 @@ def test_cuda_kernel_fan_out_backward():
     batch_size = 7
     seq_len = 100
     hidden_size = 16
-    
+
     device = 'cuda'
 
-    config_py = LlamaConfig(hidden_size=hidden_size, num_hidden_layers=2, attn_implementation='flash_attention_2', generate_merges_transform_impl="python", merging_type='attention_output_mlp')
-    config_cuda_kernel = LlamaConfig(hidden_size=hidden_size, num_hidden_layers=2, attn_implementation='flash_attention_2', generate_merges_transform_impl="cuda_kernel", merging_type='attention_output_mlp')
-    
-    current_dtype = torch.bfloat16
-    adaptive_fan_in = AdaptiveFanInGumbel(config_py).to(device).to(current_dtype)
+    config_py = LlamaConfig(hidden_size=hidden_size, num_hidden_layers=2, attn_implementation='flash_attention_2', generate_merges_transform_impl="python", merging_type='hcg')
+    config_cuda_kernel = LlamaConfig(hidden_size=hidden_size, num_hidden_layers=2, attn_implementation='flash_attention_2', generate_merges_transform_impl="cuda_kernel", merging_type='hcg')
 
-    py_adaptive_fan_out = AdaptiveFanOut(config_py).to(device).to(current_dtype)
-    cuda_adaptive_fan_out = AdaptiveFanOut(config_cuda_kernel).to(device).to(current_dtype)
+    current_dtype = torch.bfloat16
+    torch.set_default_dtype(current_dtype)
+    adaptive_fan_in = AdaptiveFanInHCG(config_py).to(device)
+
+    py_adaptive_fan_out = AdaptiveFanOut(config_py).to(device)
+    cuda_adaptive_fan_out = AdaptiveFanOut(config_cuda_kernel).to(device)
     cuda_adaptive_fan_out.load_state_dict(py_adaptive_fan_out.state_dict())
-    
-    hidden_states = torch.rand([ batch_size, seq_len, hidden_size ], requires_grad=True, device=device, dtype=current_dtype)
-    attention_mask = torch.ones([batch_size, seq_len], device=device, dtype=current_dtype)
-    special_embeddings_mask = torch.zeros([batch_size, seq_len], device=device, dtype=current_dtype)
+
+
+    hidden_states = torch.rand([ batch_size, seq_len, hidden_size ], requires_grad=True, device=device)
+    attention_mask = torch.ones([batch_size, seq_len], device=device, dtype=torch.long)
+    special_embeddings_mask = torch.zeros([batch_size, seq_len], device=device)
     special_embeddings_mask[:, 0] = 1
     special_embeddings_mask[:, -1] = 1
 
-    adaptive_fan_in_output = adaptive_fan_in.forward(hidden_states, attention_mask, special_embeddings_mask)
+    torch.set_default_dtype(torch.float32)
+
+    adaptive_fan_in_output = adaptive_fan_in.forward(hidden_states, attention_mask=attention_mask, special_embeddings_mask=special_embeddings_mask)
     assert adaptive_fan_in_output.hidden_state.grad_fn is not None
-    assert (adaptive_fan_in_output.merged_embeddings_counts > 1).any(), 'at least one token should be merged to be shure gradients calculation is correct'
+    # assert (adaptive_fan_in_output.merged_embeddings_counts > 1).any(), 'at least one token should be merged to be shure gradients calculation is correct'
+
+    assert ((adaptive_fan_in_output.merging_map == 0) > 0).any(), 'at least one token should be merged to be shure gradients calculation is correct'
 
     py_residual_hidden_states = hidden_states.detach()
     py_residual_hidden_states.requires_grad = True
@@ -521,7 +527,7 @@ def test_cuda_kernel_fan_out_backward():
     cuda_kernel_adaptive_fan_out_output = cuda_adaptive_fan_out.forward(
         hidden_states=cuda_kernel_adaptive_fan_in_output_hidden_state,
         attention_mask=adaptive_fan_in_output.attention_mask,
-        merged_embeddings_counts=adaptive_fan_in_output.merged_embeddings_counts,
+        merged_embeddings_counts=adaptive_fan_in_output.merged_embeddings_counts.long(),
         residual_hidden_states=cuda_kernel_residual_hidden_states,
         residual_attention_mask=residual_attention_mask,
     )

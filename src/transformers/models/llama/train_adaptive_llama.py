@@ -931,8 +931,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
     tokenizer.padding_side = 'left'
 
-    if training_args.scale_token_frequency:
-        model.config.scale_token_frequency = True
+    model.config.scale_token_frequency = training_args.scale_token_frequency
 
     if torch.cuda.device_count() > 1:
         model.config.distributed = True

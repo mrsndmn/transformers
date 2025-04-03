@@ -36,7 +36,7 @@ def test_fan_out_restore_residuals_with_merging_map():
 
     restored_hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection, attention_mask)
 
-    assert (restored_hidden_states[:, :3] == hidden_states_clone[:, :3]).all()
+    assert (restored_hidden_states[:, :3] == residual_hidden_states_projection[:, :3] + hidden_states_clone[:, :3]).all()
 
     assert (restored_hidden_states[:, -1] == residual_hidden_states_projection[:, -1]).all()
 
