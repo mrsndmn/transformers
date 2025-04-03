@@ -1,14 +1,11 @@
-import time
-import argparse
 
 import torch
 
-from transformers import LlamaConfig, AutoTokenizer, LlamaForCausalLM
-from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanInHCG, reorder_mask_for_concrete
+from transformers import AutoTokenizer
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, reorder_mask_for_concrete
 
 
-from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
-from transformers.models.llama.merges_transform.generate_merges import generate_merges_transform, fan_out_restore_residuals, prune_tokens_concrete
+from transformers.models.llama.merges_transform.generate_merges import prune_tokens_concrete
 
 def test_sdpa_attention():
 

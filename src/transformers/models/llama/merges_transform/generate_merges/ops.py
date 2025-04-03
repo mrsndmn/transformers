@@ -5,7 +5,6 @@ import time
 
 __all__ = ["fan_out_restore_residuals", "prune_tokens_concrete"]
 
-CHECK_WITH_PYTHON = False
 
 def fan_out_restore_residuals(
         merged_embeddings_counts: Tensor, # [ bs, seq_len ]
