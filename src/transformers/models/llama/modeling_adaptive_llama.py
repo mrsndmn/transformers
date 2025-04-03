@@ -58,7 +58,7 @@ from .modeling_llama import (
     apply_rotary_pos_emb,
 )
 
-from transformers.models.llama.merges_transform.generate_merges import generate_merges_transform, fan_out_restore_residuals, prune_tokens_concrete
+from transformers.models.llama.merges_transform.generate_merges import fan_out_restore_residuals, prune_tokens_concrete
 
 
 logger = logging.get_logger(__name__)

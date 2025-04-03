@@ -7,48 +7,22 @@ import torch
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInHCG, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel
 
-def test_adaptive_fan_in_no_merge():
-    config = LlamaConfig(hidden_size=256, num_hidden_layers=2)
-
-    adaptive_fan_in = AdaptiveFanInHCG(config)
-
-    batch_size, seq_len = 3, 6
-    hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ])
-    attention_mask = torch.ones([batch_size, seq_len])
-    special_embeddings_mask = torch.zeros([batch_size, seq_len])
-    special_embeddings_mask[:, 0] = 1
-    special_embeddings_mask[:, -1] = 1
-
-    merging_log_probas = torch.ones([batch_size, seq_len, 2])
-    merging_log_probas[:, :, 1] = 0
-    merging_log_probas += 1e-4
-    merging_log_probas = merging_log_probas.log()
-
-    adaptive_fan_in_output = adaptive_fan_in.forward(hidden_states, attention_mask, special_embeddings_mask, merging_log_probas=merging_log_probas)
-
-    assert adaptive_fan_in_output.attention_mask.shape[1] == 2
-    assert adaptive_fan_in_output.hidden_state.shape[1] == 2
-    assert adaptive_fan_in_output.merged_embeddings_counts.shape[1] == 2
-
 
 def test_adaptive_fan_in_all_merge():
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2, generate_merges_transform_impl='python')
 
-    adaptive_fan_in = AdaptiveFanInHCG(config)
+    torch.set_default_device('cuda')
 
+    adaptive_fan_in = AdaptiveFanInHCG(config)
+    adaptive_fan_in.eval()
     batch_size, seq_len = 3, 6
     hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ])
-    attention_mask = torch.ones([batch_size, seq_len])
+    attention_mask = torch.ones([batch_size, seq_len], dtype=torch.long)
     special_embeddings_mask = torch.zeros([batch_size, seq_len])
     special_embeddings_mask[:, 0] = 1
     special_embeddings_mask[:, -1] = 1
 
-    merging_log_probas = torch.ones([batch_size, seq_len, 2])
-    merging_log_probas[:, :, 0] = 0
-    merging_log_probas += 1e-4
-    merging_log_probas = merging_log_probas.log()
-
-    adaptive_fan_in_output = adaptive_fan_in.forward(hidden_states, attention_mask, special_embeddings_mask, merging_log_probas=merging_log_probas)
+    adaptive_fan_in_output = adaptive_fan_in.forward(hidden_states, attention_mask, special_embeddings_mask)
 
     assert adaptive_fan_in_output.attention_mask.shape[1] == seq_len # bos + merged_embedding + eos
     assert adaptive_fan_in_output.hidden_state.shape[1] == seq_len # bos + merged_embedding + eos
@@ -57,41 +31,12 @@ def test_adaptive_fan_in_all_merge():
 
     return
 
-def test_adaptive_fan_in_all_but_last_merge():
-    config = LlamaConfig(hidden_size=256, num_hidden_layers=2, generate_merges_transform_impl='python')
-
-    adaptive_fan_in = AdaptiveFanInHCG(config)
-
-    batch_size, seq_len = 3, 6
-    hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ])
-    attention_mask = torch.ones([batch_size, seq_len])
-    special_embeddings_mask = torch.zeros([batch_size, seq_len])
-    special_embeddings_mask[:, 0] = 1
-    special_embeddings_mask[:, -1] = 1
-
-    merging_log_probas = torch.ones([batch_size, seq_len, 2])
-    merging_log_probas[:, :, 1] = 0
-    merging_log_probas[:, -2] = torch.tensor([0, 1])
-    merging_log_probas += 1e-4
-    merging_log_probas = merging_log_probas.log()
-
-    adaptive_fan_in_output = adaptive_fan_in.forward(hidden_states, attention_mask, special_embeddings_mask, merging_log_probas=merging_log_probas)
-
-    expected_seq_len = seq_len - 3
-
-    assert adaptive_fan_in_output.attention_mask.shape[1] == expected_seq_len # bos + original_embedding + merged_embedding (with eos)
-    assert adaptive_fan_in_output.hidden_state.shape[1] == expected_seq_len # bos + original_embedding + merged_embedding (with eos)
-    assert adaptive_fan_in_output.merged_embeddings_counts.shape[1] == expected_seq_len # bos + original_embedding + merged_embedding (with eos)
-    assert adaptive_fan_in_output.special_embeddings_mask.shape[1] == expected_seq_len # bos + original_embedding + merged_embedding (with eos)
-
-    assert torch.allclose(adaptive_fan_in_output.hidden_state[:, -2], hidden_states[:, -2], atol=1e-4)
-    assert torch.allclose(adaptive_fan_in_output.hidden_state[:, 0], hidden_states[:, 0], atol=1e-4)
-
-    return
-
 
 def test_adaptive_fan_out():
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2)
+
+    torch.set_default_device('cuda')
+
     adaptive_fan_out = AdaptiveFanOut(config)
 
     batch_size, seq_len, residual_seq_len = 3, 7, 12
@@ -130,6 +75,8 @@ def test_adaptive_fan_out():
 def test_adaptive_fan_in_fan_out():
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2)
 
+    torch.set_default_device('cuda')
+
     adaptive_fan_in = AdaptiveFanInHCG(config)
     adaptive_fan_out = AdaptiveFanOut(config)
 
@@ -166,6 +113,11 @@ def test_adaptive_fan_in_fan_out():
 def test_adaptive_llama_e2e():
     config = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager')
 
+    config.use_cache = False
+
+    torch.set_default_device('cuda')
+    torch.set_default_dtype(torch.bfloat16)
+
     allama_model = AdaptiveLlamaModel(config)
     batch_size, seq_len = 3, 6
     hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ], requires_grad=True)
@@ -177,296 +129,6 @@ def test_adaptive_llama_e2e():
     llama_output = allama_model.forward(inputs_embeds=hidden_states, attention_mask=attention_mask, special_embeddings_mask=special_embeddings_mask, use_cache=False)
 
     assert llama_output.last_hidden_state.shape == hidden_states.shape
-
-def test_cuda_kernel_merges_transform_generate_merges_transform():
-    config_py = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
-    config_cuda_kernel = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="cuda_kernel")
-    
-    py_adaptive_fan_in_gumbel = AdaptiveFanInHCG(config_py)
-    cuda_adaptive_fan_in_gumbel = AdaptiveFanInHCG(config_cuda_kernel)
-
-    batch_size = 3
-    seq_len = 5
-    
-    merging_map_1 = torch.zeros([batch_size, seq_len, 2])
-    merging_map_1[:, :, 0] = 1.
-    special_tokens_mask_1 = torch.zeros([batch_size, seq_len], dtype=torch.bool)
-    special_tokens_mask_1[:, 0] = 1
-    special_tokens_mask_1[:, -1] = 1
-    
-    merging_map_2 = torch.zeros([batch_size, seq_len, 2])
-    merging_map_2[:, 2:seq_len-1, 1] = 1
-    merging_map_2[:, 0, 0] = 1
-    merging_map_2[:, 1, 0] = 1
-    merging_map_2[:, -1, 0] = 1
-    special_tokens_mask_2 = torch.zeros([batch_size, seq_len], dtype=torch.bool)
-    special_tokens_mask_2[:, 0] = 1
-    special_tokens_mask_2[:, -1] = 1
-    
-    merging_map_3 = torch.zeros([batch_size, seq_len, 2])
-    merging_map_3[:, 1:seq_len-2, 1] = 1
-    merging_map_3[:, 0, 0] = 1
-    merging_map_3[:, -2, 0] = 1
-    attention_mask_3 = torch.ones([batch_size, seq_len], dtype=torch.bool)
-    attention_mask_3[:, seq_len-1] = False
-    special_tokens_mask_3 = torch.zeros([batch_size, seq_len], dtype=torch.bool)
-    special_tokens_mask_3[:, 0] = 1
-    special_tokens_mask_3[:, -2] = 1
-
-    merging_map_4 = torch.tensor([
-        [
-            [ 1., 0. ],
-            [ 1., 0. ],
-            [ 0., 1. ],
-            [ 0., 1. ],
-            [ 1., 0. ],
-        ],
-        [
-            [ 1., 0. ],
-            [ 1., 0. ],
-            [ 0., 1. ],
-            [ 1., 0. ],
-            [ 0., 0. ],
-        ],
-        [
-            [ 1., 0. ],
-            [ 1., 0. ],
-            [ 1., 0. ],
-            [ 0., 0. ],
-            [ 0., 0. ],
-        ],
-    ])
-    attention_mask_4 = torch.ones([batch_size, seq_len], dtype=torch.bool)
-    attention_mask_4[1, -1] = False
-    attention_mask_4[2, -2:] = False
-    special_tokens_mask_4 = torch.zeros([batch_size, seq_len], dtype=torch.bool)
-    special_tokens_mask_4[1, -1] = False
-    special_tokens_mask_4[2, -2:] = False
-    
-    test_cases = [
-        {
-            "name": "dummy no merging",
-            "merging_map": merging_map_1,
-            "attention_mask": torch.ones([batch_size, seq_len], dtype=torch.bool),
-            "expected_seq_len": seq_len,
-            "special_tokens_mask": special_tokens_mask_1,
-        },
-        {
-            "name": "all except bos/eos merged",
-            "merging_map": merging_map_2,
-            "attention_mask": torch.ones([batch_size, seq_len], dtype=torch.bool),
-            "expected_seq_len": 3, # [bos, merged_tokens, eos]
-            "special_tokens_mask": special_tokens_mask_2,
-        },
-        {
-            "name": "all except bos/eos merged with padding",
-            "merging_map": merging_map_3,
-            "attention_mask": attention_mask_3,
-            "expected_seq_len": 3,
-            "special_tokens_mask": special_tokens_mask_3,
-        },
-        {
-            "name": "custom merging with custom padding",
-            "merging_map": merging_map_4,
-            "attention_mask": attention_mask_4,
-            "expected_seq_len": 3,
-            "special_tokens_mask": special_tokens_mask_4,
-        },
-    ]
-
-    # todo make fixtures not golang-style tests
-    for test_case in test_cases:
-        test_case_name = test_case['name']
-        merging_map = test_case['merging_map']
-        attention_mask = test_case['attention_mask']
-        special_tokens_mask = test_case['special_tokens_mask']
-        
-        cuda_merging_map = merging_map.to('cuda').to(dtype=torch.float32)
-        cuda_attention_mask = attention_mask.to('cuda').to(dtype=torch.bool)
-        special_tokens_mask = special_tokens_mask.to('cuda').to(dtype=torch.bool)
-        
-        py_aggregated_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(merging_map, attention_mask, special_tokens_mask)
-        cuda_aggregated_embeddings_transform, cuda_merged_embeddings_counts, cuda_merged_attention_mask = cuda_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask, special_tokens_mask)
-        
-        assert (py_aggregated_embeddings_transform == cuda_aggregated_embeddings_transform.to('cpu')).all(), f"{test_case_name}: aggregated_embeddings_transform mismatch"
-        assert (py_merged_embeddings_counts == cuda_merged_embeddings_counts.to('cpu')).all(), f"{test_case_name}: merged_embeddings_counts mismatch"
-        assert (py_merged_attention_mask == cuda_merged_attention_mask.to('cpu')).all(), f"{test_case_name}: merged_attention_mask mismatch"
-
-    return
-
-
-def test_cuda_kernel_merges_transform_benchmark():
-    config_py = LlamaConfig(hidden_size=1024, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
-    config_cuda_kernel = LlamaConfig(hidden_size=1024, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="cuda_kernel")
-
-    py_adaptive_fan_in_gumbel = AdaptiveFanInHCG(config_py)
-    cuda_adaptive_fan_in_gumbel = AdaptiveFanInHCG(config_cuda_kernel)
-    
-    batch_sizes = [ 100 ]
-    seq_lens = [ 128 ]
-    
-    for batch_size in batch_sizes:
-        for seq_len in seq_lens:
-
-            merging_map_1 = torch.zeros([batch_size, seq_len, 2])
-            merging_map_1[:, :, 0] = 1.
-            
-            special_tokens_mask = torch.zeros([batch_size, seq_len], dtype=torch.bool)
-            special_tokens_mask[:, 0] = True
-            special_tokens_mask[:, -1] = True
-
-            test_cases = [
-                {
-                    "name": "dummy no merging",
-                    "merging_map": merging_map_1,
-                    "attention_mask": torch.ones([batch_size, seq_len], dtype=torch.bool),
-                    "special_tokens_mask": special_tokens_mask,
-                },
-            ]
-
-            # todo make fixtures not golang-style tests
-            for test_case in test_cases:
-                test_case_name = test_case['name']
-                merging_map = test_case['merging_map']
-                attention_mask = test_case['attention_mask']
-                special_tokens_mask = test_case['special_tokens_mask']
-
-                cuda_merging_map = merging_map.to('cuda').to(dtype=torch.float32)
-                cuda_attention_mask = attention_mask.to('cuda').to(dtype=torch.bool)
-                special_tokens_mask = special_tokens_mask.to('cuda').to(dtype=torch.bool)
-
-                n_runs = 100
-                py_time_start = time.time()
-                for _ in range(n_runs):
-                    py_aggregated_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(merging_map, attention_mask, special_tokens_mask)
-                    py_aggregated_embeddings_transform.sum().item()
-                py_duration = (time.time() - py_time_start) / n_runs
-
-                cuda_time_start = time.time()
-                for _ in range(n_runs):
-                    cuda_aggregated_embeddings_transform, cuda_merged_embeddings_counts, cuda_merged_attention_mask = cuda_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask, special_tokens_mask)
-                    cuda_aggregated_embeddings_transform.sum().item()
-                cuda_duration = (time.time() - cuda_time_start) / n_runs
-
-                # py_cuda_time_start = time.time()
-                # # for _ in range(n_runs):
-                # #     py_aggregated_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask, special_tokens_mask)
-                # #     py_aggregated_embeddings_transform.sum().item()
-                # py_cuda_duration = (time.time() - py_cuda_time_start) / n_runs
-
-                print(f"bs={batch_size} seq_len={seq_len} cuda_duration", cuda_duration)
-                print(f"bs={batch_size} seq_len={seq_len} py_cpu_duration", py_duration)
-                # print(f"bs={batch_size} seq_len={seq_len} py_cuda_duration", py_cuda_duration)
-
-                assert (py_aggregated_embeddings_transform == cuda_aggregated_embeddings_transform.to('cpu')).all(), f"{test_case_name}: aggregated_embeddings_transform mismatch"
-                assert (py_merged_embeddings_counts == cuda_merged_embeddings_counts.to('cpu')).all(), f"{test_case_name}: merged_embeddings_counts mismatch"
-                assert (py_merged_attention_mask == cuda_merged_attention_mask.to('cpu')).all(), f"{test_case_name}: merged_attention_mask mismatch"
-
-    return
-
-
-def test_gumbel_benchmark():
-    
-    batch_sizes = [ 10, 20, 30, 50 ]
-    seq_lens = [ 1500 ]
-    
-    for batch_size in batch_sizes:
-        for seq_len in seq_lens:
-
-            logits = torch.rand([batch_size, seq_len, 2])
-
-            test_cases = [
-                {
-                    "name": "gubmel",
-                    "logits": logits,
-                },
-            ]
-
-            # todo make fixtures not golang-style tests
-            for test_case in test_cases:
-                test_case_name = test_case['name']
-                logits = test_case['logits'].to('cuda').to(dtype=torch.float32)
-                
-                n_runs = 100
-                time_start = time.time()
-                for _ in range(n_runs):
-                    _ = torch.nn.functional.gumbel_softmax(logits, hard=True)
-                total_duration = (time.time() - time_start) / n_runs
-
-                print(f"{test_case_name}: bs={batch_size} seq_len={seq_len} duration", total_duration)
-
-
-    return
-
-
-
-def test_cuda_kernel_merges_transform_backward():
-    batch_size = 7
-    seq_len = 13
-    hidden_size = 16
-
-    config_py = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="python")
-    config_cuda_kernel = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager', generate_merges_transform_impl="cuda_kernel")
-
-    py_adaptive_fan_in_gumbel = AdaptiveFanInHCG(config_py)
-    cuda_adaptive_fan_in_gumbel = AdaptiveFanInHCG(config_cuda_kernel)
-    
-    cuda_adaptive_fan_in_gumbel.fan_in_mlp.weight.data.copy_(py_adaptive_fan_in_gumbel.fan_in_mlp.weight.data)
-    
-    if py_adaptive_fan_in_gumbel.fan_in_mlp.bias is not None and cuda_adaptive_fan_in_gumbel.fan_in_mlp.bias is not None:
-        cuda_adaptive_fan_in_gumbel.fan_in_mlp.bias.data.copy_(py_adaptive_fan_in_gumbel.fan_in_mlp.bias.data)
-
-        assert id(cuda_adaptive_fan_in_gumbel.fan_in_mlp.bias) != id(py_adaptive_fan_in_gumbel.fan_in_mlp.bias)
-    
-    assert id(cuda_adaptive_fan_in_gumbel.fan_in_mlp.weight) != id(py_adaptive_fan_in_gumbel.fan_in_mlp.weight)
-    
-    
-    # cuda_merging_map = torch.zeros([batch_size, seq_len, 2], device='cuda')
-    # cuda_merging_map[:, :, 0] = 1.
-    # cuda_merging_map.requires_grad = True
-    # cuda_kernel_cuda_merging_map = cuda_merging_map.clone()
-    # python_merging_map = cuda_merging_map.clone()
-
-    cuda_attention_mask = torch.ones([batch_size, seq_len], device='cuda', dtype=torch.bool)
-    cuda_special_embeddings_mask = torch.zeros([batch_size, seq_len], device='cuda', dtype=torch.bool)
-    cuda_special_embeddings_mask[:, 0] = True
-    cuda_special_embeddings_mask[:, -1  ] = True
-
-    # special_embeddings_mask = torch.zeros_like(cuda_attention_mask)
-    # special_embeddings_mask[:, 0] = 1
-    # special_embeddings_mask[:, -1] = 1
-    
-    merging_map = torch.zeros([batch_size, seq_len, 2], device='cuda')
-    merging_map[:, :, 0] = 1.
-    merging_map[:, 2] = torch.tensor([0., 1.0], device='cuda')
-    merging_map[:, 3] = torch.tensor([0., 1.0], device='cuda')
-    merging_map.requires_grad = True
-    
-    cuda_merging_map = merging_map.clone()
-    py_merging_map = merging_map.clone()
-    
-
-    # cuda kernel forward
-    cuda_merged_embeddings_transform, cuda_merged_embeddings_counts, cuda_merged_attention_mask = cuda_adaptive_fan_in_gumbel.generate_merges_transform(cuda_merging_map, cuda_attention_mask, cuda_special_embeddings_mask)
-
-    output_gradients = torch.rand_like(cuda_merged_embeddings_transform)
-    output_gradients[~cuda_merged_embeddings_transform.bool()] = 0
-    output_gradients_py = output_gradients.clone()
-    output_gradients_cuda = output_gradients.clone()
-    (input_gradients_cuda_kernel,) = torch.autograd.grad(cuda_merged_embeddings_transform, cuda_merging_map, grad_outputs=output_gradients_cuda)
-
-    # py forward
-    py_merged_embeddings_transform, py_merged_embeddings_counts, py_merged_attention_mask = py_adaptive_fan_in_gumbel.generate_merges_transform(py_merging_map, cuda_attention_mask, cuda_special_embeddings_mask)
-    
-    assert (py_merged_embeddings_transform == cuda_merged_embeddings_transform).all()
-    assert (cuda_merged_embeddings_counts == py_merged_embeddings_counts).all()
-    assert (cuda_merged_attention_mask == py_merged_attention_mask).all()
-
-    (input_gradients_python,) = torch.autograd.grad(py_merged_embeddings_transform, py_merging_map, grad_outputs=output_gradients_py)
-
-    assert (input_gradients_python == input_gradients_cuda_kernel).all()
-
-    return
 
 
 def test_cuda_kernel_fan_out_backward():
