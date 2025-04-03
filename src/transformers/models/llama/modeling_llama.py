@@ -279,6 +279,9 @@ class LlamaAttention(nn.Module):
         key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
+        cos, sin = position_embeddings
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
         concrete_view = None
         if concrete is not None:
             batch_size = concrete.shape[0]
@@ -286,9 +289,6 @@ class LlamaAttention(nn.Module):
             query_states = query_states * concrete_view
             key_states = key_states * concrete_view
             value_states = value_states * concrete_view
-
-        cos, sin = position_embeddings
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         assert past_key_value is None, 'past kv is not supported by TWLH'
         if past_key_value is not None:
@@ -356,13 +356,7 @@ class LlamaDecoderLayer(nn.Module):
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
 
-        if concrete is not None:
-            hidden_states = hidden_states * concrete
-
         hidden_states = self.input_layernorm(hidden_states)
-
-        if concrete is not None:
-            hidden_states = hidden_states * concrete
 
         # Self Attention
         hidden_states, self_attn_weights = self.self_attn(
@@ -382,9 +376,6 @@ class LlamaDecoderLayer(nn.Module):
 
         # Fully Connected
         residual = hidden_states
-
-        if concrete is not None:
-            hidden_states = hidden_states * concrete
 
         hidden_states = self.post_attention_layernorm(hidden_states)
 

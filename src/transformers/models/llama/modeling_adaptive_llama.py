@@ -377,9 +377,9 @@ class AdaptiveFanInHCG(nn.Module):
         # print("special_embeddings_mask", special_embeddings_mask)
 
         # assert concrete.shape == special_embeddings_mask.shape
-        concrete[special_embeddings_mask.bool()] = 1.0
         # breakpoint()
-
+        concrete[special_embeddings_mask.bool()] = 1.0
+        p_open[special_embeddings_mask.bool()] = 1.0
 
         hs_dtype = hidden_state.dtype
         rhs_dtype = residual_hidden_state.dtype
@@ -1012,18 +1012,35 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
             if not isinstance(adaptive_down_layer, NoOpFanIn):
                 if not adaptive_down_layer.training:
-                    # TODO
-                    print("TODO FIX ME - use merging kernel here")
-                    cache_position = cache_position[:hidden_states.shape[1]]
-                    loop_down_position_ids = loop_down_position_ids[:, :hidden_states.shape[1]]
-                    loop_down_position_embeddings = (loop_down_position_embeddings[0][:, :hidden_states.shape[1]], loop_down_position_embeddings[1][:, :hidden_states.shape[1]])
+                    # TODO possibly optimize it with cuda kernel
+                    new_seq_len = hidden_states.shape[1]
+                    cache_position = cache_position[:new_seq_len]
 
-                    # cache_position = torch.cat([cache_position[:1], cache_position[2:]], dim=0)
-                    # loop_down_position_ids = torch.cat([loop_down_position_ids[:, :1], loop_down_position_ids[:, 2:]], dim=1)
-                    # loop_down_position_embeddings = (torch.cat([loop_down_position_embeddings[0][:, :1], loop_down_position_embeddings[0][:, 2:]], dim=1), torch.cat([loop_down_position_embeddings[1][:, :1], loop_down_position_embeddings[1][:, 2:]], dim=1))
+                    concrete_mask = (adaptive_down_output.merging_map_logits > 0).squeeze(-1)
+                    concrete_mask_cpu = concrete_mask.cpu()
+
+                    loop_down_position_ids_cpu = torch.zeros_like(loop_down_position_ids, device='cpu')
+                    loop_down_position_embeddings_0_cpu = torch.zeros_like(loop_down_position_embeddings[0], device='cpu')
+                    loop_down_position_embeddings_1_cpu = torch.zeros_like(loop_down_position_embeddings[1], device='cpu')
+
+                    for batch_i in range(concrete_mask_cpu.shape[0]):
+                        current_seq_len = 0
+                        for seq_i in range(concrete_mask_cpu.shape[1]):
+                            if concrete_mask_cpu[batch_i, seq_i]:
+                                loop_down_position_ids_cpu[batch_i, current_seq_len] = loop_down_position_ids[batch_i, seq_i]
+                                loop_down_position_embeddings_0_cpu[batch_i, current_seq_len] = loop_down_position_embeddings[0][batch_i, seq_i]
+                                loop_down_position_embeddings_1_cpu[batch_i, current_seq_len] = loop_down_position_embeddings[1][batch_i, seq_i]
+                                current_seq_len += 1
+
+                    loop_down_position_ids_cpu = loop_down_position_ids_cpu[:, :new_seq_len]
+                    loop_down_position_embeddings_0_cpu = loop_down_position_embeddings_0_cpu[:, :new_seq_len]
+                    loop_down_position_embeddings_1_cpu = loop_down_position_embeddings_1_cpu[:, :new_seq_len]
+
+                    loop_down_position_ids = loop_down_position_ids_cpu.to(loop_down_position_ids.device)
+                    loop_down_position_embeddings = (loop_down_position_embeddings_0_cpu.to(loop_down_position_embeddings[0].device), loop_down_position_embeddings_1_cpu.to(loop_down_position_embeddings[1].device))
+
                 else:
-                    # TODO Для того, чтобы по-честному посчитать это, надо
-                    # сделать cache_position батчовым. Но он не батчовый сейчас
+                    # TODO batched cache_position ?
                     cache_position = cache_position[:hidden_states.shape[1]]
                     loop_down_position_ids = loop_down_position_ids * current_concrete
                     loop_down_position_embeddings = (loop_down_position_embeddings[0] * current_concrete, loop_down_position_embeddings[1] * current_concrete)

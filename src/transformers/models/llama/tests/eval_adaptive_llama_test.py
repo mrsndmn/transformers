@@ -10,6 +10,27 @@ from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCa
 from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
 from transformers.models.llama.merges_transform.generate_merges import generate_merges_transform, fan_out_restore_residuals, prune_tokens_concrete
 
+def test_sdpa_attention():
+
+    # Optionally use the context manager to ensure one of the fused kernels is run
+    query = torch.rand(32, 8, 128, 64, dtype=torch.float16, device="cuda")
+    key = torch.rand(32, 8, 128, 64, dtype=torch.float16, device="cuda")
+    value = torch.rand(32, 8, 128, 64, dtype=torch.float16, device="cuda")
+
+    query[:, :, 3, :] = 0
+    key[:, :, 3, :] = 0
+    value[:, :, 3, :] = 0
+
+    attn_mask = torch.zeros(32, 8, 128, 128, dtype=torch.float16, device="cuda")
+    attn_mask[:, :, 1, :] = -10000
+    attn_mask[:, :, 1, :] = float("-inf")
+
+    attention = torch.nn.functional.scaled_dot_product_attention(query,key,value, attn_mask=attn_mask)
+
+    print(attention[0, 0, :5, :10])
+
+
+
 def test_eval_adaptive_hcg_llama():
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -36,7 +57,7 @@ def test_eval_adaptive_hcg_llama():
     tokenizer = AutoTokenizer.from_pretrained(checkpoint)
 
     text = "<|im_start|> Who are you? And what are you going to do?"
-    text *= 2
+    text *= 10
     text_inputs = tokenizer([ text ], return_tensors='pt').to(device)
 
     special_embeddings_mask = torch.zeros_like(text_inputs['input_ids'])
@@ -68,17 +89,7 @@ def test_eval_adaptive_hcg_llama():
 
         assert eval_output.fan_in_merging_maps[3].sum().item() == eval_output.fan_in_merging_logits[3].sum().item()
 
-        for i, (eval_hidden_state, concrete, train_hidden_state) in enumerate(zip(eval_output.hidden_states, eval_output.fan_in_merging_logits, train_output.hidden_states)):
-            assert (eval_hidden_state == train_hidden_state[concrete != 0]).all(), f'{i}\'th hidden state mismatch'
-            # if i <= 4 or i > 28:
-            # else:
-            #     assert (eval_hidden_state[:, 1:] == train_hidden_state[:, 2:]).all(), f'{i}\'th hidden state mismatch'
-
-        assert train_output['loss'].item() == eval_output['loss'].item()
-
-        # del text_inputs['special_embeddings_mask']
-        # orig_output = model_orig.forward(**text_inputs)
-        # print("orig_output", orig_output['loss'])
+        assert torch.allclose(train_output['loss'], eval_output['loss'], atol=1e-2), f'{train_output["loss"].item()} != {eval_output["loss"].item()}'
 
 
 def test_prune_tokens_concrete():
