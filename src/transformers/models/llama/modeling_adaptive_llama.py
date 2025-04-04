@@ -842,7 +842,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
+        return_dict: Optional[bool] = True,
         cache_position: Optional[torch.LongTensor] = None,
         full_unmerge=None,
     ) -> Union[Tuple, AdaptiveBaseModelOutputWithPast]:
@@ -851,7 +851,6 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = False if use_cache is None else self.config.use_cache
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
@@ -864,20 +863,6 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
-
-        # kept for BC (non `Cache` `past_key_values` inputs)
-        return_legacy_cache = False
-        if use_cache and not isinstance(past_key_values, Cache):
-            return_legacy_cache = True
-            if past_key_values is None:
-                past_key_values = DynamicCache()
-            else:
-                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-                logger.warning_once(
-                    "We detected that you are passing `past_key_values` as a tuple of tuples. This is deprecated and "
-                    "will be removed in v4.47. Please convert your cache or use an appropriate `Cache` class "
-                    "(https://huggingface.co/docs/transformers/kv_cache#legacy-cache-format)"
-                )
 
         if cache_position is None:
             past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
@@ -1015,30 +1000,27 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                     # TODO possibly optimize it with cuda kernel
                     new_seq_len = hidden_states.shape[1]
                     cache_position = cache_position[:new_seq_len]
+                    loop_down_position_ids = loop_down_position_ids[:, :new_seq_len]
+                    loop_down_position_embeddings = (loop_down_position_embeddings[0][:, :new_seq_len], loop_down_position_embeddings[1][:, :new_seq_len])
 
-                    concrete_mask = (adaptive_down_output.merging_map_logits > 0).squeeze(-1)
-                    concrete_mask_cpu = concrete_mask.cpu()
+                    # concrete_mask = (adaptive_down_output.merging_map_logits > 0).squeeze(-1)
+                    # concrete_mask_cpu = concrete_mask.cpu()
 
-                    loop_down_position_ids_cpu = torch.zeros_like(loop_down_position_ids, device='cpu')
-                    loop_down_position_embeddings_0_cpu = torch.zeros_like(loop_down_position_embeddings[0], device='cpu')
-                    loop_down_position_embeddings_1_cpu = torch.zeros_like(loop_down_position_embeddings[1], device='cpu')
+                    # loop_down_position_embeddings_0_cpu = torch.zeros_like(loop_down_position_embeddings[0], device='cpu')
+                    # loop_down_position_embeddings_1_cpu = torch.zeros_like(loop_down_position_embeddings[1], device='cpu')
 
-                    for batch_i in range(concrete_mask_cpu.shape[0]):
-                        current_seq_len = 0
-                        for seq_i in range(concrete_mask_cpu.shape[1]):
-                            if concrete_mask_cpu[batch_i, seq_i]:
-                                loop_down_position_ids_cpu[batch_i, current_seq_len] = loop_down_position_ids[batch_i, seq_i]
-                                loop_down_position_embeddings_0_cpu[batch_i, current_seq_len] = loop_down_position_embeddings[0][batch_i, seq_i]
-                                loop_down_position_embeddings_1_cpu[batch_i, current_seq_len] = loop_down_position_embeddings[1][batch_i, seq_i]
-                                current_seq_len += 1
+                    # for batch_i in range(concrete_mask_cpu.shape[0]):
+                    #     current_seq_len = 0
+                    #     for seq_i in range(concrete_mask_cpu.shape[1]):
+                    #         if concrete_mask_cpu[batch_i, seq_i]:
+                    #             loop_down_position_embeddings_0_cpu[batch_i, current_seq_len] = loop_down_position_embeddings[0][batch_i, seq_i]
+                    #             loop_down_position_embeddings_1_cpu[batch_i, current_seq_len] = loop_down_position_embeddings[1][batch_i, seq_i]
+                    #             current_seq_len += 1
 
-                    loop_down_position_ids_cpu = loop_down_position_ids_cpu[:, :new_seq_len]
-                    loop_down_position_embeddings_0_cpu = loop_down_position_embeddings_0_cpu[:, :new_seq_len]
-                    loop_down_position_embeddings_1_cpu = loop_down_position_embeddings_1_cpu[:, :new_seq_len]
+                    # loop_down_position_embeddings_0_cpu = loop_down_position_embeddings_0_cpu[:, :new_seq_len]
+                    # loop_down_position_embeddings_1_cpu = loop_down_position_embeddings_1_cpu[:, :new_seq_len]
 
-                    loop_down_position_ids = loop_down_position_ids_cpu.to(loop_down_position_ids.device)
-                    loop_down_position_embeddings = (loop_down_position_embeddings_0_cpu.to(loop_down_position_embeddings[0].device), loop_down_position_embeddings_1_cpu.to(loop_down_position_embeddings[1].device))
-
+                    # loop_down_position_embeddings = (loop_down_position_embeddings_0_cpu.to(loop_down_position_embeddings[0].device), loop_down_position_embeddings_1_cpu.to(loop_down_position_embeddings[1].device))
                 else:
                     # TODO batched cache_position ?
                     cache_position = cache_position[:hidden_states.shape[1]]
@@ -1059,9 +1041,6 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
 
             # else leave it not changed
-
-            if use_cache:
-                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
@@ -1140,9 +1119,6 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
             hidden_states = layer_outputs[0]
 
-            if use_cache:
-                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
-
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
 
@@ -1152,17 +1128,11 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
-        # print("use_cache", use_cache)
-        next_cache = next_decoder_cache if use_cache else None
-        if return_legacy_cache:
-            next_cache = next_cache.to_legacy_cache()
-
-        if not return_dict:
-            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
+        assert return_dict
 
         return AdaptiveBaseModelOutputWithPast(
             last_hidden_state=hidden_states,
-            past_key_values=next_cache,
+            past_key_values=past_key_values,
             hidden_states=all_hidden_states,
             attentions=all_self_attns,
             sum_pruned_tokens=sum_pruned_tokens,

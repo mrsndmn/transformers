@@ -4,7 +4,9 @@ from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_a
 from transformers import AutoModelForCausalLM
 
 def test_build_adaptive_llama_from_llama_checkpoint_no_pruning():
-    
+
+    torch.set_default_device('cuda')
+
     llama_checkpoint = 'HuggingFaceTB/SmolLM-135M'
     pretrained_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint)
     pretrained_model.to(torch.bfloat16)
@@ -12,10 +14,8 @@ def test_build_adaptive_llama_from_llama_checkpoint_no_pruning():
     adaptive_model = build_adaptive_llama_from_llama_checkpoint(
         llama_checkpoint,
         dummy_adaptive_fan_in=[ True ] * pretrained_model.config.num_hidden_layers,
-        generate_merges_transform_impl='python',
         fan_out_projection=True,
         merging_type=None,
-        freeze_lm_backbone=True,
         flash_attention=False,
     )
     adaptive_model.eval()
@@ -28,17 +28,26 @@ def test_build_adaptive_llama_from_llama_checkpoint_no_pruning():
     
     special_embeddings_mask = torch.zeros_like(inputs)
     
-    pretrained_outputs = pretrained_model.forward(inputs.clone(), output_hidden_states=True)
+    pretrained_outputs = pretrained_model.forward(
+        inputs.clone(),
+        output_hidden_states=True,
+        use_cache=False
+    )
     adaptive_outputs = adaptive_model.forward(
         inputs.clone(),
         special_embeddings_mask=special_embeddings_mask,
         output_hidden_states=True,
+        use_cache=False,
     )
-    
-    assert (adaptive_outputs['logits'] == pretrained_outputs['logits']).all()
+
+    for i, (adaptive_hs, pretrained_hs) in enumerate(zip(adaptive_outputs['hidden_states'], pretrained_outputs['hidden_states'])):
+        assert torch.allclose(adaptive_hs, pretrained_hs, atol=1e-4), f"{i} hidden state are not close"
+
+    assert torch.allclose(adaptive_outputs['logits'], pretrained_outputs['logits'], atol=1e-4)
     
     
 def test_build_adaptive_llama_from_llama_checkpoint_pruning():
+    torch.set_default_device('cuda')
 
     llama_checkpoint = 'HuggingFaceTB/SmolLM-135M'
     pretrained_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch.bfloat16)

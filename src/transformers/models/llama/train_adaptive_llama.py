@@ -442,8 +442,11 @@ class AdaptiveLlamaTrainer(Trainer):
 
                 # [ bs * seq_len ]
                 hcg_p_open = hcg_p_open.squeeze(2).flatten()
-                p_open_non_masked = hcg_p_open[fan_in_merging_logits_attention_mask.flatten().bool()]
-                concrete_non_masked = concrete.flatten()[fan_in_merging_logits_attention_mask.flatten().bool()]
+                p_open_non_masked = hcg_p_open
+                concrete_non_masked = concrete.flatten()
+                if model.training:
+                    p_open_non_masked = p_open_non_masked[fan_in_merging_logits_attention_mask.flatten().bool()]
+                    concrete_non_masked = concrete_non_masked[fan_in_merging_logits_attention_mask.flatten().bool()]
 
                 log_info[f'{log_prefix}/concrete_mean_{i}'] = p_open_non_masked.mean().item()
                 log_info[f'{log_prefix}/concrete_lt_0.01'] = (p_open_non_masked < 0.01).sum().item()

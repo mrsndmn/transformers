@@ -290,7 +290,6 @@ class LlamaAttention(nn.Module):
             key_states = key_states * concrete_view
             value_states = value_states * concrete_view
 
-        assert past_key_value is None, 'past kv is not supported by TWLH'
         if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
