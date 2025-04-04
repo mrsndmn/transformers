@@ -92,7 +92,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     save_total_limit: Optional[int] = field(default=1)
 
     prohibit_end_of_sentence_pruning: bool = field(default=False)
-    scale_token_frequency: bool = field(default=False)
+    # scale_token_frequency: bool = field(default=False)
 
     push_to_hub: bool = field(default=False)
     optim: str = field(default="adamw_torch_fused")
@@ -297,7 +297,7 @@ class AdaptiveLlamaTrainer(Trainer):
             "input_ids": inputs['input_ids'],
             "labels": labels,
             "attention_mask": attention_mask,
-            "token_frequency": token_frequency,
+            # "token_frequency": token_frequency,
             "use_cache": None,
             "output_attentions": False,
         }
@@ -925,7 +925,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
     tokenizer.padding_side = 'left'
 
-    model.config.scale_token_frequency = training_args.scale_token_frequency
+    # model.config.scale_token_frequency = training_args.scale_token_frequency
 
     if torch.cuda.device_count() > 1:
         model.config.distributed = True
@@ -1095,9 +1095,9 @@ if __name__ == "__main__":
                 for special_token in special_tokens:
                     collate_dummy['special_tokens_mask'][ collate_dummy['input_ids'] == special_token ] = 1
 
-            if training_args.scale_token_frequency:
-                bin_frequencies = torch.bincount(collate_dummy['input_ids'].flatten())
-                collate_dummy['token_frequency'] = bin_frequencies[collate_dummy['input_ids']]
+            # if training_args.scale_token_frequency:
+            #     bin_frequencies = torch.bincount(collate_dummy['input_ids'].flatten())
+            #     collate_dummy['token_frequency'] = bin_frequencies[collate_dummy['input_ids']]
 
             # assert (collate_dummy['special_tokens_mask'].sum(dim=-1) == 2).all()
 

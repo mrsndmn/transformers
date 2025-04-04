@@ -192,7 +192,7 @@ class LlamaConfig(PretrainedConfig):
         scale_not_pruned_gradients=0.0,
         force_skip_tokens_percent=0.0,
         concrete_random_mask_proba=0.0,
-        scale_token_frequency=False,
+        # scale_token_frequency=False,
         distributed=False,
         pretrain_fan_out_projection=False,
         **kwargs,
@@ -223,7 +223,7 @@ class LlamaConfig(PretrainedConfig):
         self.gumbel_tau = gumbel_tau
         self.scale_not_pruned_gradients = scale_not_pruned_gradients
 
-        self.scale_token_frequency = scale_token_frequency
+        # self.scale_token_frequency = scale_token_frequency
 
         self.generate_merges_transform_impl = generate_merges_transform_impl
         self.fan_out_projection = fan_out_projection

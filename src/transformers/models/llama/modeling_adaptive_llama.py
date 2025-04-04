@@ -325,7 +325,7 @@ class AdaptiveFanInHCG(nn.Module):
         self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
 
     # @torch.compiler.disable(recursive=True)
-    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, token_frequency: torch.Tensor=None, merging_log_probas: torch.Tensor=None) -> AdaptiveFanInOutput:
+    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None) -> AdaptiveFanInOutput:
         """_summary_
 
         Args:
@@ -363,8 +363,8 @@ class AdaptiveFanInHCG(nn.Module):
             # OHE: [ bs, seq_len, 1 ]
             log_a = self.fan_in_mlp(hidden_state)
 
-            if self.config.scale_token_frequency:
-                log_a = log_a - token_frequency.unsqueeze(-1).log()
+            # if self.config.scale_token_frequency:
+            #     log_a = log_a - token_frequency.unsqueeze(-1).log()
 
             if self.config.concrete_random_mask_proba is not None and self.config.concrete_random_mask_proba > 0:
                 # [ bs, seq_len, 1 ]
@@ -770,7 +770,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             [LlamaDecoderLayer(config, layer_idx) for layer_idx in range(num_hidden_layers_half)]
         )
         self.layers_up = nn.ModuleList(
-            [LlamaDecoderLayer(config, layer_idx) for layer_idx in range(num_hidden_layers_half)]
+            [LlamaDecoderLayer(config, layer_idx + num_hidden_layers_half) for layer_idx in range(num_hidden_layers_half)]
         )
 
         def get_fan_out_module(is_dummy):
@@ -943,16 +943,13 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             all_loop_down_position_embeddings.append(loop_down_position_embeddings)
             all_loop_down_residual_attention_mask.append(loop_down_attention_mask)
             all_loop_down_position_ids.append(loop_down_position_ids)
-            
-            # print("i", i, "hidden_states", hidden_states.shape,)
-
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
                     loop_down_causal_mask,
                     loop_down_position_ids,
-                    None, # past_key_value
+                    past_key_values,
                     output_attentions,
                     use_cache,
                     cache_position,
@@ -964,7 +961,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                     hidden_states,
                     attention_mask=loop_down_causal_mask,
                     position_ids=loop_down_position_ids,
-                    past_key_value=None,
+                    past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,
@@ -979,7 +976,6 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             adaptive_down_output: AdaptiveFanInOutput = adaptive_down_layer.forward(
                 hidden_state=hidden_states,
                 attention_mask=loop_down_attention_mask,
-                token_frequency=token_frequency,
                 special_embeddings_mask=loop_down_special_embeddings_mask,
             )
 
@@ -1318,9 +1314,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         self,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
-        token_frequency: Optional[torch.Tensor] = None,
         special_embeddings_mask: Optional[torch.Tensor] = None,
-        special_tokens_mask: Optional[torch.Tensor] = None, # сrutch for remove unsued columns from dataset
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Cache] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
@@ -1373,16 +1367,9 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
             attention_mask = torch.ones_like(input_ids, dtype=torch.long)
 
         if special_embeddings_mask is None:
+            # special_embeddings_mask = torch.zeros_like(attention_mask)
             special_embeddings_mask = attention_mask.cumsum(dim=-1)
             special_embeddings_mask[special_embeddings_mask > 1] = 0
-
-        if token_frequency is None:
-            bin_frequencies = torch.bincount(input_ids.flatten())
-            token_frequency = bin_frequencies[input_ids]
-
-
-        # print("attention_mask", attention_mask)
-        # print("special_embeddings_mask", special_embeddings_mask)
 
         assert special_embeddings_mask is not None
 
@@ -1391,7 +1378,6 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         outputs: AdaptiveBaseModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            token_frequency=token_frequency,
             special_embeddings_mask=special_embeddings_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
