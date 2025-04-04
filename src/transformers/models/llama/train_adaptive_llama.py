@@ -89,7 +89,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     eval_steps: int = field(default=1000)
     save_strategy: str = field(default="no")
     save_steps: int = 10000
-    save_total_limit: Optional[int] = field(default=1)
+    save_total_limit: Optional[int] = field(default=15)
 
     prohibit_end_of_sentence_pruning: bool = field(default=False)
     # scale_token_frequency: bool = field(default=False)
@@ -117,12 +117,10 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
     lm_loss_max_value: float = 1.5
     sparsity_level: float = 1.0
-    gumbel_loss_weight_dynamic: bool = False
     dummy_adaptive_fan_in_layers: Optional[int] = None
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
     concrete_random_mask_proba: Optional[float] = None
     
-    gumbel_tau: float = 2.0
     scale_not_pruned_gradients: float = 0.0
     
     fan_out_type: Optional[str] = None
@@ -862,10 +860,8 @@ def build_model(training_args: AdaptiveTrainingArguments):
             generate_merges_transform_impl=training_args.generate_merges_transform_impl,
             fan_out_projection=training_args.fan_out_projection,
             merging_type=training_args.merging_type,
-            fan_out_type=training_args.fan_out_type,
             hcg_temperature=training_args.hcg_temperature,
             learnt_temperature=training_args.learnt_temperature,
-            gumbel_tau=training_args.gumbel_tau,
             scale_not_pruned_gradients=training_args.scale_not_pruned_gradients,
             concrete_random_mask_proba=training_args.concrete_random_mask_proba,
             pretrain_fan_out_projection=training_args.pretrain_fan_out_projection,
@@ -981,7 +977,7 @@ if __name__ == "__main__":
             smollm_corpus = datasets.Dataset.load_from_disk(disk_dataset_path)
         else:
             # load and tokenize
-            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(10) ]
+            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(20) ]
             smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files, num_proc=16)
 
             def tokenize_function(examples):

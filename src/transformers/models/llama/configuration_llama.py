@@ -188,9 +188,7 @@ class LlamaConfig(PretrainedConfig):
         fan_out_type=None,
         hcg_temperature=1.0,
         learnt_temperature=False,
-        gumbel_tau=1.0,
         scale_not_pruned_gradients=0.0,
-        force_skip_tokens_percent=0.0,
         concrete_random_mask_proba=0.0,
         # scale_token_frequency=False,
         distributed=False,
@@ -220,7 +218,6 @@ class LlamaConfig(PretrainedConfig):
         self.learnt_temperature = learnt_temperature
         self.distributed = distributed
         
-        self.gumbel_tau = gumbel_tau
         self.scale_not_pruned_gradients = scale_not_pruned_gradients
 
         # self.scale_token_frequency = scale_token_frequency

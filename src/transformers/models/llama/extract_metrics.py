@@ -14,6 +14,7 @@ if __name__ == '__main__':
         # 'custom|trivia_qa|0',
         'custom|mmlu_cloze:_average|0',
         'custom|mmlu_pro_cloze|0',
+        'custom|wikitext_103|0',
         # 'custom|gsm8k|5',
     ]
     max_len = max(map(len, bench_keys))

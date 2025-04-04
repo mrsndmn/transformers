@@ -15,9 +15,6 @@ REGION = "SR004"
 
 SEED = 1008
 
-console = Console()
-console.print(client_lib.get_instance_types(regions="SR004"))
-
 INSTANCE_TYPE = "a100.4gpu"
 N_WORKERS = 1
 BASE_IMAGE = "cr.ai.cloud.ru/f51af5b1-d43b-4db4-938d-569d7cfffb7a/cuda12.1-torch2-py310-adaptive_attention:0.0.3"
@@ -37,12 +34,6 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         output_dir_full_path = os.path.join(workdir_prefix, output_dir)
 
         freeze_lm_backbone = exp.pop('freeze_lm_backbone')
-        gumbel_tau = exp.pop('gumbel_tau', 1.0)
-
-        full_unmerge_str_default: str = dummy_adaptive_fan_in_layers_str
-        full_unmerge_str_default = full_unmerge_str_default.replace('1', '0') # all zeros
-        full_unmerge_str = exp.pop('full_unmerge_str', full_unmerge_str_default)
-        full_unmerge_loss_weight = exp.pop('full_unmerge_loss_weight', 0.0)
 
         warmup_steps = exp.pop('warmup_steps', 2000)
         num_train_epochs = exp.pop('num_train_epochs', 1)
@@ -57,7 +48,6 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         model_type = exp.pop('model_type', 'pretrained') # pretrained_checkpoint
         llama_checkpoint = exp.pop('llama_checkpoint', '""')
         hcg_loss_weight_dynamic = exp.pop('hcg_loss_weight_dynamic', '0')
-        gumbel_loss_weight_dynamic = exp.pop('gumbel_loss_weight_dynamic', '0')
 
         learning_rate = exp.pop('learning_rate', 1e-4)
         hcg_learning_rate = exp.pop('hcg_learning_rate', 1e-3)
@@ -93,7 +83,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
 
         seed = SEED
 
-        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --full_unmerge_str {full_unmerge_str} --full_unmerge_loss_weight {full_unmerge_loss_weight} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type cosine --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection {fan_out_projection} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --gumbel_tau {gumbel_tau} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --gumbel_loss_weight_dynamic {gumbel_loss_weight_dynamic} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --bf16 1 --torch_compile {torch_compile} --sparsity_level {sparsity_level} --concrete_random_mask_proba {concrete_random_mask_proba} --lm_loss_max_value {lm_loss_max_value} --hcg_loss_max_value {hcg_loss_max_value} --prohibit_end_of_sentence_pruning {prohibit_end_of_sentence_pruning} --early_stopping_for_pretraining {early_stopping_for_pretraining} --hcg_learning_rate {hcg_learning_rate} --gradient_accumulation_steps {gradient_accumulation_steps} --pretrain_fan_out_projection {pretrain_fan_out_projection} --eval_strategy {eval_strategy}"
+        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type cosine --merging_type {merging_type} --fan_out_type {fan_out_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection {fan_out_projection} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --bf16 1 --torch_compile {torch_compile} --sparsity_level {sparsity_level} --concrete_random_mask_proba {concrete_random_mask_proba} --lm_loss_max_value {lm_loss_max_value} --hcg_loss_max_value {hcg_loss_max_value} --prohibit_end_of_sentence_pruning {prohibit_end_of_sentence_pruning} --early_stopping_for_pretraining {early_stopping_for_pretraining} --hcg_learning_rate {hcg_learning_rate} --gradient_accumulation_steps {gradient_accumulation_steps} --pretrain_fan_out_projection {pretrain_fan_out_projection} --eval_strategy {eval_strategy}"
 
         print(f"\n\n{script_str}\n\n")
 
@@ -856,13 +846,13 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
 
     common_params = {
         "freeze_lm_backbone": 0,
-        "select_train_dataset_items": 5120000,
+        "select_train_dataset_items": 0,
         "model_type": "pretrained_checkpoint",
 
         "learning_rate": 0.0005,
         "gradient_accumulation_steps": 1,
-        "per_device_train_batch_size": 16,
-        "instance_type": "a100.2gpu",
+        "per_device_train_batch_size": 8,
+        "instance_type": "a100.4gpu",
 
         "warmup_steps": 5000,
         "torch_compile": 1,
@@ -875,7 +865,8 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
     hcg_experiments = []
 
     # for hcg_loss_weight in [ 1.0, 2.0, 2.5, 3.0, 3.5 ]:
-    for hcg_loss_weight in [ 1.1, 1.5 ]:
+    # for hcg_loss_weight in [ 1.1, 1.5 ]:
+    for hcg_loss_weight in [ 2.0 ]:
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}",
@@ -1173,19 +1164,22 @@ def run_hcg_random_sampling(**kwargs):
     return
 
 
-
 if __name__ == "__main__":
 
     import sys
     import subprocess
 
+    console = Console()
+    console.print(client_lib.get_instance_types(regions="SR004"))
+
     dry = len(sys.argv) > 1 and sys.argv[1] == 'dry'
     print("dry", dry)
 
-    tests_run = subprocess.run(["pytest", "src/transformers/models/llama/tests/"])
-    if tests_run.returncode != 0:
-        print("Tests failed")
-        exit(1)
+    if not dry:
+        tests_run = subprocess.run(["pytest", "src/transformers/models/llama/tests/"])
+        if tests_run.returncode != 0:
+            print("Tests failed")
+            exit(1)
 
     # Pretrain
     # run_hcg_smollm360M_pretrain(dry=dry)
