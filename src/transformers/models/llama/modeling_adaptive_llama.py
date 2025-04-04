@@ -1367,7 +1367,6 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
             attention_mask = torch.ones_like(input_ids, dtype=torch.long)
 
         if special_embeddings_mask is None:
-            # special_embeddings_mask = torch.zeros_like(attention_mask)
             special_embeddings_mask = attention_mask.cumsum(dim=-1)
             special_embeddings_mask[special_embeddings_mask > 1] = 0
 

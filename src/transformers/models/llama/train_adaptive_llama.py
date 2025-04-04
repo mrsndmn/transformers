@@ -136,8 +136,6 @@ class AdaptiveTrainingArguments(TrainingArguments):
     select_train_dataset_items: int = 20000
     fan_out_projection: bool = True
 
-    with_special_embeddings_mask: bool = True
-
 class ComputeMetrics():
 
     def __call__(self, predictions=None, label_ids=None, losses=None, inputs=None, prefix_ids=None, generated_ids=None, **kwargs) -> Dict:
@@ -148,42 +146,6 @@ class ComputeMetrics():
         return {
             "accuracy": accuracy
         }
-
-
-class SequentialNumbersDataset():
-    def __init__(self, length=10000, num_numbers=100, max_sequence_length=20):
-        self.length = length
-        self.num_numbers = num_numbers
-        self.max_sequence_length = max_sequence_length
-
-    def __len__(self):
-        return self.length
-
-    def __getitem__(self, i):
-
-        current_length = self.max_sequence_length
-        start_from = random.randint(3, self.num_numbers - current_length - 3) # pad + bos + eos tokens
-
-        max_padding = self.max_sequence_length - current_length
-
-        inputs_ids = [1] + list(range(start_from, start_from + current_length)) + [2] + ([0] * max_padding)
-        labels = [1] + list(range(start_from, start_from + current_length)) + [2] + ([-100] * max_padding)
-        attention_mask_length = current_length + 2
-        attention_mask = ([1] * attention_mask_length) + ([0] * max_padding)
-        attention_mask = torch.tensor(attention_mask, dtype=torch.long)
-        special_embeddings_mask = torch.zeros_like(attention_mask)
-        special_embeddings_mask[0] = 1
-        special_embeddings_mask[attention_mask_length - 1] = 1
-
-        assert len(attention_mask) == len(inputs_ids)
-
-        return {
-            "input_ids": torch.tensor(inputs_ids),
-            "labels": torch.tensor(labels),
-            "special_embeddings_mask": special_embeddings_mask,
-            "attention_mask": attention_mask,
-        }
-
 
 
 class AdaptiveLlamaTrainer(Trainer):
@@ -288,8 +250,6 @@ class AdaptiveLlamaTrainer(Trainer):
             labels[labels == self.tokenizer.pad_token_id] = -100
 
         special_embeddings_mask = inputs.get('special_embeddings_mask')
-        if special_embeddings_mask is None:
-            special_embeddings_mask = inputs.get('special_tokens_mask') > 0
 
         attention_mask = inputs['attention_mask']
         token_frequency = inputs.get('token_frequency', None)
@@ -309,13 +269,10 @@ class AdaptiveLlamaTrainer(Trainer):
             model_kwargs = {**model_kwargs, **loss_kwargs}
 
 
-        if self.args.with_special_embeddings_mask:
-            assert special_embeddings_mask is not None
-            # assert special_embeddings_mask.sum() > 1
+        assert special_embeddings_mask is not None
+        model_kwargs["special_embeddings_mask"] = special_embeddings_mask
 
-            model_kwargs["special_embeddings_mask"] = special_embeddings_mask
-
-            assert special_embeddings_mask.shape == attention_mask.shape
+        assert special_embeddings_mask.shape == attention_mask.shape
 
         outputs = model.forward(**model_kwargs)
         # [ bs, seq_len, 2 ]
@@ -515,8 +472,7 @@ class AdaptiveLlamaTrainer(Trainer):
         genconfig.max_length = caption_legth
 
         batch_size, seq_len = inputs['input_ids'].shape[0], 2
-        special_embeddings_mask = torch.ones([batch_size, seq_len], device=inputs['input_ids'].device)
-        special_embeddings_mask[:, 1] = 0
+        special_embeddings_mask = inputs.get('special_embeddings_mask', None)
         attention_mask = torch.ones([batch_size, seq_len], device=inputs['input_ids'].device)
 
         prefix_ids = inputs['input_ids'][:, :2]
@@ -1006,28 +962,7 @@ if __name__ == "__main__":
     compute_metrics = None
     data_collator = None
 
-    if training_args.training_dataset == "sequential-numbers":
-        compute_metrics = ComputeMetrics()
-        train_dataset = SequentialNumbersDataset(length=2000, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
-        eval_dataset = SequentialNumbersDataset(length=64, num_numbers=VOCAB_SIZE, max_sequence_length=MAX_SEQ_LEN)
-
-        def collate_sequential_numbers(elements):
-            
-            input_ids               = pad_sequence([ el['input_ids'] for el in elements ], batch_first=True)
-            labels                  = pad_sequence([ el['labels'] for el in elements ], batch_first=True)
-            attention_mask          = pad_sequence([ el['attention_mask'] for el in elements ], batch_first=True)
-            special_embeddings_mask = pad_sequence([ el['special_embeddings_mask'] for el in elements ], batch_first=True)
-
-            return {
-                "input_ids": input_ids,
-                "labels": labels,
-                "attention_mask": attention_mask,
-                "special_embeddings_mask": special_embeddings_mask,
-            }
-
-        data_collator = collate_sequential_numbers
-
-    elif training_args.training_dataset == "smollm-corpus":
+    if training_args.training_dataset == "smollm-corpus":
 
         tokenizer.pad_token = tokenizer.eos_token
         # from tokenizers.processors import TemplateProcessing
@@ -1063,12 +998,6 @@ if __name__ == "__main__":
 
             smollm_corpus = smollm_corpus.map(tokenize_function, batched=True, num_proc=32)
 
-            # smollm_corpus = smollm_corpus.rename_column('special_tokens_mask', 'special_embeddings_mask')
-            # print(smollm_corpus[0]['input_ids'])
-            # breakpoint()
-            # smollm_corpus.save_to_disk("data/tokenized-smollm-corpus-1-shard.dataset")
-
-        # assert sum(smollm_corpus[0]['special_tokens_mask']) > 0
 
         if len(smollm_corpus) <= 100:
             train_dataset = smollm_corpus
@@ -1087,19 +1016,13 @@ if __name__ == "__main__":
         def crutch_collator(examples):
             collate_dummy = nested_data_collator(examples)
 
-            collate_dummy['special_tokens_mask'] = collate_dummy['attention_mask'].cumsum(-1)
-            collate_dummy['special_tokens_mask'][ collate_dummy['special_tokens_mask'] > 1 ] = 0
-            collate_dummy['special_tokens_mask'][:, -1] = 1
+            collate_dummy['special_embeddings_mask'] = collate_dummy['attention_mask'].cumsum(-1)
+            collate_dummy['special_embeddings_mask'][ collate_dummy['special_embeddings_mask'] > 1 ] = 0
+            collate_dummy['special_embeddings_mask'][:, -1] = 1
 
             if special_tokens is not None:
                 for special_token in special_tokens:
-                    collate_dummy['special_tokens_mask'][ collate_dummy['input_ids'] == special_token ] = 1
-
-            # if training_args.scale_token_frequency:
-            #     bin_frequencies = torch.bincount(collate_dummy['input_ids'].flatten())
-            #     collate_dummy['token_frequency'] = bin_frequencies[collate_dummy['input_ids']]
-
-            # assert (collate_dummy['special_tokens_mask'].sum(dim=-1) == 2).all()
+                    collate_dummy['special_embeddings_mask'][ collate_dummy['input_ids'] == special_token ] = 1
 
             return collate_dummy
 

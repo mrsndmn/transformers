@@ -108,11 +108,11 @@ if __name__ == "__main__":
         def crutch_collator(examples):
             collate_dummy = nested_data_collator([ { "input_ids": x['input_ids'], "attention_mask": x['attention_mask'] } for x in examples])
 
-            collate_dummy['special_tokens_mask'] = collate_dummy['attention_mask'].cumsum(-1)
-            collate_dummy['special_tokens_mask'][ collate_dummy['special_tokens_mask'] > 1 ] = 0
-            collate_dummy['special_tokens_mask'][:, -1] = 1
+            collate_dummy['special_embeddings_mask'] = collate_dummy['attention_mask'].cumsum(-1)
+            collate_dummy['special_embeddings_mask'][ collate_dummy['special_embeddings_mask'] > 1 ] = 0
+            collate_dummy['special_embeddings_mask'][:, -1] = 1
 
-            # assert (collate_dummy['special_tokens_mask'].sum(dim=-1) == 2).all()
+            # assert (collate_dummy['special_embeddings_mask'].sum(dim=-1) == 2).all()
 
             return collate_dummy
 
@@ -162,7 +162,7 @@ if __name__ == "__main__":
 
             orig_input_ids = text_inputs['input_ids'].to(device)
             orig_attention_mask = text_inputs['attention_mask'].to(device)
-            orig_special_embeddings_mask = text_inputs['special_tokens_mask'].to(device)
+            orig_special_embeddings_mask = text_inputs['special_embeddings_mask'].to(device)
 
 
             for sequence_length in tqdm(seq_lengths):
