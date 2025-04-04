@@ -44,3 +44,28 @@ def test_build_adaptive_llama_from_llama_checkpoint_no_pruning(use_cache):
 
     assert torch.allclose(adaptive_outputs['logits'], pretrained_outputs['logits'], atol=1e-4)
 
+
+def test_pretrained_checkpoint_perplexity():
+
+    torch.set_default_device('cuda')
+
+    pretrained_checkpoint = "./adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/_no_fout_proj_checkpoint-3118/"
+    adaptive_model = AdaptiveLlamaForCausalLM.from_pretrained(pretrained_checkpoint, torch_dtype=torch.bfloat16)
+
+    adaptive_model.eval()
+
+    inputs = torch.load("prepared_batch.input_ids.pt")
+
+    pretrained_outputs = adaptive_model.forward(
+        inputs.clone(),
+        labels=inputs,
+        output_hidden_states=True,
+        use_cache=False
+    )
+    print("pretrained_outputs.loss", pretrained_outputs.loss)
+    assert pretrained_outputs.loss < 3
+    assert (pretrained_outputs.fan_in_merging_maps[3] == 1).all()
+
+def test_finetuned_checkpoint_perplexity():
+    # TODO
+    pass

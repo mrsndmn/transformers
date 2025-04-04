@@ -850,13 +850,13 @@ def run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(**kwargs):
 
     return
 
-def run_hcg_smollm2_360M_hcg_scale_token_frequency(**kwargs):
+def run_hcg_smollm2_360M_hcg(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_2gpu_no_stf"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_2gpu"
 
     common_params = {
         "freeze_lm_backbone": 0,
-        "select_train_dataset_items": 2560000,
+        "select_train_dataset_items": 5120000,
         "model_type": "pretrained_checkpoint",
 
         "learning_rate": 0.0005,
@@ -879,8 +879,7 @@ def run_hcg_smollm2_360M_hcg_scale_token_frequency(**kwargs):
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}",
-            # "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/checkpoint-3118/",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_hcg_smooth_no_detach_2gpu_3.0_1XHGD9D8/checkpoint-39996/",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/_no_fout_proj_checkpoint-3118/",
             "hcg_loss_weight": hcg_loss_weight,
 
             "prohibit_end_of_sentence_pruning": "1",
@@ -1215,7 +1214,7 @@ if __name__ == "__main__":
     # run_hcg_smollm2_1dot7B_hcg_prohibit_end_of_sentence_pruning(dry=dry)
 
     # run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(dry=dry)
-    run_hcg_smollm2_360M_hcg_scale_token_frequency(dry=dry)
+    run_hcg_smollm2_360M_hcg(dry=dry)
 
     # schedule pruned percent loss
     # run_hcg_smollm2_1dot7B_fixed_pruning_percent(dry=dry)

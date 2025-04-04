@@ -394,35 +394,18 @@ class AdaptiveFanInHCG(nn.Module):
 
         concrete = concrete.to(hs_dtype)
 
-        # print("concrete", concrete)
-
         residual_hidden_state = ((1 - concrete) * residual_hidden_state)
 
         merged_embeddings_counts = attention_mask
 
-        # print("concrete_bool", concrete[0, 49:52])
-        # print("hidden_state before scale", hidden_state[0, 49:52].sum(dim=-1))
-
-        # TODO REMOVE!
-        # concrete[0, 1, 0] = 0.0
-        # print("TODO REMOVE! concrete", concrete[:, :, 0])
-
-        # 4 - [ 0, 0,0 ,  ]
-        # 5 - [ 0.4, 0.5, 0.6,  ]
-        # 6 - [ 0.4, 0.4, 0.2,  ]
-
         hidden_state = concrete * hidden_state
 
-        # print("hidden_state.shape", hidden_state.shape)
-
-        # print("self.training", self.training)
         if self.training:
-            # attention_mask[0, 1] = 0
             pass
         else:
             PRUNE_PERCENT = 0.0
-            attention_mask_dtype = attention_mask.dtype
             concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
+
             # print("concrete_bool", concrete_bool.sum().item(), '/', concrete_bool.numel())
 
             hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m, concrete_merged = prune_tokens_concrete(

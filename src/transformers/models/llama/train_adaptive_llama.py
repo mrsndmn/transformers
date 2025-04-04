@@ -854,7 +854,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
             dummy_adaptive_fan_in = list(reversed(dummy_adaptive_fan_in))
 
         print("dummy_adaptive_fan_in", dummy_adaptive_fan_in)
-        
+
         assert len(dummy_adaptive_fan_in) == num_layers_half
         model = build_adaptive_llama_from_llama_checkpoint(
             llama_checkpoint,
