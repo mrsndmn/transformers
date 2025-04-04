@@ -49,6 +49,7 @@ from ...utils import (
     is_flash_attn_greater_or_equal_2_10,
     logging,
     replace_return_docstrings,
+    is_torch_flex_attn_available,
 )
 from .configuration_llama import LlamaConfig
 from .modeling_llama import (
@@ -72,6 +73,13 @@ from enum import Enum
 from torch.distributions.categorical import Categorical
 
 CHECK_WITH_PYTHON = False
+
+if is_torch_flex_attn_available():
+    from torch.nn.attention.flex_attention import BlockMask
+
+    from ...integrations.flex_attention import make_flex_block_causal_mask
+
+
 
 @dataclass
 class AdaptiveBaseModelOutputWithPast(BaseModelOutputWithPast):
@@ -131,7 +139,7 @@ class NoOpFanIn(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
 
-    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, full_unmerge=None, **kwargs) -> AdaptiveFanInOutput:
+    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, **kwargs) -> AdaptiveFanInOutput:
         res = AdaptiveFanInOutput(
             hidden_state=hidden_state,
             residual_hidden_state=hidden_state,
@@ -317,7 +325,7 @@ class AdaptiveFanInHCG(nn.Module):
         self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
 
     # @torch.compiler.disable(recursive=True)
-    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, token_frequency: torch.Tensor=None, merging_log_probas: torch.Tensor=None, full_unmerge=False) -> AdaptiveFanInOutput:
+    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, token_frequency: torch.Tensor=None, merging_log_probas: torch.Tensor=None) -> AdaptiveFanInOutput:
         """_summary_
 
         Args:
@@ -842,15 +850,15 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = True,
+        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        full_unmerge=None,
     ) -> Union[Tuple, AdaptiveBaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        use_cache = False if use_cache is None else self.config.use_cache
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
@@ -860,6 +868,12 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                 "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
             )
             use_cache = False
+
+        if not isinstance(past_key_values, (type(None), Cache)):
+            raise ValueError("The `past_key_values` should be either a `Cache` object or `None`.")
+
+        if use_cache and past_key_values is None:
+            past_key_values = DynamicCache()
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
@@ -962,16 +976,11 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
             adaptive_down_layer: AdaptiveFanInHCG
 
-            current_full_unmerge = False
-            if full_unmerge is not None:
-                current_full_unmerge = full_unmerge[i]
-
             adaptive_down_output: AdaptiveFanInOutput = adaptive_down_layer.forward(
                 hidden_state=hidden_states,
                 attention_mask=loop_down_attention_mask,
                 token_frequency=token_frequency,
                 special_embeddings_mask=loop_down_special_embeddings_mask,
-                full_unmerge=current_full_unmerge,
             )
 
             all_loop_down_hidden_states.append(adaptive_down_output.residual_hidden_state)
@@ -1150,10 +1159,15 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         output_attentions: bool,
     ):
         if self.config._attn_implementation == "flash_attention_2":
-            if attention_mask is not None and 0.0 in attention_mask:
+            if attention_mask is not None and (attention_mask == 0.0).any():
                 return attention_mask
             return None
 
+        if self.config._attn_implementation == "flex_attention":
+            if isinstance(attention_mask, torch.Tensor):
+                attention_mask = make_flex_block_causal_mask(attention_mask)
+            if isinstance(attention_mask, BlockMask):
+                return attention_mask
         # For SDPA, when possible, we will rely on its `is_causal` argument instead of its `attn_mask` argument, in
         # order to dispatch on Flash Attention 2. This feature is not compatible with static cache, as SDPA will fail
         # to infer the attention mask.
@@ -1308,7 +1322,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         special_embeddings_mask: Optional[torch.Tensor] = None,
         special_tokens_mask: Optional[torch.Tensor] = None, # сrutch for remove unsued columns from dataset
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
+        past_key_values: Optional[Cache] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -1317,7 +1331,6 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         num_logits_to_keep: int = 0,
-        full_unmerge=None
     ) -> Union[Tuple, AdaptiveCausalLMOutputWithPast]:
         r"""
         Args:
@@ -1388,7 +1401,6 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             cache_position=cache_position,
-            full_unmerge=full_unmerge,
         )
 
         hidden_states = outputs[0]

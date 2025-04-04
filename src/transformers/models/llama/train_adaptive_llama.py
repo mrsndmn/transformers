@@ -110,7 +110,6 @@ class AdaptiveTrainingArguments(TrainingArguments):
     training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
     model_type: str = "dummy" # dummy | pretrained | SmolLM-1.7B
     
-    full_unmerge_loss_weight: float = 1.0
     hcg_loss_weight: float = 0.0
     hcg_loss_weight_dynamic: bool = False
 
@@ -126,7 +125,6 @@ class AdaptiveTrainingArguments(TrainingArguments):
     gumbel_tau: float = 2.0
     scale_not_pruned_gradients: float = 0.0
     
-    full_unmerge_str: Optional[str] = None
     fan_out_type: Optional[str] = None
     
     generate_merges_transform_impl: str = 'cuda_kernel'
@@ -364,8 +362,6 @@ class AdaptiveLlamaTrainer(Trainer):
             model_unwrapped = model_unwrapped.module
 
         model_config = model_unwrapped.config
-
-        assert sum(model_config.full_unmerge) == 0
 
         count_merging_losses = 0
 
@@ -900,11 +896,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
             raise ValueError("either dummy_adaptive_fan_in_layers or dummy_adaptive_fan_in_layers_str must be defined")
         if training_args.reverse_dummy_adaptive_fan_in_layers:
             dummy_adaptive_fan_in = list(reversed(dummy_adaptive_fan_in))
-        
-        full_unmerge = None
-        if training_args.full_unmerge_str is not None:
-            full_unmerge = list(map(lambda x: bool(int(x)), training_args.full_unmerge_str.split(',')))
-        
+
         print("dummy_adaptive_fan_in", dummy_adaptive_fan_in)
         
         assert len(dummy_adaptive_fan_in) == num_layers_half
@@ -914,7 +906,6 @@ def build_model(training_args: AdaptiveTrainingArguments):
             generate_merges_transform_impl=training_args.generate_merges_transform_impl,
             fan_out_projection=training_args.fan_out_projection,
             merging_type=training_args.merging_type,
-            full_unmerge=full_unmerge,
             fan_out_type=training_args.fan_out_type,
             hcg_temperature=training_args.hcg_temperature,
             learnt_temperature=training_args.learnt_temperature,

@@ -31,7 +31,6 @@ def build_adaptive_llama_from_llama_checkpoint(
         generate_merges_transform_impl='python',
         fan_out_projection=True,
         merging_type='next_token_merge_mlp',
-        full_unmerge=None,
         fan_out_type=None,
         hcg_temperature=1.0,
         learnt_temperature=False,
@@ -55,7 +54,6 @@ def build_adaptive_llama_from_llama_checkpoint(
     config.generate_merges_transform_impl = generate_merges_transform_impl
     config.fan_out_projection = fan_out_projection
     config.merging_type = merging_type
-    config.full_unmerge = full_unmerge
     config.fan_out_type = fan_out_type
     config.hcg_temperature = hcg_temperature
     config.learnt_temperature = learnt_temperature
