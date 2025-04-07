@@ -326,7 +326,7 @@ class AdaptiveFanInHCG(nn.Module):
         self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
 
     # @torch.compiler.disable(recursive=True)
-    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None) -> AdaptiveFanInOutput:
+    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, stop_words_tokens_mask: torch.Tensor=None) -> AdaptiveFanInOutput:
         """_summary_
 
         Args:
@@ -376,18 +376,30 @@ class AdaptiveFanInHCG(nn.Module):
             # log_a.register_hook(print_grad_hook_log_a)
             # hidden_state.register_hook(print_grad_hook_hidden_state)
 
+            use_hcg = False
             if self.config.concrete_random_mask_proba is not None and self.config.concrete_random_mask_proba > 0:
                 # [ bs, seq_len, 1 ]
                 concrete = torch.ones_like(log_a)
                 concrete_random_mask = torch.rand(log_a.shape, device=log_a.device) < self.config.concrete_random_mask_proba
                 concrete[concrete_random_mask] = 0.0
+            elif self.config.concrete_uniform_pruning is not None and self.config.concrete_uniform_pruning > 0:
+                # [ bs, seq_len, 1 ]
+                concrete = torch.ones_like(log_a)
+                arange_indices = torch.arange(hidden_state.shape[1], device=hidden_state.device).unsqueeze(0).unsqueeze(-1).expand(hidden_state.shape[0], -1, 1)
+                concrete[arange_indices % self.config.concrete_uniform_pruning == 0] = 0.0
+            elif self.config.concrete_stop_word_pruning is not None and self.config.concrete_stop_word_pruning:
+                # [ bs, seq_len, 1 ]
+                concrete = torch.ones_like(log_a)
+                assert stop_words_tokens_mask is not None
+                concrete[stop_words_tokens_mask.bool()] = 0.0
             else:
                 # [ bs, seq_len, 1 ]
+                use_hcg = True
                 concrete = self.hcg(log_a, attention_mask=attention_mask)
 
             # [ bs, seq_len, 1 ]
             p_open = concrete
-            if self.training:
+            if use_hcg and self.training:
                 p_open = self.hcg.get_p_open(log_a)
                 p_open[~attention_mask.bool()] = 0
                 p_open[special_embeddings_mask.bool()] = 1.
@@ -840,6 +852,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         attention_mask: Optional[torch.Tensor] = None,
         token_frequency: Optional[torch.Tensor] = None,
         special_embeddings_mask: Optional[torch.Tensor] = None,
+        stop_words_tokens_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
@@ -973,6 +986,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                 hidden_state=hidden_states,
                 attention_mask=loop_down_attention_mask,
                 special_embeddings_mask=loop_down_special_embeddings_mask,
+                stop_words_tokens_mask=stop_words_tokens_mask,
             )
 
             all_loop_down_hidden_states.append(adaptive_down_output.residual_hidden_state)
@@ -1311,6 +1325,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         special_embeddings_mask: Optional[torch.Tensor] = None,
+        stop_words_tokens_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Cache] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
@@ -1374,6 +1389,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
             input_ids=input_ids,
             attention_mask=attention_mask,
             special_embeddings_mask=special_embeddings_mask,
+            stop_words_tokens_mask=stop_words_tokens_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,

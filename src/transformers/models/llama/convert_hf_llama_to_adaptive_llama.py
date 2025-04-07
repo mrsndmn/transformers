@@ -37,6 +37,8 @@ def build_adaptive_llama_from_llama_checkpoint(
         flash_attention=True,
         scale_not_pruned_gradients=0.0,
         concrete_random_mask_proba=None,
+        concrete_uniform_pruning=None,
+        concrete_stop_word_pruning=None,
         pretrain_fan_out_projection=False,
     ):
 
@@ -59,6 +61,8 @@ def build_adaptive_llama_from_llama_checkpoint(
     config.scale_not_pruned_gradients = scale_not_pruned_gradients
     config.concrete_random_mask_proba = concrete_random_mask_proba
     config.pretrain_fan_out_projection = pretrain_fan_out_projection
+    config.concrete_uniform_pruning = concrete_uniform_pruning
+    config.concrete_stop_word_pruning = concrete_stop_word_pruning
 
     if flash_attention:
         config._attn_implementation = 'flash_attention_2'

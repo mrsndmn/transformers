@@ -19,6 +19,7 @@ from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_N
 
 from datasets import load_dataset
 import datasets
+from accelerate import PartialState
 
 from transformers import GenerationConfig
 
@@ -86,9 +87,9 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
     weight_decay: float = field(default=0.01)
     eval_strategy: str = field(default="steps")
-    eval_steps: int = field(default=1000)
-    save_strategy: str = field(default="no")
-    save_steps: int = 10000
+    eval_steps: int = field(default=10000)
+    save_strategy: str = field(default="steps")
+    save_steps: int = field(default=10000)
     save_total_limit: Optional[int] = field(default=15)
 
     prohibit_end_of_sentence_pruning: bool = field(default=False)
@@ -120,6 +121,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
     dummy_adaptive_fan_in_layers: Optional[int] = None
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
     concrete_random_mask_proba: Optional[float] = None
+    concrete_uniform_pruning: Optional[int] = None
+    concrete_stop_word_pruning: Optional[int] = None
     
     scale_not_pruned_gradients: float = 0.0
     
@@ -258,6 +261,7 @@ class AdaptiveLlamaTrainer(Trainer):
             # "token_frequency": token_frequency,
             "use_cache": None,
             "output_attentions": False,
+            "stop_words_tokens_mask": inputs.get('stop_words_tokens_mask', None),
         }
 
         if self.model_accepts_loss_kwargs:
@@ -919,6 +923,15 @@ def build_model(training_args: AdaptiveTrainingArguments):
     print("model.config.distributed", model.config.distributed)
 
     model.config.pretrain_fan_out_projection = training_args.pretrain_fan_out_projection
+
+    model.config.concrete_random_mask_proba = training_args.concrete_random_mask_proba
+    model.config.concrete_uniform_pruning = training_args.concrete_uniform_pruning
+    model.config.concrete_stop_word_pruning = training_args.concrete_stop_word_pruning
+
+    print("model.config.concrete_random_mask_proba", model.config.concrete_random_mask_proba)
+    print("model.config.concrete_uniform_pruning", model.config.concrete_uniform_pruning)
+    print("model.config.concrete_stop_word_pruning", model.config.concrete_stop_word_pruning)
+
     if training_args.freeze_lm_backbone:
         freeze_lm_backbone(model)
 
@@ -997,16 +1010,12 @@ if __name__ == "__main__":
         im_start_token_id = 1
         im_end_token_id = 2
 
-        disk_dataset_path = "data/tokenized-smollm-corpus-1-shard.dataset"
+        # load and tokenize
+        # data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(20) ]
+        # smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files, num_proc=16)
 
-        # if os.path.exists(disk_dataset_path):
-        if False:
-            smollm_corpus = datasets.Dataset.load_from_disk(disk_dataset_path)
-        else:
-            # load and tokenize
-            # data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(20) ]
-            # smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files, num_proc=16)
-
+        state = PartialState()
+        with state.local_main_process_first():
             data_files = [ f"data/CC-MAIN-2024-10/000_{i:05}.parquet" for i in range(20) ]
             smollm_corpus = load_dataset("HuggingFaceFW/fineweb", split="train", data_files=data_files, num_proc=16)
 
@@ -1039,6 +1048,10 @@ if __name__ == "__main__":
         if training_args.prohibit_end_of_sentence_pruning:
             special_tokens = [ x[0] for x in tokenizer([ '.', '..', '...', '?', '!', ':', ';' ])['input_ids'] ]
 
+        stop_words = None
+        if training_args.concrete_stop_word_pruning is not None:
+            stop_words = [ x[0] for x in tokenizer([ 'and', 'or', 'the', '.', ',', 'to', 'of', 'has', 'an', 'in', 'we', 'have', 'this'])['input_ids'] ]
+
         def crutch_collator(examples):
             collate_dummy = nested_data_collator(examples)
 
@@ -1049,6 +1062,11 @@ if __name__ == "__main__":
             if special_tokens is not None:
                 for special_token in special_tokens:
                     collate_dummy['special_embeddings_mask'][ collate_dummy['input_ids'] == special_token ] = 1
+
+            if stop_words is not None:
+                collate_dummy['stop_words_tokens_mask'] = torch.zeros_like(collate_dummy['attention_mask'])
+                for stop_word in stop_words:
+                    collate_dummy['stop_words_tokens_mask'][ collate_dummy['input_ids'] == stop_word ] = 1
 
             return collate_dummy
 

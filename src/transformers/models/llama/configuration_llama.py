@@ -190,6 +190,8 @@ class LlamaConfig(PretrainedConfig):
         learnt_temperature=False,
         scale_not_pruned_gradients=0.0,
         concrete_random_mask_proba=0.0,
+        concrete_uniform_pruning=0,
+        concrete_stop_word_pruning=0,
         # scale_token_frequency=False,
         distributed=False,
         pretrain_fan_out_projection=False,
@@ -212,6 +214,8 @@ class LlamaConfig(PretrainedConfig):
         assert len(self.dummy_adaptive_fan_in) == (num_hidden_layers // 2)
         
         self.concrete_random_mask_proba = concrete_random_mask_proba
+        self.concrete_uniform_pruning = concrete_uniform_pruning
+        self.concrete_stop_word_pruning = concrete_stop_word_pruning
 
         self.fan_out_type = fan_out_type
         self.hcg_temperature = hcg_temperature

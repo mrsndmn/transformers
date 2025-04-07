@@ -852,7 +852,7 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
         "learning_rate": 0.0005,
         "gradient_accumulation_steps": 1,
         "per_device_train_batch_size": 8,
-        "instance_type": "a100.4gpu",
+        "instance_type": "a100.1gpu",
 
         "warmup_steps": 5000,
         "torch_compile": 1,
@@ -866,7 +866,7 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
 
     # for hcg_loss_weight in [ 1.0, 2.0, 2.5, 3.0, 3.5 ]:
     # for hcg_loss_weight in [ 1.1, 1.5 ]:
-    for hcg_loss_weight in [ 2.0 ]:
+    for hcg_loss_weight in [ 1.0, 1.5 ]:
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}_{common_params['instance_type']}",
@@ -880,6 +880,79 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
 
 
     run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
+def run_hcg_smollm2_360M_hcg_rule_based(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_rule_based"
+
+    common_params = {
+        "freeze_lm_backbone": 0,
+        "select_train_dataset_items": 300000,
+        "model_type": "pretrained_checkpoint",
+
+        "learning_rate": 0.0005,
+        "gradient_accumulation_steps": 1,
+        "per_device_train_batch_size": 8,
+        "instance_type": "a100.1gpu",
+
+        "warmup_steps": 5000,
+        "torch_compile": 1,
+        "hcg_loss_weight_dynamic": "0",
+        "lm_loss_max_value": 0.0,
+        "fan_out_projection": "1",
+        "pretrain_fan_out_projection": '0',
+        "hcg_loss_weight": 0,
+    }
+
+    hcg_experiments = []
+
+    for freeze_lm_backbone in [ 0, 1 ]:
+        current_hcg_experiments = [
+            {
+                "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+                "output_dir": f"{experiment_prefix_base_name}_random_0.1_freeze_{freeze_lm_backbone}",
+                "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/_no_fout_proj_checkpoint-3118/",
+                "concrete_random_mask_proba": 0.1,
+                **common_params,
+            },
+            {
+                "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+                "output_dir": f"{experiment_prefix_base_name}_random_0.2_freeze_{freeze_lm_backbone}",
+                "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/_no_fout_proj_checkpoint-3118/",
+                "concrete_random_mask_proba": 0.2,
+                **common_params,
+            },
+            {
+                "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+                "output_dir": f"{experiment_prefix_base_name}_uniform_0.1_freeze_{freeze_lm_backbone}",
+                "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/_no_fout_proj_checkpoint-3118/",
+                "concrete_uniform_pruning": 10, # 10% of the tokens
+                **common_params,
+            },
+            {
+                "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+                "output_dir": f"{experiment_prefix_base_name}_uniform_0.2_freeze_{freeze_lm_backbone}",
+                "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/_no_fout_proj_checkpoint-3118/",
+                "concrete_uniform_pruning": 5, # 20% of the tokens
+                **common_params,
+            },
+            {
+                "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
+                "output_dir": f"{experiment_prefix_base_name}_stop_words_pruning_freeze_{freeze_lm_backbone}",
+                "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/_no_fout_proj_checkpoint-3118/",
+                "concrete_stop_word_pruning": 1,
+                **common_params,
+            },
+        ]
+
+        for exp in current_hcg_experiments:
+            exp["freeze_lm_backbone"] = freeze_lm_backbone
+
+        hcg_experiments += current_hcg_experiments
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG Rule Based: ", **kwargs)
 
     return
 
@@ -1208,7 +1281,8 @@ if __name__ == "__main__":
     # run_hcg_smollm2_1dot7B_hcg_prohibit_end_of_sentence_pruning(dry=dry)
 
     # run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(dry=dry)
-    run_hcg_smollm2_360M_hcg(dry=dry)
+    # run_hcg_smollm2_360M_hcg(dry=dry)
+    run_hcg_smollm2_360M_hcg_rule_based(dry=dry)
 
     # schedule pruned percent loss
     # run_hcg_smollm2_1dot7B_fixed_pruning_percent(dry=dry)
