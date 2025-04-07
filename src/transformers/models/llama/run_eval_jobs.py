@@ -292,6 +292,34 @@ def no_crutch_loss_normalize_token_frequenct_eval_bs_1m(**kwargs):
     return
 
 
+def baselines_rule_based_eval(**kwargs):
+
+    checkpoints = [
+        # Freezed
+        "./adaptive_hcg_slm2_360M_rule_based_random_0.1_freeze_1_WXBG8TRK/checkpoint-37487/",
+        "./adaptive_hcg_slm2_360M_rule_based_uniform_0.2_freeze_1_Y4Q7B7JW/checkpoint-37487/",
+        "./adaptive_hcg_slm2_360M_rule_based_stop_words_pruning_freeze_1_MQRNRNRJ/checkpoint-37487/",
+        "./adaptive_hcg_slm2_360M_rule_based_uniform_0.1_freeze_1_W87CVQV5/checkpoint-37487/",
+        "./adaptive_hcg_slm2_360M_rule_based_random_0.2_freeze_1_3YS0AJM1/checkpoint-37487/",
+
+        # Finetuned
+        "./adaptive_hcg_slm2_360M_rule_based_random_0.1_freeze_0_5X68TMDE/checkpoint-37487/",
+        "./adaptive_hcg_slm2_360M_rule_based_random_0.2_freeze_0_2GTV5AUE/checkpoint-37487/",
+        "./adaptive_hcg_slm2_360M_rule_based_uniform_0.1_freeze_0_M04D44LF/checkpoint-37487/",
+        "./adaptive_hcg_slm2_360M_rule_based_uniform_0.2_freeze_0_Z3182L60/checkpoint-37487/",
+        "./adaptive_hcg_slm2_360M_rule_based_stop_words_pruning_freeze_0_JEXQ1YJA/checkpoint-37487/",
+    ]
+
+    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
+
+    if kwargs.pop('extract_metrics', False):
+        run_extract_metrics(checkpoints)
+    else:
+        run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG Rule Based: ", **kwargs)
+
+    return
+
+
 
 def run_extract_metrics(checkpoints: list[str]):
 
@@ -364,4 +392,5 @@ if __name__ == "__main__":
 
     # no_crutch_loss_eval(dry=dry)
     # no_crutch_loss_normalize_token_frequenct_eval(dry=dry, extract_metrics=extract_metrics)
-    no_crutch_loss_normalize_token_frequenct_eval_bs_1m(dry=dry, extract_metrics=extract_metrics)
+    # no_crutch_loss_normalize_token_frequenct_eval_bs_1m(dry=dry, extract_metrics=extract_metrics)
+    baselines_rule_based_eval(dry=dry, extract_metrics=extract_metrics)
