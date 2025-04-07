@@ -842,7 +842,7 @@ def run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(**kwargs):
 
 def run_hcg_smollm2_360M_hcg(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_2gpu"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M"
 
     common_params = {
         "freeze_lm_backbone": 0,
@@ -869,7 +869,7 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
     for hcg_loss_weight in [ 2.0 ]:
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}",
+            "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}_{common_params['instance_type']}",
             "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/_no_fout_proj_checkpoint-3118/",
             "hcg_loss_weight": hcg_loss_weight,
 

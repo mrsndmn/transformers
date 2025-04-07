@@ -337,29 +337,49 @@ class AdaptiveLlamaTrainer(Trainer):
             if count_hcg_layers > 0:
                 hcg_loss /= count_hcg_layers
 
+        assert self.args.hcg_loss_max_value == 0
 
-        if self.args.hcg_loss_weight_dynamic and self.args.hcg_loss_max_value > 0:
-            raise ValueError("hcg_loss_max_value cant be used with hcg_loss_max_value")
+        lm_loss = causal_lm_loss.mean()
+
+        extra_log_hcg_dynamic = {}
 
         if self.args.hcg_loss_weight_dynamic:
+            assert self.args.hcg_loss_weight == 1.0
             # print("sum_pruned_tokens / total_tokens", sum_pruned_tokens / total_tokens)
-            outputs_loss = causal_lm_loss
-            if len(outputs_loss.shape) > 0:
-                outputs_loss = outputs_loss.mean()
 
-            if outputs_loss < self.args.lm_loss_max_value:
-                hcg_loss *= self.args.hcg_loss_weight
+            if not hasattr(self, 'loss_history'):
+                self.hcg_scale = 1.0
+                self.loss_history = []
+
+            lm_loss_item = lm_loss.item()
+
+            if len(self.loss_history) < 1000:
+                self.loss_history.append(lm_loss_item)
             else:
-                hcg_loss = 0
-        elif self.args.hcg_loss_max_value > 0:
-            if hcg_loss.item() < self.args.hcg_loss_max_value:
-                hcg_loss = 0
-            hcg_loss *= self.args.hcg_loss_weight
+                if not hasattr(self, 'loss_history_mean'):
+                    # Trim warmup
+                    self.loss_history = self.loss_history[int(len(self.loss_history) * 0.1):]
+                    self.loss_history_mean = np.mean(self.loss_history)
+                    self.loss_history_std = np.std(self.loss_history)
+
+                scale_hcg_loss = (self.loss_history_mean - lm_loss_item) / self.loss_history_std
+                self.hcg_scale *= 1.1 ** scale_hcg_loss
+                extra_log_hcg_dynamic['loss_history_mean'] = self.loss_history_mean
+                extra_log_hcg_dynamic['loss_history_std'] = self.loss_history_std
+
+                if self.hcg_scale < 0.1:
+                    self.hcg_scale = 0.1
+                elif self.hcg_scale > 10.0:
+                    self.hcg_scale = 10.0
+
+            # hcg_dynamic_scale
+            extra_log_hcg_dynamic['scale'] = self.hcg_scale
+
+            hcg_loss *= self.hcg_scale
         else:
             hcg_loss *= self.args.hcg_loss_weight
 
         # loss = causal_lm_loss
-        lm_loss = causal_lm_loss.mean()
         loss = lm_loss + hcg_loss
 
         # print("pruning_loss", pruning_loss)
@@ -370,6 +390,8 @@ class AdaptiveLlamaTrainer(Trainer):
         # assert ~ loss.isnan().any(), 'loss cant be none'
         total_tokens = attention_mask.sum().item()
         sum_pruned_tokens = 0
+
+        # print("extra_log_hcg_dynamic", extra_log_hcg_dynamic)
 
         if force_log or log_metrics and self.state.global_step % self.args.logging_steps == 0:
             outputs_loss = causal_lm_loss
@@ -384,6 +406,7 @@ class AdaptiveLlamaTrainer(Trainer):
                 f"{log_prefix}/lm_loss": lm_loss.detach().item(),
                 f"{log_prefix}/hcg_loss": hcg_loss_to_log,
                 f"{log_prefix}/total_tokens": total_tokens,
+                **{ f"{log_prefix}/hcg_dynamic_{k}": v for k, v in extra_log_hcg_dynamic.items() }
             }
 
             assert model_config.merging_type == 'hcg'
