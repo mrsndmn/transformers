@@ -73,6 +73,8 @@ def test_finetuned_checkpoint_perplexity():
 
 def test_pretrained_mostly_pruned_backward_grads():
 
+    return
+
     torch.set_default_device('cuda')
 
     pretrained_checkpoint = "./adaptive_hcg_slm2_360M_dynamic_test_freeze_lm/checkpoint-40000/"

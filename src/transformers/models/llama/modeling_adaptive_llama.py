@@ -537,7 +537,7 @@ class AdaptiveFanOut(nn.Module):
         else:
             residual_hidden_states_projection = residual_hidden_states
 
-        print("residual_hidden_states_projection", residual_hidden_states_projection.sum(-1))
+        # print("residual_hidden_states_projection", residual_hidden_states_projection.sum(-1))
 
         if self.fan_out_implementation in ('python',):
             restored_hidden_states = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)

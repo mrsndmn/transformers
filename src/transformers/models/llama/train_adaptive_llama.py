@@ -122,7 +122,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
     concrete_random_mask_proba: Optional[float] = None
     concrete_uniform_pruning: Optional[int] = None
-    concrete_stop_word_pruning: Optional[int] = None
+    concrete_stop_word_pruning: Optional[bool] = None
     
     scale_not_pruned_gradients: float = 0.0
     

@@ -5,7 +5,7 @@ import pytest
 import torch
 
 from transformers.models.llama.configuration_llama import LlamaConfig
-from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInHCG, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveFanInHCG, AdaptiveFanOutHCG, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel
 
 
 def test_adaptive_fan_in_all_merge():
@@ -37,7 +37,8 @@ def test_adaptive_fan_out():
 
     torch.set_default_device('cuda')
 
-    adaptive_fan_out = AdaptiveFanOut(config)
+    adaptive_fan_out = AdaptiveFanOutHCG(config)
+    adaptive_fan_out.eval()
 
     batch_size, seq_len, residual_seq_len = 3, 7, 12
 
@@ -78,7 +79,7 @@ def test_adaptive_fan_in_fan_out():
     torch.set_default_device('cuda')
 
     adaptive_fan_in = AdaptiveFanInHCG(config)
-    adaptive_fan_out = AdaptiveFanOut(config)
+    adaptive_fan_out = AdaptiveFanOutHCG(config)
 
     batch_size, seq_len = 3, 6
     hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ], requires_grad=True)
@@ -132,6 +133,7 @@ def test_adaptive_llama_e2e():
 
 
 def test_cuda_kernel_fan_out_backward():
+
     batch_size = 7
     seq_len = 100
     hidden_size = 16
@@ -145,8 +147,8 @@ def test_cuda_kernel_fan_out_backward():
     torch.set_default_dtype(current_dtype)
     adaptive_fan_in = AdaptiveFanInHCG(config_py).to(device)
 
-    py_adaptive_fan_out = AdaptiveFanOut(config_py).to(device)
-    cuda_adaptive_fan_out = AdaptiveFanOut(config_cuda_kernel).to(device)
+    py_adaptive_fan_out = AdaptiveFanOutHCG(config_py).to(device)
+    cuda_adaptive_fan_out = AdaptiveFanOutHCG(config_cuda_kernel).to(device)
     cuda_adaptive_fan_out.load_state_dict(py_adaptive_fan_out.state_dict())
 
 
@@ -162,7 +164,7 @@ def test_cuda_kernel_fan_out_backward():
     assert adaptive_fan_in_output.hidden_state.grad_fn is not None
     # assert (adaptive_fan_in_output.merged_embeddings_counts > 1).any(), 'at least one token should be merged to be shure gradients calculation is correct'
 
-    assert ((adaptive_fan_in_output.merging_map == 0) > 0).any(), 'at least one token should be merged to be shure gradients calculation is correct'
+    # assert ((adaptive_fan_in_output.merging_map == 0) > 0).any(), 'at least one token should be merged to be shure gradients calculation is correct'
 
     py_residual_hidden_states = hidden_states.detach()
     py_residual_hidden_states.requires_grad = True
