@@ -813,6 +813,17 @@ class AdaptiveLlamaTrainer(Trainer):
         return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=num_samples)
 
 
+def freeze_lm_backbone(model: nn.Module):
+    for p in model.parameters():
+        p.requires_grad = False
+
+    for p in model.model.adaptive_down.parameters():
+        p.requires_grad = True
+
+    for p in model.model.adaptive_up.parameters():
+        p.requires_grad = True
+
+
 def build_model(training_args: AdaptiveTrainingArguments):
     tokenizer = None
 
@@ -909,14 +920,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
     model.config.pretrain_fan_out_projection = training_args.pretrain_fan_out_projection
     if training_args.freeze_lm_backbone:
-        for p in model.parameters():
-            p.requires_grad = False
-
-        for p in model.model.adaptive_down.parameters():
-            p.requires_grad = True
-
-        for p in model.model.adaptive_up.parameters():
-            p.requires_grad = True
+        freeze_lm_backbone(model)
 
     if training_args.pretrain_fan_out_projection:
         print("Pretrain fan out projection. Freeze Fan In parameters")
@@ -1000,8 +1004,11 @@ if __name__ == "__main__":
             smollm_corpus = datasets.Dataset.load_from_disk(disk_dataset_path)
         else:
             # load and tokenize
-            data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(20) ]
-            smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files, num_proc=16)
+            # data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(20) ]
+            # smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files, num_proc=16)
+
+            data_files = [ f"data/CC-MAIN-2024-10/000_{i:05}.parquet" for i in range(20) ]
+            smollm_corpus = load_dataset("HuggingFaceFW/fineweb", split="train", data_files=data_files, num_proc=16)
 
             def tokenize_function(examples):
                 # 2046 = 2048 - 1 - 1 # eos and bos tokens

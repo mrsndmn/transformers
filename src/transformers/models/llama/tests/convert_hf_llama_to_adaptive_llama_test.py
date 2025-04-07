@@ -3,7 +3,7 @@ import pytest
 from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
-
+from transformers.models.llama.train_adaptive_llama import freeze_lm_backbone
 
 @pytest.mark.parametrize("use_cache", [True, False])
 def test_build_adaptive_llama_from_llama_checkpoint_no_pruning(use_cache):
@@ -69,3 +69,30 @@ def test_pretrained_checkpoint_perplexity():
 def test_finetuned_checkpoint_perplexity():
     # TODO
     pass
+
+
+def test_pretrained_mostly_pruned_backward_grads():
+
+    torch.set_default_device('cuda')
+
+    pretrained_checkpoint = "./adaptive_hcg_slm2_360M_dynamic_test_freeze_lm/checkpoint-40000/"
+    adaptive_model = AdaptiveLlamaForCausalLM.from_pretrained(pretrained_checkpoint, torch_dtype=torch.bfloat16)
+
+    freeze_lm_backbone(adaptive_model)
+
+    adaptive_model.train()
+
+    inputs = torch.load("prepared_batch.input_ids.pt")
+
+    pretrained_outputs = adaptive_model.forward(
+        inputs.clone(),
+        labels=inputs,
+        output_hidden_states=True,
+        use_cache=False
+    )
+
+    pretrained_outputs.loss.backward()
+
+    print("pretrained_outputs.loss", pretrained_outputs.loss)
+    assert pretrained_outputs.loss < 3
+    assert (pretrained_outputs.fan_in_merging_maps[3] == 1).all()

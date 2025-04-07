@@ -221,7 +221,8 @@ class HardConcreteGate(nn.Module):
             concrete = self.activation(log_a)
 
         concrete = concrete * (self.adjust_range[1] - self.adjust_range[0]) + self.adjust_range[0]
-        concrete = torch.clip(concrete, min=0, max=1)
+        # concrete = torch.clip(concrete, min=self.eps, max=1-self.eps)
+        concrete = torch.clip(concrete, min=1e-4, max=1)
         concrete[attention_mask == 0] = 0
 
         # print('attention_mask.sum()', attention_mask.sum())
@@ -363,8 +364,17 @@ class AdaptiveFanInHCG(nn.Module):
             # OHE: [ bs, seq_len, 1 ]
             log_a = self.fan_in_mlp(hidden_state)
 
-            # if self.config.scale_token_frequency:
-            #     log_a = log_a - token_frequency.unsqueeze(-1).log()
+            # def print_grad_hook_log_a(grad):
+            #     print("log_a", log_a)
+            #     print("log_a grad:", grad.shape, (grad.mean(1) > 0).sum().item())
+            #     breakpoint()
+            #     return grad
+            # def print_grad_hook_hidden_state(grad):
+            #     print("hidden_state grad:", grad.shape, (grad.mean(1) > 0).sum().item())
+            #     breakpoint()
+            #     return grad
+            # log_a.register_hook(print_grad_hook_log_a)
+            # hidden_state.register_hook(print_grad_hook_hidden_state)
 
             if self.config.concrete_random_mask_proba is not None and self.config.concrete_random_mask_proba > 0:
                 # [ bs, seq_len, 1 ]
@@ -382,10 +392,13 @@ class AdaptiveFanInHCG(nn.Module):
                 p_open[~attention_mask.bool()] = 0
                 p_open[special_embeddings_mask.bool()] = 1.
 
-        # print("special_embeddings_mask", special_embeddings_mask)
+        # def print_grad_hook_concrete(grad):
+        #     print("concrete", (concrete > 0).sum())
+        #     print("concrete grad:", grad.shape, (grad.mean(1) > 0).sum().item())
+        #     breakpoint()
+        #     return grad
+        # concrete.register_hook(print_grad_hook_concrete)
 
-        # assert concrete.shape == special_embeddings_mask.shape
-        # breakpoint()
         concrete[special_embeddings_mask.bool()] = 1.0
         p_open[special_embeddings_mask.bool()] = 1.0
 
