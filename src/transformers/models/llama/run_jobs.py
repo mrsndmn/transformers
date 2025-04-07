@@ -849,7 +849,7 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
 
     common_params = {
         "freeze_lm_backbone": 0,
-        "select_train_dataset_items": 0,
+        "select_train_dataset_items": 300000,
         "model_type": "pretrained_checkpoint",
 
         "learning_rate": 0.0005,
@@ -869,7 +869,7 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
 
     # for hcg_loss_weight in [ 1.0, 2.0, 2.5, 3.0, 3.5 ]:
     # for hcg_loss_weight in [ 1.1, 1.5 ]:
-    for hcg_loss_weight in [ 1.0, 1.5 ]:
+    for hcg_loss_weight in [ 0.01, 0.1, 0.5 ]:
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}_{common_params['instance_type']}",
@@ -1281,26 +1281,9 @@ if __name__ == "__main__":
     # run_hcg_smollm2_1dot7B_hcg_lambda_iterate(dry=dry)
     # run_hcg_smollm2_1dot7B_hcg_prohibit_end_of_sentence_pruning(dry=dry)
 
-    # run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(dry=dry)
-    # run_hcg_smollm2_360M_hcg(dry=dry)
-    run_hcg_smollm2_360M_hcg_rule_based(dry=dry)
+    # SLM360M
+    run_hcg_smollm2_360M_hcg(dry=dry)
 
-    # schedule pruned percent loss
-    # run_hcg_smollm2_1dot7B_fixed_pruning_percent(dry=dry)
+    # Rule based
+    # run_hcg_smollm2_360M_hcg_rule_based(dry=dry)
 
-    # Strange 1.7B SmolLM2 8 Layer
-    # run_hcg_smollm1dot7B_layer_8(dry=dry)
-    # run_hcg_smollm1_1dot7B_fixed_pruning_percent(dry=dry)
-
-    # Ablations
-    # Pretrain no fan out projection
-    # run_hcg_smollm2_1dot7B_pretrain_nofoutproj(dry=dry)
-    # run_hcg_smollm2_1dot7B_nofoutproj(dry=dry)
-
-
-    # Random
-    # run_hcg_random_sampling(dry=dry)
-
-    # Gumbel
-    # run_gumbel_adaptive_pretrain(dry=dry)
-    # run_gumbel_adaptive(dry=dry)

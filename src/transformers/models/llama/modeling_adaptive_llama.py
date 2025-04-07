@@ -222,7 +222,7 @@ class HardConcreteGate(nn.Module):
 
         concrete = concrete * (self.adjust_range[1] - self.adjust_range[0]) + self.adjust_range[0]
         # concrete = torch.clip(concrete, min=self.eps, max=1-self.eps)
-        concrete = torch.clip(concrete, min=1e-4, max=1)
+        concrete = torch.clip(concrete, min=0, max=1)
         concrete[attention_mask == 0] = 0
 
         # print('attention_mask.sum()', attention_mask.sum())
@@ -365,16 +365,21 @@ class AdaptiveFanInHCG(nn.Module):
             log_a = self.fan_in_mlp(hidden_state)
 
             # def print_grad_hook_log_a(grad):
-            #     print("log_a", log_a)
+            #     self
+            #     print("log_a", log_a.shape)
             #     print("log_a grad:", grad.shape, (grad.mean(1) > 0).sum().item())
             #     breakpoint()
             #     return grad
             # def print_grad_hook_hidden_state(grad):
+            #     self
+            #     print(hidden_state.shape)
             #     print("hidden_state grad:", grad.shape, (grad.mean(1) > 0).sum().item())
             #     breakpoint()
             #     return grad
-            # log_a.register_hook(print_grad_hook_log_a)
-            # hidden_state.register_hook(print_grad_hook_hidden_state)
+            # if log_a.requires_grad:
+            #     log_a.register_hook(print_grad_hook_log_a)
+            # if hidden_state.requires_grad:
+            #     hidden_state.register_hook(print_grad_hook_hidden_state)
 
             use_hcg = False
             if self.config.concrete_random_mask_proba is not None and self.config.concrete_random_mask_proba > 0:
@@ -405,11 +410,13 @@ class AdaptiveFanInHCG(nn.Module):
                 p_open[special_embeddings_mask.bool()] = 1.
 
         # def print_grad_hook_concrete(grad):
+        #     self
         #     print("concrete", (concrete > 0).sum())
-        #     print("concrete grad:", grad.shape, (grad.mean(1) > 0).sum().item())
+        #     print("concrete grad:", grad.shape, (grad.mean(1).abs() > 0).sum().item())
         #     breakpoint()
         #     return grad
-        # concrete.register_hook(print_grad_hook_concrete)
+        # if concrete.requires_grad:
+        #     concrete.register_hook(print_grad_hook_concrete)
 
         concrete[special_embeddings_mask.bool()] = 1.0
         p_open[special_embeddings_mask.bool()] = 1.0
@@ -419,11 +426,30 @@ class AdaptiveFanInHCG(nn.Module):
 
         concrete = concrete.to(hs_dtype)
 
-        residual_hidden_state = ((1 - concrete) * residual_hidden_state)
-
         merged_embeddings_counts = attention_mask
 
+        residual_hidden_state = ((1 - concrete) * residual_hidden_state)
         hidden_state = concrete * hidden_state
+
+        # if residual_hidden_state.requires_grad:
+        #     def print_grad_hook_residual_hidden_state_2(grad):
+        #         self
+        #         print(residual_hidden_state.shape)
+        #         print("residual_hidden_state grad:", grad.shape, (grad.sum(-1).abs() > 0).sum().item())
+        #         breakpoint()
+        #         return grad
+
+        #     residual_hidden_state.register_hook(print_grad_hook_residual_hidden_state_2)
+
+        # if hidden_state.requires_grad:
+        #     def print_grad_hook_hidden_state_2(grad):
+        #         self
+        #         print(hidden_state.shape)
+        #         print("hidden_state grad:", grad.shape, (grad.sum(-1).abs() > 0).sum().item())
+        #         breakpoint()
+        #         return grad
+
+        #     hidden_state.register_hook(print_grad_hook_hidden_state_2)
 
         if self.training:
             pass
