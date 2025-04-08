@@ -70,15 +70,13 @@ import torch.profiler
 class AdaptiveTrainingArguments(TrainingArguments):
     output_dir: str = field(default="llama_for_sequential_numbers",)
     learning_rate: float = field(default=2e-4)
-    hcg_learning_rate: float = field(default=1e-3)
 
     warmup_steps: int = field(default=500)
     per_device_train_batch_size: int = field(default=32)
     per_device_eval_batch_size: int = field(default=4)
     num_train_epochs: int = field(default=1)
 
-    hcg_temperature: float = field(default=1.0)
-    learnt_temperature: bool = field(default=False)
+
     lr_scheduler_type: str = field(default='constant_with_warmup')
 
     average_tokens_across_devices: bool = field(default=True)
@@ -104,6 +102,10 @@ class AdaptiveTrainingArguments(TrainingArguments):
     merging_type: str = field(default="next_token_merge_mlp")
     freeze_lm_backbone: bool = field(default=False)
     bf16: bool = field(default=True)
+
+    hcg_temperature: float = field(default=0.33)
+    learnt_temperature: bool = field(default=False)
+    pretrain_hcg: bool = field(default=False)
 
     early_stopping_for_pretraining: bool = field(default=False)
     pretrain_fan_out_projection: bool = field(default=False)
@@ -168,7 +170,6 @@ class AdaptiveLlamaTrainer(Trainer):
             decay_parameters = self.get_decay_parameter_names(opt_model)
             decay_parameters = set(decay_parameters)
 
-            # hcg_lr = self.args.hcg_learning_rate
 
             hcg_params = []
             # hcg_params = set([ p for n, p in opt_model.named_parameters() if "fan_in_mlp" in n ])
@@ -336,12 +337,13 @@ class AdaptiveLlamaTrainer(Trainer):
                 hcg_p_open = hcg_p_open.squeeze(2).flatten()
                 p_open_non_masked = hcg_p_open[hcg_p_open_attention_mask.flatten().bool()]
 
-                hcg_loss += p_open_non_masked.mean()
+                if self.args.pretrain_hcg:
+                    hcg_loss += (p_open_non_masked.mean() - 0.5)**2
+                else:
+                    hcg_loss += p_open_non_masked.mean()
 
             if count_hcg_layers > 0:
                 hcg_loss /= count_hcg_layers
-
-        assert self.args.hcg_loss_max_value == 0
 
         lm_loss = causal_lm_loss.mean()
 

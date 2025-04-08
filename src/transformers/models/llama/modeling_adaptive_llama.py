@@ -159,7 +159,7 @@ class NoOpFanIn(nn.Module):
 class HardConcreteGate(nn.Module):
     def __init__(self,
                  max_seq_len=2048,
-                 temperature=1.0,
+                 temperature=0.33,
                  learnt_temperature=False,
                  adjust_range=(-0.1, 1.1),
                 #  l0_penalty_lambda=0.0,
@@ -309,7 +309,8 @@ class AdaptiveFanInHCG(nn.Module):
         self.config = config
         self.hidden_size = config.hidden_size
 
-        self.hcg = HardConcreteGate(max_seq_len=config.max_position_embeddings, temperature=config.hcg_temperature, learnt_temperature=config.learnt_temperature)
+        # self.hcg = HardConcreteGate(max_seq_len=config.max_position_embeddings, temperature=config.hcg_temperature, learnt_temperature=config.learnt_temperature)
+        self.hcg = HardConcreteGate(max_seq_len=config.max_position_embeddings)
 
         self.merging_type = self.config.merging_type
         assert self.merging_type == 'hcg'
