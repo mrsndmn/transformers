@@ -856,7 +856,9 @@ class AdaptiveLlamaTrainer(Trainer):
             pipeline.show_results()
             results = pipeline.get_results()
 
-            self.log({ "lighteval/wikitext_ppl": results['results']["custom:wikitext_103:0"]["ppl"] })
+            print("results", results)
+            if results is not None:
+                self.log({ "lighteval/wikitext_ppl": results['results']["custom:wikitext_103:0"]["ppl"] })
 
         self.model.train()
 

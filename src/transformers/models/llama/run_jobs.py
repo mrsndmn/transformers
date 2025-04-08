@@ -53,7 +53,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         per_device_train_batch_size = exp.pop('per_device_train_batch_size', 32)
         gradient_accumulation_steps = exp.pop('gradient_accumulation_steps', 1)
 
-        save_steps = exp.pop('save_steps', 1)
+        save_steps = exp.pop('save_steps', 5000)
         torch_compile = exp.pop('torch_compile', 1)
 
         concrete_random_mask_proba = exp.pop('concrete_random_mask_proba', '0')
