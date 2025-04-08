@@ -841,17 +841,17 @@ def run_hcg_smollm2_1dot7B_hcg_scale_token_frequency(**kwargs):
 
 def run_hcg_smollm2_360M_hcg(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_360M"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_full"
 
     common_params = {
         "freeze_lm_backbone": 0,
-        "select_train_dataset_items": 600000,
+        "select_train_dataset_items": 0,
         "model_type": "pretrained_checkpoint",
 
         "learning_rate": 0.0005,
         "gradient_accumulation_steps": 1,
         "per_device_train_batch_size": 8,
-        "instance_type": "a100.2gpu",
+        "instance_type": "a100.4gpu",
 
         "warmup_steps": 5000,
         "torch_compile": 1,
@@ -864,11 +864,13 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
 
     hcg_experiments = []
 
-    for hcg_loss_weight in [ 0.1, 0.5, 1.0 ]:
+    # for hcg_loss_weight in [ 0.1, 0.5, 1.0 ]:
+    for hcg_loss_weight in [ 1.0 ]:
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}_{common_params['instance_type']}",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_log_a_4_7778H9VK/checkpoint-3118/",
+            # "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_log_a_4_7778H9VK/checkpoint-3118/",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_1.0_a100.2gpu_YP0GAJQF/checkpoint-37493/",
             "hcg_loss_weight": hcg_loss_weight,
 
             **common_params,
