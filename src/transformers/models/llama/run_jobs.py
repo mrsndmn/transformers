@@ -53,7 +53,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         per_device_train_batch_size = exp.pop('per_device_train_batch_size', 32)
         gradient_accumulation_steps = exp.pop('gradient_accumulation_steps', 1)
 
-        save_steps = exp.pop('save_steps', 10000)
+        save_steps = exp.pop('save_steps', 1)
         torch_compile = exp.pop('torch_compile', 1)
 
         concrete_random_mask_proba = exp.pop('concrete_random_mask_proba', '0')
@@ -108,7 +108,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
                 "WANDB_PROJECT": "adaptive_attention",
                 "WANDB_API_KEY": os.environ.get("WANDB_API_KEY", ""),
                 "WANDB_MODE": "online",
-                "PYTHONPATH": f"{workdir_prefix}/src",
+                "PYTHONPATH": f"{workdir_prefix}/src:/workspace-SR004.nfs2/d.tarasov/lighteval/src",
                 "HF_HOME": "/workspace-SR004.nfs2/.cache/huggingface"
             },
         )
@@ -845,13 +845,13 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
 
     common_params = {
         "freeze_lm_backbone": 0,
-        "select_train_dataset_items": 150000,
+        "select_train_dataset_items": 600000,
         "model_type": "pretrained_checkpoint",
 
         "learning_rate": 0.0005,
         "gradient_accumulation_steps": 1,
         "per_device_train_batch_size": 8,
-        "instance_type": "a100.1gpu",
+        "instance_type": "a100.2gpu",
 
         "warmup_steps": 5000,
         "torch_compile": 1,
@@ -864,9 +864,7 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
 
     hcg_experiments = []
 
-    # for hcg_loss_weight in [ 1.0, 2.0, 2.5, 3.0, 3.5 ]:
-    # for hcg_loss_weight in [ 1.1, 1.5 ]:
-    for hcg_loss_weight in [ 0.5, 1.0 ]:
+    for hcg_loss_weight in [ 0.1, 0.5, 1.0 ]:
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}_{common_params['instance_type']}",

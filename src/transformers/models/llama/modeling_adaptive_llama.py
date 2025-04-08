@@ -955,7 +955,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             # if current_concrete is not None:
             #     print("down layers", i, "current_concrete", current_concrete.sum(), '/', current_concrete.numel())
 
-            if current_concrete is not None:
+            if self.training and current_concrete is not None:
                 hidden_states = hidden_states * current_concrete
 
             if output_hidden_states:
@@ -1086,7 +1086,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
             # print("up layers", i, "current_concrete", current_concrete is not None)
 
-            if current_concrete is not None and i > 0: # i > 0 to avoid double application of concrete
+            if self.training and current_concrete is not None and i > 0: # i > 0 to avoid double application of concrete
                 hidden_states = hidden_states * current_concrete
 
             if output_hidden_states:

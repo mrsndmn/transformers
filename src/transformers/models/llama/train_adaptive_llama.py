@@ -21,6 +21,10 @@ from datasets import load_dataset
 import datasets
 from accelerate import PartialState
 
+from lighteval.pipeline import EnvConfig, ParallelismManager, Pipeline, PipelineParameters
+from lighteval.logging.evaluation_tracker import EvaluationTracker
+from lighteval.models.transformers.transformers_model import TransformersModelConfig
+
 from transformers import GenerationConfig
 
 VOCAB_SIZE = 200
@@ -54,7 +58,7 @@ import transformers
 from transformers import GenerationConfig
 from transformers.trainer import nested_detach
 from transformers.trainer_pt_utils import EvalLoopContainer, find_batch_size, IterableDatasetShard
-from transformers.trainer_utils import has_length, denumpify_detensorize, EvalLoopOutput
+from transformers.trainer_utils import has_length, denumpify_detensorize, EvalLoopOutput, PREFIX_CHECKPOINT_DIR
 
 from torch.utils.data import DataLoader
 
@@ -89,6 +93,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     save_strategy: str = field(default="steps")
     save_steps: int = field(default=10000)
     save_total_limit: Optional[int] = field(default=15)
+    save_only_model: bool = field(default=True)
 
     prohibit_end_of_sentence_pruning: bool = field(default=False)
     # scale_token_frequency: bool = field(default=False)
@@ -818,6 +823,43 @@ class AdaptiveLlamaTrainer(Trainer):
 
         return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=num_samples)
 
+    def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
+        super().save_model(output_dir, _internal_call)
+
+        evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'"
+        evaluation_tracker = EvaluationTracker(
+            output_dir=evaluation_output_dir,
+        )
+        pipeline_params = PipelineParameters(
+            launcher_type=ParallelismManager.ACCELERATE,
+            # env_config=env_config,
+            custom_tasks_directory='/workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py',
+            override_batch_size=1,
+            num_fewshot_seeds=1,
+            max_samples=None,
+            use_chat_template=False,
+            system_prompt=None,
+            load_responses_from_details_date_id=None,
+        )
+
+        tasks = "custom|wikitext_103|0|1"
+
+        with torch.no_grad():
+            pipeline = Pipeline(
+                tasks=tasks,
+                pipeline_parameters=pipeline_params,
+                evaluation_tracker=evaluation_tracker,
+                model=self.accelerator.unwrap_model(self.model),
+            )
+            pipeline.evaluate()
+
+            pipeline.show_results()
+            results = pipeline.get_results()
+
+            self.log({ "lighteval/wikitext_ppl": results['results']["custom:wikitext_103:0"]["ppl"] })
+
+        self.model.train()
+
 
 def freeze_lm_backbone(model: nn.Module):
     for p in model.parameters():
@@ -979,7 +1021,6 @@ class EarlyStoppingCallbacForPretraining(TrainerCallback):
             self.subsequent_steps_metric_ok = 0
 
         return control
-
 
 # pretrained
 # WANDB_MODE=online PYTHONPATH=/Users/d.tarasov/workspace/transformers/src:./src ~/miniconda3/envs/audio/bin/python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --per_device_train_batch_size 32 --num_train_epochs 10 --seed 1001 --training_dataset smollm-corpus --model_type pretrained
