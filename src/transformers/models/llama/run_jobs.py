@@ -406,14 +406,15 @@ def run_hcg_qwen_7B_pretrain(**kwargs):
 
 def run_hcg_smollm2_360M_pretrain_fan_out_projection(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_pretrain_fan_out_projection"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_pretrain_fan_out_projection_log_a"
 
     common_params = {
         "freeze_lm_backbone": 1,
         "select_train_dataset_items": 50000,
         "num_train_epochs": 1,
-        "per_device_train_batch_size": 16,
-        "model_type": "pretrained_checkpoint",
+        "per_device_train_batch_size": 8,
+        "model_type": "pretrained",
+        "llama_checkpoint": "HuggingFaceTB/SmolLM2-360M",
         "warmup_steps": 1000,
         "learning_rate": 0.0001,
         "torch_compile": 1,
@@ -430,7 +431,6 @@ def run_hcg_smollm2_360M_pretrain_fan_out_projection(**kwargs):
         {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_4",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_with_early_stopping_4/checkpoint-601/",
             **common_params,
         },
 
@@ -1276,9 +1276,9 @@ if __name__ == "__main__":
 
     # SLM360M
     # run_hcg_smollm2_360M_pretrain(dry=dry)
-    # run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
+    run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
 
-    run_hcg_smollm2_360M_hcg(dry=dry)
+    # run_hcg_smollm2_360M_hcg(dry=dry)
 
     # Rule based
     # run_hcg_smollm2_360M_hcg_rule_based(dry=dry)

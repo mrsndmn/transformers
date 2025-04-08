@@ -158,6 +158,8 @@ class NoOpFanIn(nn.Module):
 
 class HardConcreteGate(nn.Module):
     def __init__(self,
+                 count_log_a=0,
+                 log_a=0.0,
                  max_seq_len=2048,
                  temperature=0.33,
                  learnt_temperature=False,
@@ -172,6 +174,7 @@ class HardConcreteGate(nn.Module):
 
         print('temperature', temperature, "learnt_temperature", learnt_temperature)
 
+        assert not learnt_temperature
         if learnt_temperature:
             self.register_parameter("temperature", nn.Parameter(torch.tensor([temperature])))
         else:
@@ -179,24 +182,30 @@ class HardConcreteGate(nn.Module):
 
         self.register_buffer("adjust_range", torch.tensor(adjust_range))
 
+        assert count_log_a > 0
+        self.hcg_log_a = nn.Parameter(torch.full((count_log_a,), log_a))
+
         self.register_buffer("random_buffer", torch.rand(1, max_seq_len, 1, dtype=torch.float32), persistent=False)
 
         self.activation = nn.Sigmoid()
 
         return
 
-    def get_p_open(self, log_a):
+    def get_p_open(self, input_ids):
+        log_a = self.hcg_log_a[input_ids]
+
         p_open = self.activation(log_a - self.temperature * torch.log(- self.adjust_range[0] / self.adjust_range[1]) )
         p_open = torch.clip(p_open, min=self.eps, max=1-self.eps)
         return p_open
 
-    def forward(self, log_a: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         # log_a ~ [ batch_size, seq_len ]
         # inputs ~ [ batch_size, seq_len, hidden_dim ]
         # assert inputs.size(-1) % log_a.size(0) == 0
+        assert input_ids.dtype == torch.long
 
-
-        seq_len = log_a.shape[1]
+        seq_len = input_ids.shape[1]
+        log_a = self.hcg_log_a[input_ids].unsqueeze(-1)
 
         if self.training:
             log_a_dtype = log_a.dtype
@@ -310,24 +319,17 @@ class AdaptiveFanInHCG(nn.Module):
         self.hidden_size = config.hidden_size
 
         # self.hcg = HardConcreteGate(max_seq_len=config.max_position_embeddings, temperature=config.hcg_temperature, learnt_temperature=config.learnt_temperature)
-        self.hcg = HardConcreteGate(max_seq_len=config.max_position_embeddings)
+        self.hcg = HardConcreteGate(count_log_a=config.vocab_size, max_seq_len=config.max_position_embeddings)
 
         self.merging_type = self.config.merging_type
         assert self.merging_type == 'hcg'
-
-        self.fan_in_mlp = nn.Sequential(
-            # nn.Linear(self.hidden_size, 1, bias=True),
-            nn.Linear(self.hidden_size, 128, bias=True),
-            nn.LeakyReLU(),
-            nn.Linear(128, 1, bias=True),
-        )
 
         approximate_batch_size_length = 100
         max_seq_len_buffer = torch.arange(config.max_position_embeddings).unsqueeze(0).repeat(approximate_batch_size_length, 1)
         self.register_buffer('max_seq_len_buffer', max_seq_len_buffer, persistent=False)
 
     # @torch.compiler.disable(recursive=True)
-    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, stop_words_tokens_mask: torch.Tensor=None) -> AdaptiveFanInOutput:
+    def forward(self, input_ids, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, stop_words_tokens_mask: torch.Tensor=None) -> AdaptiveFanInOutput:
         """_summary_
 
         Args:
@@ -363,50 +365,33 @@ class AdaptiveFanInHCG(nn.Module):
             p_open = concrete
         else:
             # OHE: [ bs, seq_len, 1 ]
-            log_a = self.fan_in_mlp(hidden_state)
-
-            # def print_grad_hook_log_a(grad):
-            #     self
-            #     print("log_a", log_a.shape)
-            #     print("log_a grad:", grad.shape, (grad.mean(1) > 0).sum().item())
-            #     breakpoint()
-            #     return grad
-            # def print_grad_hook_hidden_state(grad):
-            #     self
-            #     print(hidden_state.shape)
-            #     print("hidden_state grad:", grad.shape, (grad.mean(1) > 0).sum().item())
-            #     breakpoint()
-            #     return grad
-            # if log_a.requires_grad:
-            #     log_a.register_hook(print_grad_hook_log_a)
-            # if hidden_state.requires_grad:
-            #     hidden_state.register_hook(print_grad_hook_hidden_state)
+            input_ids
 
             use_hcg = False
             if self.config.concrete_random_mask_proba is not None and self.config.concrete_random_mask_proba > 0:
                 # [ bs, seq_len, 1 ]
-                concrete = torch.ones_like(log_a)
-                concrete_random_mask = torch.rand(log_a.shape, device=log_a.device) < self.config.concrete_random_mask_proba
+                concrete = torch.ones_like(input_ids)
+                concrete_random_mask = torch.rand(input_ids.shape, device=input_ids.device) < self.config.concrete_random_mask_proba
                 concrete[concrete_random_mask] = 0.0
             elif self.config.concrete_uniform_pruning is not None and self.config.concrete_uniform_pruning > 0:
                 # [ bs, seq_len, 1 ]
-                concrete = torch.ones_like(log_a)
+                concrete = torch.ones_like(input_ids)
                 arange_indices = torch.arange(hidden_state.shape[1], device=hidden_state.device).unsqueeze(0).unsqueeze(-1).expand(hidden_state.shape[0], -1, 1)
                 concrete[arange_indices % self.config.concrete_uniform_pruning == 0] = 0.0
             elif self.config.concrete_stop_word_pruning is not None and self.config.concrete_stop_word_pruning:
                 # [ bs, seq_len, 1 ]
-                concrete = torch.ones_like(log_a)
+                concrete = torch.ones_like(input_ids)
                 assert stop_words_tokens_mask is not None
                 concrete[stop_words_tokens_mask.bool()] = 0.0
             else:
                 # [ bs, seq_len, 1 ]
                 use_hcg = True
-                concrete = self.hcg(log_a, attention_mask=attention_mask)
+                concrete = self.hcg(input_ids, attention_mask=attention_mask)
 
             # [ bs, seq_len, 1 ]
             p_open = concrete
             if use_hcg and self.training:
-                p_open = self.hcg.get_p_open(log_a)
+                p_open = self.hcg.get_p_open(input_ids)
                 p_open[~attention_mask.bool()] = 0
                 p_open[special_embeddings_mask.bool()] = 1.
 
@@ -896,6 +881,8 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        assert input_ids is not None
+
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
 
@@ -1010,6 +997,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             adaptive_down_layer: AdaptiveFanInHCG
 
             adaptive_down_output: AdaptiveFanInOutput = adaptive_down_layer.forward(
+                input_ids=input_ids,
                 hidden_state=hidden_states,
                 attention_mask=loop_down_attention_mask,
                 special_embeddings_mask=loop_down_special_embeddings_mask,

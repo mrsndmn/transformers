@@ -1186,7 +1186,7 @@ class Trainer:
             optimizer = self.optimizer
         self.create_scheduler(num_training_steps=num_training_steps, optimizer=optimizer)
 
-    def get_decay_parameter_names(self, model) -> list[str]:
+    def get_decay_parameter_names(self, model, extra_forbidden_layer_names=[]) -> list[str]:
         """
         Get all parameter names that weight decay will be applied to.
 
@@ -1194,7 +1194,7 @@ class Trainer:
         1. By layer type (instances of layers specified in ALL_LAYERNORM_LAYERS)
         2. By parameter name patterns (containing 'bias', 'layernorm', or 'rmsnorm')
         """
-        decay_parameters = get_parameter_names(model, ALL_LAYERNORM_LAYERS, ["bias", "layernorm", "rmsnorm"])
+        decay_parameters = get_parameter_names(model, ALL_LAYERNORM_LAYERS, ["bias", "layernorm", "rmsnorm"] + extra_forbidden_layer_names)
         return decay_parameters
 
     def create_optimizer(self):

@@ -167,7 +167,7 @@ class AdaptiveLlamaTrainer(Trainer):
         opt_model = self.model
 
         if self.optimizer is None:
-            decay_parameters = self.get_decay_parameter_names(opt_model)
+            decay_parameters = self.get_decay_parameter_names(opt_model, extra_forbidden_layer_names=['hcg_log_a'])
             decay_parameters = set(decay_parameters)
 
 
