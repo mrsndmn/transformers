@@ -38,7 +38,7 @@ def test_initialization_custom(custom_gate):
 def test_get_p_open(default_gate, batch_size, seq_len):
     input_ids = torch.randint(0, 10, (batch_size, seq_len), dtype=torch.long)
     p_open = default_gate.get_p_open(input_ids)
-    assert p_open.shape == (batch_size, seq_len)
+    assert p_open.shape == (batch_size, seq_len, 1)
     assert torch.all((p_open >= default_gate.eps) & (p_open <= 1.0 - default_gate.eps))
 
 @pytest.mark.parametrize("batch_size, seq_len", [(2, 50), (1, 128)])

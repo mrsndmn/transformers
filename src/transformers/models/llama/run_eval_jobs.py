@@ -297,17 +297,19 @@ def baselines_rule_based_eval(**kwargs):
     checkpoints = [
         # Freezed
         "./adaptive_hcg_slm2_360M_rule_based_random_0.1_freeze_1_WXBG8TRK/checkpoint-37487/",
-        "./adaptive_hcg_slm2_360M_rule_based_uniform_0.2_freeze_1_Y4Q7B7JW/checkpoint-37487/",
-        "./adaptive_hcg_slm2_360M_rule_based_stop_words_pruning_freeze_1_MQRNRNRJ/checkpoint-37487/",
         "./adaptive_hcg_slm2_360M_rule_based_uniform_0.1_freeze_1_W87CVQV5/checkpoint-37487/",
+        "./adaptive_hcg_slm2_360M_rule_based_stop_words_pruning_freeze_1_MQRNRNRJ/checkpoint-37487/",
+
+        "./adaptive_hcg_slm2_360M_rule_based_uniform_0.2_freeze_1_Y4Q7B7JW/checkpoint-37487/",
         "./adaptive_hcg_slm2_360M_rule_based_random_0.2_freeze_1_3YS0AJM1/checkpoint-37487/",
 
         # Finetuned
         "./adaptive_hcg_slm2_360M_rule_based_random_0.1_freeze_0_5X68TMDE/checkpoint-37487/",
-        "./adaptive_hcg_slm2_360M_rule_based_random_0.2_freeze_0_2GTV5AUE/checkpoint-37487/",
         "./adaptive_hcg_slm2_360M_rule_based_uniform_0.1_freeze_0_M04D44LF/checkpoint-37487/",
-        "./adaptive_hcg_slm2_360M_rule_based_uniform_0.2_freeze_0_Z3182L60/checkpoint-37487/",
         "./adaptive_hcg_slm2_360M_rule_based_stop_words_pruning_freeze_0_JEXQ1YJA/checkpoint-37487/",
+
+        "./adaptive_hcg_slm2_360M_rule_based_random_0.2_freeze_0_2GTV5AUE/checkpoint-37487/",
+        "./adaptive_hcg_slm2_360M_rule_based_uniform_0.2_freeze_0_Z3182L60/checkpoint-37487/",
     ]
 
     hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
@@ -330,6 +332,7 @@ def run_extract_metrics(checkpoints: list[str]):
         'custom|mmlu_cloze:_average|0',
         'custom|mmlu_pro_cloze|0',
         # 'custom|gsm8k|5',
+        'custom|wikitext_103|0',
     ]
 
     print(" & ".join([ 'checkpoint', 'pruned', 'MaxLM Loss' ] + bench_keys), " \\\\")
@@ -361,6 +364,9 @@ def run_extract_metrics(checkpoints: list[str]):
             elif 'qem' in metric_dict:
                 metric = metric_dict['qem']
                 metric_stderr = metric_dict['qem_stderr']
+            elif 'ppl' in metric_dict:
+                metric = metric_dict['ppl']
+                metric_stderr = metric_dict['ppl_stderr']
             elif len(metric_dict.keys()) > 0:
                 raise ValueError("unknown metrics:", metric_dict)
 

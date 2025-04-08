@@ -16,13 +16,14 @@ def test_adaptive_fan_in_all_merge():
     adaptive_fan_in = AdaptiveFanInHCG(config)
     adaptive_fan_in.eval()
     batch_size, seq_len = 3, 6
+    input_ids = torch.randint(0, 10, (batch_size, seq_len), dtype=torch.long)
     hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ])
     attention_mask = torch.ones([batch_size, seq_len], dtype=torch.long)
     special_embeddings_mask = torch.zeros([batch_size, seq_len])
     special_embeddings_mask[:, 0] = 1
     special_embeddings_mask[:, -1] = 1
 
-    adaptive_fan_in_output = adaptive_fan_in.forward(hidden_states, attention_mask, special_embeddings_mask)
+    adaptive_fan_in_output = adaptive_fan_in.forward(input_ids=input_ids, hidden_state=hidden_states, attention_mask=attention_mask, special_embeddings_mask=special_embeddings_mask)
 
     assert adaptive_fan_in_output.attention_mask.shape[1] == seq_len # bos + merged_embedding + eos
     assert adaptive_fan_in_output.hidden_state.shape[1] == seq_len # bos + merged_embedding + eos
@@ -82,13 +83,14 @@ def test_adaptive_fan_in_fan_out():
     adaptive_fan_out = AdaptiveFanOutHCG(config)
 
     batch_size, seq_len = 3, 6
+    input_ids = torch.randint(0, 10, (batch_size, seq_len), dtype=torch.long)
     hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ], requires_grad=True)
     attention_mask = torch.ones([batch_size, seq_len])
     special_embeddings_mask = torch.zeros([batch_size, seq_len])
     special_embeddings_mask[:, 0] = 1
     special_embeddings_mask[:, -1] = 1
 
-    adaptive_fan_in_output = adaptive_fan_in.forward(hidden_states, attention_mask, special_embeddings_mask)
+    adaptive_fan_in_output = adaptive_fan_in.forward(input_ids=input_ids, hidden_state=hidden_states, attention_mask=attention_mask, special_embeddings_mask=special_embeddings_mask)
     assert adaptive_fan_in_output.hidden_state.grad_fn is not None
 
     residual_hidden_states = hidden_states
@@ -121,15 +123,18 @@ def test_adaptive_llama_e2e():
 
     allama_model = AdaptiveLlamaModel(config)
     batch_size, seq_len = 3, 6
-    hidden_states = torch.rand([ batch_size, seq_len, config.hidden_size ], requires_grad=True)
     attention_mask = torch.ones([batch_size, seq_len])
     special_embeddings_mask = torch.zeros([batch_size, seq_len])
     special_embeddings_mask[:, 0] = 1
     special_embeddings_mask[:, -1] = 1
 
-    llama_output = allama_model.forward(inputs_embeds=hidden_states, attention_mask=attention_mask, special_embeddings_mask=special_embeddings_mask, use_cache=False)
+    input_ids = torch.randint(0, 10, (batch_size, seq_len))
 
-    assert llama_output.last_hidden_state.shape == hidden_states.shape
+    llama_output = allama_model.forward(input_ids=input_ids, attention_mask=attention_mask, special_embeddings_mask=special_embeddings_mask, use_cache=False)
+
+    assert llama_output.last_hidden_state.shape[0] == input_ids.shape[0]
+    assert llama_output.last_hidden_state.shape[1] == input_ids.shape[1]
+    assert llama_output.last_hidden_state.shape[2] == config.hidden_size
 
 
 def test_cuda_kernel_fan_out_backward():
@@ -153,6 +158,7 @@ def test_cuda_kernel_fan_out_backward():
 
 
     hidden_states = torch.rand([ batch_size, seq_len, hidden_size ], requires_grad=True, device=device)
+    input_ids = torch.randint(0, 10, (batch_size, seq_len), device=device)
     attention_mask = torch.ones([batch_size, seq_len], device=device, dtype=torch.long)
     special_embeddings_mask = torch.zeros([batch_size, seq_len], device=device)
     special_embeddings_mask[:, 0] = 1
@@ -160,7 +166,7 @@ def test_cuda_kernel_fan_out_backward():
 
     torch.set_default_dtype(torch.float32)
 
-    adaptive_fan_in_output = adaptive_fan_in.forward(hidden_states, attention_mask=attention_mask, special_embeddings_mask=special_embeddings_mask)
+    adaptive_fan_in_output = adaptive_fan_in.forward(input_ids=input_ids, hidden_state=hidden_states, attention_mask=attention_mask, special_embeddings_mask=special_embeddings_mask)
     assert adaptive_fan_in_output.hidden_state.grad_fn is not None
     # assert (adaptive_fan_in_output.merged_embeddings_counts > 1).any(), 'at least one token should be merged to be shure gradients calculation is correct'
 

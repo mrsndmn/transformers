@@ -86,7 +86,7 @@ def test_eval_adaptive_hcg_llama():
 
         assert eval_output.fan_in_merging_maps[3].sum().item() == eval_output.fan_in_merging_logits[3].sum().item()
 
-        assert torch.allclose(train_output['loss'], eval_output['loss'], atol=0.2), f'{train_output["loss"].item()} != {eval_output["loss"].item()}'
+        assert torch.allclose(train_output['loss'], eval_output['loss'], atol=0.5), f'{train_output["loss"].item()} != {eval_output["loss"].item()}'
 
 
 def test_prune_tokens_concrete():

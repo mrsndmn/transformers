@@ -845,7 +845,7 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
 
     common_params = {
         "freeze_lm_backbone": 0,
-        "select_train_dataset_items": 300000,
+        "select_train_dataset_items": 150000,
         "model_type": "pretrained_checkpoint",
 
         "learning_rate": 0.0005,
@@ -859,20 +859,20 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
         "lm_loss_max_value": 0.0,
         "fan_out_projection": "1",
         "pretrain_fan_out_projection": '0',
+        "prohibit_end_of_sentence_pruning": "0",
     }
 
     hcg_experiments = []
 
     # for hcg_loss_weight in [ 1.0, 2.0, 2.5, 3.0, 3.5 ]:
     # for hcg_loss_weight in [ 1.1, 1.5 ]:
-    for hcg_loss_weight in [ 0.01, 0.1, 0.5 ]:
+    for hcg_loss_weight in [ 0.5, 1.0 ]:
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
             "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}_{common_params['instance_type']}",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/_no_fout_proj_checkpoint-3118/",
+            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_log_a_4_7778H9VK/checkpoint-3118/",
             "hcg_loss_weight": hcg_loss_weight,
 
-            "prohibit_end_of_sentence_pruning": "1",
             **common_params,
         }
         hcg_experiments.append(exp_config)
@@ -1276,9 +1276,8 @@ if __name__ == "__main__":
 
     # SLM360M
     # run_hcg_smollm2_360M_pretrain(dry=dry)
-    run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
-
-    # run_hcg_smollm2_360M_hcg(dry=dry)
+    # run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
+    run_hcg_smollm2_360M_hcg(dry=dry)
 
     # Rule based
     # run_hcg_smollm2_360M_hcg_rule_based(dry=dry)

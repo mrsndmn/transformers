@@ -192,7 +192,7 @@ class HardConcreteGate(nn.Module):
         return
 
     def get_p_open(self, input_ids):
-        log_a = self.hcg_log_a[input_ids]
+        log_a = self.hcg_log_a[input_ids].unsqueeze(-1)
 
         p_open = self.activation(log_a - self.temperature * torch.log(- self.adjust_range[0] / self.adjust_range[1]) )
         p_open = torch.clip(p_open, min=self.eps, max=1-self.eps)
