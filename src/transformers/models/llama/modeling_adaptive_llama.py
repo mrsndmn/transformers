@@ -370,17 +370,17 @@ class AdaptiveFanInHCG(nn.Module):
             use_hcg = False
             if self.config.concrete_random_mask_proba is not None and self.config.concrete_random_mask_proba > 0:
                 # [ bs, seq_len, 1 ]
-                concrete = torch.ones_like(input_ids)
+                concrete = torch.ones_like(input_ids).unsqueeze(-1)
                 concrete_random_mask = torch.rand(input_ids.shape, device=input_ids.device) < self.config.concrete_random_mask_proba
                 concrete[concrete_random_mask] = 0.0
             elif self.config.concrete_uniform_pruning is not None and self.config.concrete_uniform_pruning > 0:
                 # [ bs, seq_len, 1 ]
-                concrete = torch.ones_like(input_ids)
+                concrete = torch.ones_like(input_ids).unsqueeze(-1)
                 arange_indices = torch.arange(hidden_state.shape[1], device=hidden_state.device).unsqueeze(0).unsqueeze(-1).expand(hidden_state.shape[0], -1, 1)
                 concrete[arange_indices % self.config.concrete_uniform_pruning == 0] = 0.0
             elif self.config.concrete_stop_word_pruning is not None and self.config.concrete_stop_word_pruning:
                 # [ bs, seq_len, 1 ]
-                concrete = torch.ones_like(input_ids)
+                concrete = torch.ones_like(input_ids).unsqueeze(-1)
                 assert stop_words_tokens_mask is not None
                 concrete[stop_words_tokens_mask.bool()] = 0.0
             else:

@@ -844,14 +844,14 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
     experiment_prefix_base_name = "adaptive_hcg_slm2_360M_full"
 
     common_params = {
-        "freeze_lm_backbone": 0,
+        "freeze_lm_backbone": '1',
         "select_train_dataset_items": 0,
         "model_type": "pretrained_checkpoint",
 
         "learning_rate": 0.0005,
         "gradient_accumulation_steps": 1,
-        "per_device_train_batch_size": 8,
-        "instance_type": "a100.4gpu",
+        "per_device_train_batch_size": 16,
+        "instance_type": "a100.2gpu",
 
         "warmup_steps": 5000,
         "torch_compile": 1,

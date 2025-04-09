@@ -182,4 +182,4 @@ random_hcg_*
 run_hcg_*
 *.png
 exps_evaluation/
-
+*.gif
