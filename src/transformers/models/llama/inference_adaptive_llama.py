@@ -23,7 +23,7 @@ if __name__ == "__main__":
     if checkpoint.startswith('HuggingFaceTB'):
         model = LlamaForCausalLM.from_pretrained(checkpoint)
     else:
-        model = AdaptiveLlamaForCausalLM.from_pretrained(checkpoint)
+        model = AdaptiveLlamaForCausalLM.from_pretrained(checkpoint, torch_dtype=torch.bfloat16)
 
     model.to(device)
     model.eval()

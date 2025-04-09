@@ -155,6 +155,7 @@ if __name__ == "__main__":
 
     # --- Save Histogram Animation ---
     if images:
+        breakpoint()
         print("Creating histogram animation...")
         hist_output_path = 'src/transformers/models/llama/interpretation/pruning_probs_animation.gif'
         try:
@@ -253,7 +254,10 @@ if __name__ == "__main__":
         top_passed = last_valid_hcg_log_a.argsort(dim=-1, descending=True)
         top_pruned = last_valid_hcg_log_a.argsort(dim=-1, descending=False)
 
-        print("--- Top 100 Most Likely to be Passed Tokens (Last Valid Checkpoint) ---")
+        # The closest indexes to 0
+        indices_close_to_zero = torch.where( (last_valid_hcg_log_a < 0.0001) * (last_valid_hcg_log_a > -0.0001) )[0]
+        print(f"Indices close to zero: {indices_close_to_zero.shape}")
+        print(f"Indices close to zero: {tokeniser.batch_decode(indices_close_to_zero)}")
         try:
             top_passed_tokens = tokeniser.batch_decode(top_passed[:100])
             print(top_passed_tokens)

@@ -74,6 +74,7 @@ import torch.profiler
 class AdaptiveTrainingArguments(TrainingArguments):
     output_dir: str = field(default="llama_for_sequential_numbers",)
     learning_rate: float = field(default=2e-4)
+    hcg_learning_rate: float = field(default=0.1)
 
     warmup_steps: int = field(default=500)
     per_device_train_batch_size: int = field(default=32)
@@ -175,41 +176,43 @@ class AdaptiveLlamaTrainer(Trainer):
             decay_parameters = self.get_decay_parameter_names(opt_model, extra_forbidden_layer_names=['hcg_log_a'])
             decay_parameters = set(decay_parameters)
 
+            hcg_lr = self.args.hcg_learning_rate
+
+            print("hcg_lr", hcg_lr)
+            print("lr", self.args.learning_rate)
+
 
             hcg_params = []
-            # hcg_params = set([ p for n, p in opt_model.named_parameters() if "fan_in_mlp" in n ])
-            # hcg_params_no_decay = set([ p for n, p in opt_model.named_parameters() if "bias" in n ])
-            # decay_parameters = decay_parameters - hcg_params
+            hcg_params = set([ p for n, p in opt_model.named_parameters() if "hcg_log_a" in n ])
+            decay_parameters = decay_parameters - hcg_params
             # TODO separate group for HCG linear?
 
             optimizer_grouped_parameters = [
+                # LM params with Weight Decay
                 {
                     "params": [
-                        p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)
+                        p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in hcg_params and p.requires_grad)
                     ],
                     "weight_decay": self.args.weight_decay,
                 },
+                # LM params without Weight Decay
                 {
                     "params": [
                         p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in hcg_params and p.requires_grad)
                     ],
                     "weight_decay": 0.0,
                 },
-                # {
-                #     "params": [
-                #         p for n, p in opt_model.named_parameters() if (n in hcg_params_no_decay and p.requires_grad)
-                #     ],
-                #     "weight_decay": 0.0,
-                #     "learning_rate": hcg_lr,
-                # },
-                # {
-                #     "params": [
-                #         p for n, p in opt_model.named_parameters() if (n in hcg_params and p.requires_grad)
-                #     ],
-                #     "weight_decay": self.args.weight_decay,
-                #     "learning_rate": hcg_lr,
-                # },
+                # HCG params with Weight Decay
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters() if (n in hcg_params and p.requires_grad)
+                    ],
+                    "weight_decay": 0.0,
+                    "learning_rate": hcg_lr,
+                },
             ]
+
+            assert sum(sum(p.numel() for p in group['params']) for group in optimizer_grouped_parameters) == sum(p.numel() for p in opt_model.parameters())
 
             optimizer_cls, optimizer_kwargs = self.get_optimizer_cls_and_kwargs(self.args, opt_model)
 
