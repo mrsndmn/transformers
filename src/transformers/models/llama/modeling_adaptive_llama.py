@@ -229,6 +229,8 @@ class HardConcreteGate(nn.Module):
         else:
             concrete = self.activation(log_a)
 
+        # concrete = torch.ones_like(input_ids).unsqueeze(-1)
+
         concrete = concrete * (self.adjust_range[1] - self.adjust_range[0]) + self.adjust_range[0]
         # concrete = torch.clip(concrete, min=self.eps, max=1-self.eps)
         concrete = torch.clip(concrete, min=0, max=1)

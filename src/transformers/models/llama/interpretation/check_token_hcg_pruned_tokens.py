@@ -16,7 +16,9 @@ import io # Add io import
 if __name__ == "__main__":
     torch.set_default_device('cuda')
 
-    checkpoint_base_path = "./adaptive_hcg_slm2_360M_full_1.0_a100.4gpu_WC650AC2/"
+    # checkpoint_base_path = "./adaptive_hcg_slm2_360M_full_1.0_a100.4gpu_WC650AC2/"
+    # checkpoint_base_path = "./adaptive_hcg_slm2_360M_full_hcg_lr_freeze_lm_1.0_a100.1gpu/"
+    checkpoint_base_path = "adaptive_hcg_slm2_360M_full_hcg_lr_10.0_freeze_lm_1.0_a100.1gpu"
     checkpoints = os.listdir(checkpoint_base_path)
     checkpoints = [x for x in checkpoints if x.startswith('checkpoint')]
     checkpoints = sorted(checkpoints, key=lambda x: int(x.split('-')[1]))

@@ -75,6 +75,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     output_dir: str = field(default="llama_for_sequential_numbers",)
     learning_rate: float = field(default=2e-4)
     hcg_learning_rate: float = field(default=0.1)
+    max_grad_norm: float = field(default=None)
 
     warmup_steps: int = field(default=500)
     per_device_train_batch_size: int = field(default=32)
@@ -102,7 +103,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     push_to_hub: bool = field(default=False)
     optim: str = field(default="adamw_torch_fused")
     report_to: str = field(default="wandb")
-    logging_steps: int = field(default=100)
+    logging_steps: int = field(default=500)
     dataloader_drop_last: bool = field(default=True)
     dataloader_num_workers: int = field(default=4)
     merging_type: str = field(default="next_token_merge_mlp")
@@ -181,9 +182,8 @@ class AdaptiveLlamaTrainer(Trainer):
             print("hcg_lr", hcg_lr)
             print("lr", self.args.learning_rate)
 
-
             hcg_params = []
-            hcg_params = set([ p for n, p in opt_model.named_parameters() if "hcg_log_a" in n ])
+            hcg_params = set([ n for n, p in opt_model.named_parameters() if "hcg_log_a" in n ])
             decay_parameters = decay_parameters - hcg_params
             # TODO separate group for HCG linear?
 
@@ -194,6 +194,7 @@ class AdaptiveLlamaTrainer(Trainer):
                         p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in hcg_params and p.requires_grad)
                     ],
                     "weight_decay": self.args.weight_decay,
+                    "lr": self.args.learning_rate,
                 },
                 # LM params without Weight Decay
                 {
@@ -201,6 +202,7 @@ class AdaptiveLlamaTrainer(Trainer):
                         p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in hcg_params and p.requires_grad)
                     ],
                     "weight_decay": 0.0,
+                    "lr": self.args.learning_rate,
                 },
                 # HCG params with Weight Decay
                 {
@@ -208,11 +210,11 @@ class AdaptiveLlamaTrainer(Trainer):
                         p for n, p in opt_model.named_parameters() if (n in hcg_params and p.requires_grad)
                     ],
                     "weight_decay": 0.0,
-                    "learning_rate": hcg_lr,
+                    "lr": hcg_lr,
                 },
             ]
 
-            assert sum(sum(p.numel() for p in group['params']) for group in optimizer_grouped_parameters) == sum(p.numel() for p in opt_model.parameters())
+            assert sum(sum(p.numel() for p in group['params']) for group in optimizer_grouped_parameters) == sum(p.numel() for p in opt_model.parameters() if p.requires_grad)
 
             optimizer_cls, optimizer_kwargs = self.get_optimizer_cls_and_kwargs(self.args, opt_model)
 
@@ -239,6 +241,12 @@ class AdaptiveLlamaTrainer(Trainer):
 
             if optimizer_cls.__name__ == "Adam8bit":
                 raise ValueError("Adam8bit optimizer is not supported")
+
+            print("optim lr", [ pg['lr'] for pg in self.optimizer.param_groups ])
+            print("optim params shape:", [ " ".join( str(p.shape) for p in  pg['params']) for pg in self.optimizer.param_groups ])
+
+            self.optimizer.param_groups[2]['lr'] = hcg_lr
+            self.optimizer.param_groups[2]['params'][0].shape == torch.Size([ opt_model.config.vocab_size ])
 
         return self.optimizer
 
@@ -408,6 +416,7 @@ class AdaptiveLlamaTrainer(Trainer):
         # print("extra_log_hcg_dynamic", extra_log_hcg_dynamic)
 
         if force_log or log_metrics and self.state.global_step % self.args.logging_steps == 0:
+
             outputs_loss = causal_lm_loss
             if len(outputs_loss.shape) > 0:
                 outputs_loss = causal_lm_loss.mean()
@@ -419,6 +428,7 @@ class AdaptiveLlamaTrainer(Trainer):
             log_info = {
                 f"{log_prefix}/lm_loss": lm_loss.detach().item(),
                 f"{log_prefix}/hcg_loss": hcg_loss_to_log,
+                f"{log_prefix}/hcg_lr": self.optimizer.param_groups[2]['lr'],
                 f"{log_prefix}/total_tokens": total_tokens,
                 **{ f"{log_prefix}/hcg_dynamic_{k}": v for k, v in extra_log_hcg_dynamic.items() }
             }
@@ -829,39 +839,42 @@ class AdaptiveLlamaTrainer(Trainer):
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
         super().save_model(output_dir, _internal_call)
 
-        evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'"
-        evaluation_tracker = EvaluationTracker(
-            output_dir=evaluation_output_dir,
-        )
-        pipeline_params = PipelineParameters(
-            launcher_type=ParallelismManager.ACCELERATE,
-            # env_config=env_config,
-            custom_tasks_directory='/workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py',
-            override_batch_size=1,
-            num_fewshot_seeds=1,
-            max_samples=None,
-            use_chat_template=False,
-            system_prompt=None,
-            load_responses_from_details_date_id=None,
-        )
-
-        tasks = "custom|wikitext_103|0|1"
-
-        with torch.no_grad():
-            pipeline = Pipeline(
-                tasks=tasks,
-                pipeline_parameters=pipeline_params,
-                evaluation_tracker=evaluation_tracker,
-                model=self.accelerator.unwrap_model(self.model),
+        try:
+            evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'"
+            evaluation_tracker = EvaluationTracker(
+                output_dir=evaluation_output_dir,
             )
-            pipeline.evaluate()
+            pipeline_params = PipelineParameters(
+                launcher_type=ParallelismManager.ACCELERATE,
+                # env_config=env_config,
+                custom_tasks_directory='/workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py',
+                override_batch_size=1,
+                num_fewshot_seeds=1,
+                max_samples=None,
+                use_chat_template=False,
+                system_prompt=None,
+                load_responses_from_details_date_id=None,
+            )
 
-            pipeline.show_results()
-            results = pipeline.get_results()
+            tasks = "custom|wikitext_103|0|1"
 
-            print("results", results)
-            if results is not None:
-                self.log({ "lighteval/wikitext_ppl": results['results']["custom:wikitext_103:0"]["ppl"] })
+            with torch.no_grad():
+                pipeline = Pipeline(
+                    tasks=tasks,
+                    pipeline_parameters=pipeline_params,
+                    evaluation_tracker=evaluation_tracker,
+                    model=self.accelerator.unwrap_model(self.model),
+                )
+                pipeline.evaluate()
+
+                pipeline.show_results()
+                results = pipeline.get_results()
+
+                print("results", results)
+                if results is not None:
+                    self.log({ "lighteval/wikitext_ppl": results['results']["custom:wikitext_103:0"]["ppl"] })
+        except Exception as e:
+            print("Error in evaluation of PPL", e)
 
         self.model.train()
 
