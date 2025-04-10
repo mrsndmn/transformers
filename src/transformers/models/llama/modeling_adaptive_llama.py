@@ -56,6 +56,7 @@ from .modeling_llama import (
     LlamaDecoderLayer,
     LlamaRMSNorm,
     LlamaRotaryEmbedding,
+    LlamaMLP,
     apply_rotary_pos_emb,
 )
 
@@ -151,9 +152,6 @@ class NoOpFanIn(nn.Module):
         )
 
         return res
-    
-    def set_gumbel_tau(self, _):
-        return
 
 
 class HardConcreteGate(nn.Module):
@@ -482,90 +480,6 @@ class AdaptiveFanInHCG(nn.Module):
 
         return res
 
-
-class AdaptiveFanOut(nn.Module):
-    def __init__(self, config: LlamaConfig):
-        super().__init__()
-        self.hidden_size = config.hidden_size
-        self.projection_enabled: bool = config.fan_out_projection
-
-        self.fan_out_implementation = config.generate_merges_transform_impl
-        self.fan_out_linear = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
-
-    def _python_fan_out(self, batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection, type='merge') -> torch.Tensor:
-        # [bs, seq_len, hidden_dim]
-        
-        restored_hidden_states = residual_hidden_states_projection
-        for batch_i in range(batch_size):
-            restored_seq_len = 0
-            for seq_len_i in range(new_seq_len):
-                num_repeats = merged_embeddings_counts[batch_i, seq_len_i].item()
-                if num_repeats == 0:
-                    break
-
-                current_hidden_state = hidden_states[batch_i, seq_len_i]
-
-                restored_idx = int(restored_seq_len + num_repeats - 1)
-                restored_hidden_states[batch_i, restored_idx] += current_hidden_state
-
-                restored_seq_len += num_repeats
-
-        return restored_hidden_states
-
-    # @torch.compiler.disable(recursive=True)
-    def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
-        """Unfolds hidden_states based on merged_embeddings_counts
-
-        Args:
-            hidden_states (torch.Tensor ~ [ bs, new_seq_len, hidden_size ]): transformer hidden states with previously reduced sequence length
-            attention_mask (torch.Tensor ~ [ bs, new_seq_len, hidden_size ]): padding attention mask for hidden states
-            merged_embeddings_counts (torch.Tensor ~ [ bs, new_seq_len ]): merged_embeddings_counts from corresponding AdaptiveFanInOutput
-            residual_hidden_states (torch.Tensor ~ [ bs, seq_len, hidden_size ]): hidden states from corresponding AdaptiveFanInOutput
-            residual_attention_mask (torch.Tensor ~ [ bs, seq_len ]): padding attention mask from corresponding AdaptiveFanInOutput
-
-        Returns:
-            AdaptiveFanOutOutput: unfolded hidden states
-        """
-
-        # if DEBUG:
-        assert hidden_states.shape[1] == attention_mask.shape[1], 'seq len mismatch'
-        assert hidden_states.shape[1] == merged_embeddings_counts.shape[1], 'seq len mismatch'
-
-        # assert (merged_embeddings_counts.sum(dim=-1) == residual_attention_mask.sum(dim=-1)).all(), 'merged_embeddings_counts and residual_attention_mask mismatch'
-
-        # residual_hidden_states ~ [ batch_size, seq_len, hidden_size ]
-        # residual_hidden_states ~ [ batch_size, seq_len ]
-        assert residual_hidden_states.shape[1] == residual_attention_mask.shape[1], 'seq len mismatch'
-
-        batch_size = attention_mask.shape[0]
-        new_seq_len = attention_mask.shape[1]
-        seq_len = residual_attention_mask.shape[1]
-
-        assert seq_len >= new_seq_len, 'residual seq len cant be less then input_embeddings seq_len'
-
-        restored_hidden_states = None
-
-        if self.projection_enabled:
-            residual_hidden_states = residual_hidden_states.to(self.fan_out_linear.weight.dtype)
-            residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
-        else:
-            residual_hidden_states_projection = residual_hidden_states
-
-        # print("residual_hidden_states_projection", residual_hidden_states_projection.sum(-1))
-
-        if self.fan_out_implementation in ('python',):
-            restored_hidden_states = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
-        elif self.fan_out_implementation in ('cuda_kernel'):
-            restored_hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection, residual_attention_mask)
-            if CHECK_WITH_PYTHON:
-                restored_hidden_states_py = self._python_fan_out(batch_size, new_seq_len, hidden_states, merged_embeddings_counts, residual_hidden_states_projection)
-                assert (restored_hidden_states_py == restored_hidden_states).all()
-        else:
-            raise ValueError(f"unknown self.fan_out_implementation={self.fan_out_implementation}")
-
-        return AdaptiveFanOutOutput(hidden_state=restored_hidden_states)
-
-
 class NoopAdaptiveFanOut(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
@@ -595,9 +509,7 @@ class AdaptiveFanOutHCG(nn.Module):
         self.hidden_size = config.hidden_size
         self.projection_enabled: bool = config.fan_out_projection
 
-        self.fan_out_linear = nn.Sequential(
-            nn.Linear(self.hidden_size, self.hidden_size),
-        )
+        self.fan_out_linear = LlamaMLP(config)
 
     def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
         """Returns base hidden states
@@ -799,14 +711,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             if is_dummy:
                 return NoopAdaptiveFanOut(config)
 
-            # check explicit fan out type
-            if config.fan_out_type is not None:
-                if config.fan_out_type == 'noop':
-                    return NoopAdaptiveFanOut(config)
-                elif config.fan_out_type == 'hcg':
-                    return AdaptiveFanOutHCG(config)
-
-            return AdaptiveFanOut(config)
+            return AdaptiveFanOutHCG(config)
 
         is_dummy_fan_out = list(reversed(is_dummy_fan_in))
         self.adaptive_up = nn.ModuleList(
@@ -845,10 +750,8 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         for adaptive_up in self.adaptive_up:
             if hasattr(adaptive_up, 'fan_out_linear'):
                 fan_out_mlps = adaptive_up.fan_out_linear
-                if not isinstance(fan_out_mlps, nn.Sequential):
-                    fan_out_mlps = [ fan_out_mlps ]
 
-                for fan_out_mlp in fan_out_mlps:
+                for fan_out_mlp in fan_out_mlps.modules():
                     if not isinstance(fan_out_mlp, nn.Linear):
                         continue
 
@@ -1096,7 +999,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
             # print("i", i, "hidden_states", hidden_states.shape,)
 
-            adaptive_up_layer: AdaptiveFanOut = self.adaptive_up[i]
+            adaptive_up_layer: AdaptiveFanOutHCG = self.adaptive_up[i]
             loop_up_attention_mask = all_loop_down_attention_mask.pop(-1)
             merged_embeddings_counts = all_loop_down_merged_embeddings_counts.pop(-1)
             residual_hidden_states = all_loop_down_hidden_states.pop(-1)

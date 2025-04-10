@@ -9,7 +9,7 @@ import torch
 
 from transformers import TrainerCallback
 from transformers.models.llama.configuration_llama import LlamaConfig
-from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanOut, AdaptiveFanInOutput, AdaptiveFanOutOutput, AdaptiveLlamaModel, AdaptiveCausalLMOutputWithPast
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 from transformers.utils import is_sagemaker_mp_enabled
@@ -134,9 +134,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     concrete_stop_word_pruning: Optional[bool] = None
     
     scale_not_pruned_gradients: float = 0.0
-    
-    fan_out_type: Optional[str] = None
-    
+
     generate_merges_transform_impl: str = 'cuda_kernel'
 
     reverse_dummy_adaptive_fan_in_layers: bool = False
@@ -245,8 +243,9 @@ class AdaptiveLlamaTrainer(Trainer):
             print("optim lr", [ pg['lr'] for pg in self.optimizer.param_groups ])
             print("optim params shape:", [ " ".join( str(p.shape) for p in  pg['params']) for pg in self.optimizer.param_groups ])
 
-            self.optimizer.param_groups[2]['lr'] = hcg_lr
-            self.optimizer.param_groups[2]['params'][0].shape == torch.Size([ opt_model.config.vocab_size ])
+            if not opt_model.config.fan_out_projection:
+                assert self.optimizer.param_groups[2]['lr'] == hcg_lr
+                assert self.optimizer.param_groups[2]['params'][0].shape == torch.Size([ opt_model.config.vocab_size ])
 
         return self.optimizer
 
@@ -599,7 +598,7 @@ class AdaptiveLlamaTrainer(Trainer):
                     return_outputs=True,
                     log_metrics=False,
                     log_prefix='eval_debug',
-                    force_log=True,
+                    force_log=False,
                 )
             loss = loss.mean().detach()
 

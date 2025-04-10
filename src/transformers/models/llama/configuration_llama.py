@@ -185,7 +185,6 @@ class LlamaConfig(PretrainedConfig):
         generate_merges_transform_impl='python',
         fan_out_projection=True,
         merging_type='hcg',
-        fan_out_type=None,
         hcg_temperature=1.0,
         learnt_temperature=False,
         scale_not_pruned_gradients=0.0,
@@ -217,7 +216,6 @@ class LlamaConfig(PretrainedConfig):
         self.concrete_uniform_pruning = concrete_uniform_pruning
         self.concrete_stop_word_pruning = concrete_stop_word_pruning
 
-        self.fan_out_type = fan_out_type
         self.hcg_temperature = hcg_temperature
         self.learnt_temperature = learnt_temperature
         self.distributed = distributed
