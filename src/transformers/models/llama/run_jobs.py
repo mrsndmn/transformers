@@ -55,7 +55,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         per_device_train_batch_size = exp.pop('per_device_train_batch_size', 32)
         gradient_accumulation_steps = exp.pop('gradient_accumulation_steps', 1)
 
-        save_steps = exp.pop('save_steps', 10000)
+        save_steps = exp.pop('save_steps', 5000)
         torch_compile = exp.pop('torch_compile', 1)
 
         concrete_random_mask_proba = exp.pop('concrete_random_mask_proba', '0')
@@ -244,16 +244,16 @@ def run_hcg_smollm2_360M_pretrain_fan_out_projection(**kwargs):
 
 def run_hcg_smollm2_360M_hcg(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_full"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M"
 
     common_params = {
         # Model
         "model_type": "pretrained_checkpoint",
         # "llama_checkpoint": # will be overriden in cycle later,
-        "freeze_lm_backbone": 1,
+        "freeze_lm_backbone": "1",
 
         # Data
-        "select_train_dataset_items": 1200000,
+        "select_train_dataset_items": 2000000,
         "per_device_train_batch_size": 16,
 
         # Training
@@ -270,17 +270,31 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
     }
 
     hcg_experiments = []
+    extra_params = [
+        (
+            "12",
+            "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
+            "adaptive_hcg_slm2_360M_pretrain_fan_out_projection_12_UVAVTOZ8/checkpoint-37496",
+        ),
+        (
+            "4",
+            "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
+            "adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4_RG0781E8/checkpoint-37496",
+         ),
+    ]
 
-    for hcg_loss_weight in [ 0.01, 0.05, 0.1, 0.5 ]:
-        exp_config = {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,0,1,1,1,1,1,1,1,1",
-            "output_dir": f"{experiment_prefix_base_name}_{hcg_loss_weight}_{common_params['instance_type']}",
-            "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_slm2_360M_pretrain_fan_out_projection_log_a_4_7778H9VK/checkpoint-3118/", # good checkpoint wikitext ppl 12.1105
-            "hcg_loss_weight": hcg_loss_weight,
+    for hcg_loss_weight in [ 0.1, 0.5 ]:
+    # for hcg_loss_weight in [ 0.1 ]:
+        for suffix, in_layers_str, llama_checkpoint in extra_params:
+            exp_config = {
+                "dummy_adaptive_fan_in_layers_str": in_layers_str,
+                "output_dir": f"{experiment_prefix_base_name}_w_{hcg_loss_weight}_l_{suffix}",
+                "llama_checkpoint": f"{workdir_prefix}/{llama_checkpoint}",
+                "hcg_loss_weight": hcg_loss_weight,
 
-            **common_params,
-        }
-        hcg_experiments.append(exp_config)
+                **common_params,
+            }
+            hcg_experiments.append(exp_config)
 
 
     run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
@@ -307,8 +321,8 @@ if __name__ == "__main__":
 
 
     # SLM360M
-    run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
-    # run_hcg_smollm2_360M_hcg(dry=dry)
+    # run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
+    run_hcg_smollm2_360M_hcg(dry=dry)
 
     # Rule based
     # run_hcg_smollm2_360M_hcg_rule_based(dry=dry)
