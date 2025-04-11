@@ -18,7 +18,9 @@ if __name__ == "__main__":
 
     # checkpoint_base_path = "./adaptive_hcg_slm2_360M_full_1.0_a100.4gpu_WC650AC2/"
     # checkpoint_base_path = "./adaptive_hcg_slm2_360M_full_hcg_lr_freeze_lm_1.0_a100.1gpu/"
-    checkpoint_base_path = "adaptive_hcg_slm2_360M_full_hcg_lr_10.0_freeze_lm_1.0_a100.1gpu"
+    checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.1_l_12_OW3WW2XN"
+    # checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.1_l_4_9YNUZU3M"
+    print("checkpoint_base_path", checkpoint_base_path)
     checkpoints = os.listdir(checkpoint_base_path)
     checkpoints = [x for x in checkpoints if x.startswith('checkpoint')]
     checkpoints = sorted(checkpoints, key=lambda x: int(x.split('-')[1]))
@@ -157,7 +159,6 @@ if __name__ == "__main__":
 
     # --- Save Histogram Animation ---
     if images:
-        breakpoint()
         print("Creating histogram animation...")
         hist_output_path = 'src/transformers/models/llama/interpretation/pruning_probs_animation.gif'
         try:

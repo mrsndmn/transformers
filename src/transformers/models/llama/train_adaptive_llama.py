@@ -105,7 +105,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     report_to: str = field(default="wandb")
     logging_steps: int = field(default=500)
     dataloader_drop_last: bool = field(default=True)
-    dataloader_num_workers: int = field(default=4)
+    dataloader_num_workers: int = field(default=0)
     merging_type: str = field(default="next_token_merge_mlp")
     freeze_lm_backbone: bool = field(default=False)
     bf16: bool = field(default=True)
@@ -857,12 +857,15 @@ class AdaptiveLlamaTrainer(Trainer):
 
             tasks = "custom|wikitext_103|0|1"
 
+            unwrapped_model = self.accelerator.unwrap_model(self.model)
+            unwrapped_model.eval()
+
             with torch.no_grad():
                 pipeline = Pipeline(
                     tasks=tasks,
                     pipeline_parameters=pipeline_params,
                     evaluation_tracker=evaluation_tracker,
-                    model=self.accelerator.unwrap_model(self.model),
+                    model=unwrapped_model,
                 )
                 pipeline.evaluate()
 
