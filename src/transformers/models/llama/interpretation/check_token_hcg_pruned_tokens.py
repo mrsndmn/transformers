@@ -16,10 +16,10 @@ import io # Add io import
 if __name__ == "__main__":
     torch.set_default_device('cuda')
 
-    # checkpoint_base_path = "./adaptive_hcg_slm2_360M_full_1.0_a100.4gpu_WC650AC2/"
-    # checkpoint_base_path = "./adaptive_hcg_slm2_360M_full_hcg_lr_freeze_lm_1.0_a100.1gpu/"
-    checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.1_l_12_OW3WW2XN"
-    # checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.1_l_4_9YNUZU3M"
+    # checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.001_l_12_XY58F4YK"
+    checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.0_l_12_test"
+    # checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.01_l_12_80KF9UFM"
+    # checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.001_l_12_XY58F4YK"
     print("checkpoint_base_path", checkpoint_base_path)
     checkpoints = os.listdir(checkpoint_base_path)
     checkpoints = [x for x in checkpoints if x.startswith('checkpoint')]
@@ -136,10 +136,10 @@ if __name__ == "__main__":
             hist_counts, _, _ = ax_hist.hist(passing_probs_np, bins=50, color='skyblue', edgecolor='black', range=(0, 1))
             # Ensure y-axis starts at 0 and accommodates the max count, with a minimum height
             max_count = hist_counts.max() if hist_counts.size > 0 else 0
-            ax_hist.set_ylim(bottom=0, top=max(5000, max_count * 1.1))
+            ax_hist.set_ylim(bottom=0, top=max(50000, max_count * 1.1))
         except Exception as hist_e:
             print(f"Warning: Could not plot histogram for {checkpoint}: {hist_e}")
-            ax_hist.set_ylim(bottom=0, top=5000) # Default ylim on error
+            ax_hist.set_ylim(bottom=0, top=50000) # Default ylim on error
 
         ax_hist.set_title(f'Passing Prob Distribution Checkpoint: {checkpoint}')
         ax_hist.set_xlabel('Approximate Passing Probability')
@@ -261,6 +261,10 @@ if __name__ == "__main__":
         indices_close_to_zero = torch.where( (last_valid_hcg_log_a < 0.0001) * (last_valid_hcg_log_a > -0.0001) )[0]
         print(f"Indices close to zero: {indices_close_to_zero.shape}")
         print(f"Indices close to zero: {tokeniser.batch_decode(indices_close_to_zero)}")
+        print("\n\n")
+
+
+        print("--- Top 100 Most Likely to be Passed Tokens (Last Valid Checkpoint) ---")
         try:
             top_passed_tokens = tokeniser.batch_decode(top_passed[:100])
             print(top_passed_tokens)

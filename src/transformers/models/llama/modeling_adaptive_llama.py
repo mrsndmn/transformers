@@ -157,7 +157,7 @@ class NoOpFanIn(nn.Module):
 class HardConcreteGate(nn.Module):
     def __init__(self,
                  count_log_a=0,
-                 log_a=0.0,
+                 log_a=1.0,
                  max_seq_len=2048,
                  temperature=0.33,
                  learnt_temperature=False,
@@ -414,36 +414,21 @@ class AdaptiveFanInHCG(nn.Module):
 
         merged_embeddings_counts = attention_mask
 
-        residual_hidden_state = ((1 - concrete) * residual_hidden_state)
-        hidden_state = concrete * hidden_state
-
-        # if residual_hidden_state.requires_grad:
-        #     def print_grad_hook_residual_hidden_state_2(grad):
-        #         self
-        #         print(residual_hidden_state.shape)
-        #         print("residual_hidden_state grad:", grad.shape, (grad.sum(-1).abs() > 0).sum().item())
-        #         breakpoint()
-        #         return grad
-
-        #     residual_hidden_state.register_hook(print_grad_hook_residual_hidden_state_2)
-
-        # if hidden_state.requires_grad:
-        #     def print_grad_hook_hidden_state_2(grad):
-        #         self
-        #         print(hidden_state.shape)
-        #         print("hidden_state grad:", grad.shape, (grad.sum(-1).abs() > 0).sum().item())
-        #         breakpoint()
-        #         return grad
-
-        #     hidden_state.register_hook(print_grad_hook_hidden_state_2)
-
         if self.training:
-            pass
+            residual_hidden_state = ((1 - concrete) * residual_hidden_state)
+            hidden_state = concrete * hidden_state
         else:
+            concrete[concrete > 0.0] = 1.0
+            # concrete[concrete <= 0.5] = 0.0
+            # concrete[:, :, :] = 1
+
+            residual_hidden_state = ((1 - concrete) * residual_hidden_state)
+            hidden_state = concrete * hidden_state
+
             PRUNE_PERCENT = 0.0
             concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
 
-            # print("concrete_bool", concrete_bool.sum().item(), '/', concrete_bool.numel())
+            print("concrete_bool", concrete_bool.sum().item(), '/', concrete_bool.numel())
 
             hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m, concrete_merged = prune_tokens_concrete(
                 hidden_state=hidden_state,

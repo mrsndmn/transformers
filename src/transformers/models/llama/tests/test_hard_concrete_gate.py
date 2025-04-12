@@ -4,7 +4,7 @@ from transformers.models.llama.modeling_adaptive_llama import HardConcreteGate
 
 @pytest.fixture
 def default_gate():
-    return HardConcreteGate(count_log_a=10, max_seq_len=128)
+    return HardConcreteGate(count_log_a=10, max_seq_len=128, log_a=0.0,)
 
 @pytest.fixture
 def custom_gate():

@@ -76,6 +76,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
     learning_rate: float = field(default=2e-4)
     hcg_learning_rate: float = field(default=0.1)
     max_grad_norm: float = field(default=None)
+    init_hcg_a: Optional[float] = field(default=None)
+    clip_hcg_log_a: Optional[float] = field(default=None)
 
     warmup_steps: int = field(default=500)
     per_device_train_batch_size: int = field(default=32)
@@ -202,7 +204,7 @@ class AdaptiveLlamaTrainer(Trainer):
                     "weight_decay": 0.0,
                     "lr": self.args.learning_rate,
                 },
-                # HCG params with Weight Decay
+                # HCG params without Weight Decay
                 {
                     "params": [
                         p for n, p in opt_model.named_parameters() if (n in hcg_params and p.requires_grad)
@@ -331,7 +333,6 @@ class AdaptiveLlamaTrainer(Trainer):
 
 
         # fan_in_merging_logits_sum = sum(x.sum(dim=[0, 1]) for x in fan_in_merging_logits)
-        outputs_no_pruning = None
         model_unwrapped = model
         if type(model_unwrapped) != AdaptiveLlamaForCausalLM and hasattr(model_unwrapped, "module"):
             model_unwrapped = model_unwrapped.module
@@ -445,23 +446,14 @@ class AdaptiveLlamaTrainer(Trainer):
                     p_open_non_masked = p_open_non_masked[fan_in_merging_logits_attention_mask.flatten().bool()]
                     concrete_non_masked = concrete_non_masked[fan_in_merging_logits_attention_mask.flatten().bool()]
 
-                log_info[f'{log_prefix}/concrete_mean_{i}'] = p_open_non_masked.mean().item()
-                log_info[f'{log_prefix}/concrete_lt_0.01'] = (p_open_non_masked < 0.01).sum().item()
-                log_info[f'{log_prefix}/concrete_lt_0.1'] = (p_open_non_masked < 0.1).sum().item()
-                log_info[f'{log_prefix}/concrete_lt_0.5'] = (p_open_non_masked < 0.5).sum().item()
-
-                pruned_tokens_p_open = (p_open_non_masked == 0).sum().item()
-                not_pruned_tokens_p_open = total_tokens - pruned_tokens_p_open
+                log_info[f'{log_prefix}/p_open_mean_{i}'] = p_open_non_masked.mean().item()
+                log_info[f'{log_prefix}/p_open_lt_0.01'] = (p_open_non_masked < 0.01).sum().item()
+                log_info[f'{log_prefix}/p_open_lt_0.1'] = (p_open_non_masked < 0.1).sum().item()
+                log_info[f'{log_prefix}/p_open_lt_0.5'] = (p_open_non_masked < 0.5).sum().item()
 
                 pruned_tokens_concrete = (concrete_non_masked == 0).sum().item()
-                not_pruned_tokens_concrete = total_tokens - pruned_tokens_concrete
-
-                log_info[f'{log_prefix}/p_open_pruned_tokens'] = pruned_tokens_p_open
-                log_info[f'{log_prefix}/p_open_not_pruned_tokens'] = not_pruned_tokens_p_open
-                log_info[f'{log_prefix}/p_open_pruned_tokens_percent'] = pruned_tokens_p_open / total_tokens
 
                 log_info[f'{log_prefix}/concrete_pruned_tokens'] = pruned_tokens_concrete
-                log_info[f'{log_prefix}/concrete_not_pruned_tokens'] = not_pruned_tokens_concrete
                 log_info[f'{log_prefix}/concrete_pruned_tokens_percent'] = pruned_tokens_concrete / total_tokens
 
                 q = torch.tensor([0.1, 0.5, 0.9], device=p_open_non_masked.device)
@@ -469,15 +461,12 @@ class AdaptiveLlamaTrainer(Trainer):
                 # [ 3 ]
                 concrete_quantiles = torch.quantile(p_open_non_masked.float(), q, dim=0, keepdim=False)
                 # [ 3 ]
-                log_info[f'{log_prefix}/concrete_q10_mean_{i}'] = concrete_quantiles[0].item()
-                log_info[f'{log_prefix}/concrete_q50_mean_{i}'] = concrete_quantiles[1].item()
-                log_info[f'{log_prefix}/concrete_q90_mean_{i}'] = concrete_quantiles[2].item()
+                log_info[f'{log_prefix}/p_open_q10_mean_{i}'] = concrete_quantiles[0].item()
+                log_info[f'{log_prefix}/p_open_q50_mean_{i}'] = concrete_quantiles[1].item()
+                log_info[f'{log_prefix}/p_open_q90_mean_{i}'] = concrete_quantiles[2].item()
 
                 if self.args.learnt_temperature:
                     log_info[f'{log_prefix}/concrete_{i}_temperature'] = model.model.adaptive_down[i].hcg.temperature.item()
-
-            if outputs_no_pruning:
-                log_info[f"{log_prefix}/no_pruning_loss"] = outputs_no_pruning.loss.detach().item()
 
             self.log(log_info)
 
@@ -1004,6 +993,19 @@ def build_model(training_args: AdaptiveTrainingArguments):
         for adaptive_down in model.model.adaptive_down:
             for p in adaptive_down.parameters():
                 p.requires_grad = False
+
+    if training_args.init_hcg_a is not None:
+        for i, adaptive_down in enumerate(model.model.adaptive_down):
+            if hasattr(adaptive_down, 'hcg'):
+                adaptive_down.hcg.hcg_log_a.data.fill_(training_args.init_hcg_a)
+                print("Initialized hcg_log_a for adaptive_down", i, "with value", training_args.init_hcg_a)
+
+    if training_args.clip_hcg_log_a is not None:
+        for i, adaptive_down in enumerate(model.model.adaptive_down):
+            if hasattr(adaptive_down, 'hcg'):
+                adaptive_down.hcg.hcg_log_a.data.clamp_(min=-training_args.clip_hcg_log_a, max=training_args.clip_hcg_log_a)
+                print("Clipped hcg_log_a for adaptive_down", i, "with value", training_args.clip_hcg_log_a)
+
 
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
 
