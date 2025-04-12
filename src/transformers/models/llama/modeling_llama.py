@@ -269,7 +269,6 @@ class LlamaAttention(nn.Module):
         attention_mask: Optional[torch.Tensor],
         past_key_value: Optional[Cache] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        concrete: Optional[torch.Tensor] = None,
         **kwargs: Unpack[FlashAttentionKwargs],
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         input_shape = hidden_states.shape[:-1]
@@ -281,14 +280,6 @@ class LlamaAttention(nn.Module):
 
         cos, sin = position_embeddings
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
-
-        concrete_view = None
-        if concrete is not None:
-            batch_size = concrete.shape[0]
-            concrete_view = concrete.view(batch_size, 1, -1, 1)
-            query_states = query_states * concrete_view
-            key_states = key_states * concrete_view
-            value_states = value_states * concrete_view
 
         if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
@@ -350,7 +341,6 @@ class LlamaDecoderLayer(nn.Module):
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
-        concrete=None,
         **kwargs: Unpack[FlashAttentionKwargs],
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
@@ -367,7 +357,6 @@ class LlamaDecoderLayer(nn.Module):
             use_cache=use_cache,
             cache_position=cache_position,
             position_embeddings=position_embeddings,
-            concrete=concrete,
             **kwargs,
         )
 
@@ -380,9 +369,6 @@ class LlamaDecoderLayer(nn.Module):
 
         hidden_states = self.mlp(hidden_states)
         hidden_states = residual + hidden_states
-
-        if concrete is not None:
-            hidden_states = hidden_states * concrete
 
         outputs = (hidden_states,)
         if output_attentions:

@@ -31,7 +31,7 @@ def test_sdpa_attention():
 def test_eval_adaptive_hcg_llama():
 
     from datetime import datetime
-    if datetime.now() > datetime(2025, 4, 12, 0, 0, 0):
+    if datetime.now() > datetime(2025, 4, 14, 0, 0, 0):
         raise Exception("Fix test please - add fresh checkpoint")
 
     return

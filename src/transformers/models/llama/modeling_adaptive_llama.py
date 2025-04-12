@@ -879,8 +879,10 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                     use_cache=use_cache,
                     cache_position=cache_position,
                     position_embeddings=loop_down_position_embeddings,
-                    concrete=current_concrete,
                 )
+
+            if self.training and current_concrete is not None:
+                hidden_states = hidden_states * current_concrete
 
             hidden_states = layer_outputs[0]
 
@@ -1002,8 +1004,6 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                 residual_attention_mask,
             )
 
-            if isinstance(adaptive_up_layer, AdaptiveFanOutHCG):
-                current_concrete = None
 
             hidden_states = adaptive_up_output.hidden_state
             assert hidden_states.shape == residual_hidden_states.shape
@@ -1038,6 +1038,12 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                 )
 
             hidden_states = layer_outputs[0]
+
+            if isinstance(adaptive_up_layer, AdaptiveFanOutHCG):
+                current_concrete = None
+
+            if self.training and current_concrete is not None:
+                hidden_states = hidden_states * current_concrete
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)

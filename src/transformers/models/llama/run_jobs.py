@@ -249,7 +249,7 @@ def run_hcg_smollm2_360M_pretrain_fan_out_projection(**kwargs):
 
 def run_hcg_smollm2_360M_hcg(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_360M"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_no_concrete_scale_attention"
 
     common_params = {
         # Model
@@ -283,14 +283,15 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
             "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
             "adaptive_hcg_slm2_360M_pretrain_fan_out_projection_12_UVAVTOZ8/checkpoint-37496",
         ),
-        (
-            "4",
-            "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
-            "adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4_RG0781E8/checkpoint-37496",
-         ),
+        # (
+        #     "4",
+        #     "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
+        #     "adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4_RG0781E8/checkpoint-37496",
+        # ),
     ]
 
-    for hcg_loss_weight in [ 0.001, 0.01, ]:
+    for hcg_loss_weight in [ 0.0 ]:
+    # for hcg_loss_weight in [ 0.001, 0.01, ]:
     # for hcg_loss_weight in [ 0.1 ]:
         for suffix, in_layers_str, llama_checkpoint in extra_params:
             exp_config = {
