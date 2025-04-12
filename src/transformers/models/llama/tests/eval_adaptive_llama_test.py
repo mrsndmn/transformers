@@ -30,12 +30,6 @@ def test_sdpa_attention():
 
 def test_eval_adaptive_hcg_llama():
 
-    from datetime import datetime
-    if datetime.now() > datetime(2025, 4, 14, 0, 0, 0):
-        raise Exception("Fix test please - add fresh checkpoint")
-
-    return
-
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     bench_dtype = torch.bfloat16
@@ -45,7 +39,7 @@ def test_eval_adaptive_hcg_llama():
     # model_orig = LlamaForCausalLM.from_pretrained("HuggingFaceTB/SmolLM-360M")
 
     # checkpoint = './adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/checkpoint-3118'
-    checkpoint = 'adaptive_hcg_slm2_360M_hcg_smooth_no_detach_2gpu_1.5_1SKDWQXE/checkpoint-79996/'
+    checkpoint = './adaptive_hcg_slm2_360M_w_0.0_l_12_test/checkpoint-124987/'
 
     model = AdaptiveLlamaForCausalLM.from_pretrained(
         checkpoint,
@@ -74,7 +68,7 @@ def test_eval_adaptive_hcg_llama():
 
         model.eval()
         eval_output = model.forward(**text_inputs)
-        print(eval_output['loss'])
+        print("eval loss", eval_output['loss'])
 
         # Train mode for part of my modules
         for adaptive_down in model.model.adaptive_down:
@@ -88,10 +82,11 @@ def test_eval_adaptive_hcg_llama():
                 adaptive_down.hcg.eval()
 
         train_output = model.forward(**text_inputs)
-        print(train_output['loss'])
+        print("train loss", train_output['loss'])
 
-        assert eval_output.fan_in_merging_maps[3].sum().item() == eval_output.fan_in_merging_logits[3].sum().item()
+        assert (eval_output.fan_in_merging_maps[-5] > 0).sum().item() == (eval_output.fan_in_merging_logits[-5] > 0).sum().item()
 
+        assert (eval_output['loss'] < train_output['loss']).all()
         assert torch.allclose(train_output['loss'], eval_output['loss'], atol=1.5), f'{train_output["loss"].item()} != {eval_output["loss"].item()}'
 
 
