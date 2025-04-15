@@ -280,7 +280,7 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
 
         # Training type
         "pretrain_fan_out_projection": "0",
-        "single_layer_hopping": 1,
+        "single_layer_hopping": 0,
     }
 
     hcg_experiments = []
@@ -302,7 +302,7 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
             **common_params,
         }
         weight = exp_config['hcg_loss_weight']
-        exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{float(weight):.3f}_l_{suffix}_slh"
+        exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{float(weight):.3f}_l_{suffix}_no_self_attn"
 
         exp_config['model_type'] = 'pretrained'
         exp_config['llama_checkpoint'] = 'HuggingFaceTB/SmolLM2-360M'

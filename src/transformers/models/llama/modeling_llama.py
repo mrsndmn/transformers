@@ -409,10 +409,10 @@ class LlamaDecoderLayer(nn.Module):
         hidden_states = self.input_layernorm(hidden_states)
 
         # Self Attention
-        hidden_states = self.self_attn.forward_residuals(
-            hidden_states=hidden_states,
-            **kwargs,
-        )
+        # hidden_states = self.self_attn.forward_residuals(
+        #     hidden_states=hidden_states,
+        #     **kwargs,
+        # )
 
         hidden_states = residual + hidden_states
 

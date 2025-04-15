@@ -822,7 +822,14 @@ class AdaptiveLlamaTrainer(Trainer):
         return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=num_samples)
 
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
-        super().save_model(output_dir, _internal_call)
+
+        while True:
+            try:
+                super().save_model(output_dir, _internal_call)
+                break
+            except Exception as e:
+                print("Error in saving model", e)
+                time.sleep(300)
 
         try:
             evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'"
