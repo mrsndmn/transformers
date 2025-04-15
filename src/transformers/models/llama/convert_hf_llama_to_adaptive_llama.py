@@ -52,7 +52,8 @@ def build_adaptive_llama_from_llama_checkpoint(
 
     config: LlamaConfig = AutoConfig.from_pretrained(llama_checkpoint, **config_kwargs)
 
-    assert len(dummy_adaptive_fan_in) == config.num_hidden_layers // 2
+    if dummy_adaptive_fan_in is not None:
+        assert len(dummy_adaptive_fan_in) == config.num_hidden_layers // 2
 
     config.dummy_adaptive_fan_in = dummy_adaptive_fan_in
     config.generate_merges_transform_impl = generate_merges_transform_impl

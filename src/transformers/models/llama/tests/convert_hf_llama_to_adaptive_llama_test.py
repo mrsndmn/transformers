@@ -6,7 +6,7 @@ from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCa
 from transformers.models.llama.train_adaptive_llama import freeze_lm_backbone
 
 @pytest.mark.parametrize("use_cache", [True, False])
-def test_build_adaptive_llama_from_llama_checkpoint_no_pruning(use_cache):
+def test_build_adaptive_llama_use_cache(use_cache):
 
     torch.set_default_device('cuda')
 
@@ -15,12 +15,13 @@ def test_build_adaptive_llama_from_llama_checkpoint_no_pruning(use_cache):
 
     tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
 
+    dummy_adaptive_fan_in=[ True ] * (pretrained_model.config.num_hidden_layers // 2)
+    dummy_adaptive_fan_in[-1] = False
     adaptive_model = build_adaptive_llama_from_llama_checkpoint(
         llama_checkpoint,
-        dummy_adaptive_fan_in=[ True ] * pretrained_model.config.num_hidden_layers,
-        fan_out_projection=True,
-        merging_type=None,
-        flash_attention=False,
+        dummy_adaptive_fan_in=dummy_adaptive_fan_in,
+        hcg_log_a=10000.0,
+        flash_attention=True,
     )
 
     adaptive_model.eval()

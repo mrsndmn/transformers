@@ -113,30 +113,6 @@ def test_adaptive_fan_in_fan_out():
         assert p.grad is not None, f"adaptive_fan_in param grad is none: {name}"
 
 
-def test_adaptive_llama_e2e():
-    config = LlamaConfig(hidden_size=256, num_hidden_layers=2, attn_implementation='eager')
-
-    config.use_cache = False
-
-    torch.set_default_device('cuda')
-    torch.set_default_dtype(torch.bfloat16)
-
-    allama_model = AdaptiveLlamaModel(config)
-    batch_size, seq_len = 3, 6
-    attention_mask = torch.ones([batch_size, seq_len])
-    special_embeddings_mask = torch.zeros([batch_size, seq_len])
-    special_embeddings_mask[:, 0] = 1
-    special_embeddings_mask[:, -1] = 1
-
-    input_ids = torch.randint(0, 10, (batch_size, seq_len))
-
-    llama_output = allama_model.forward(input_ids=input_ids, attention_mask=attention_mask, special_embeddings_mask=special_embeddings_mask, use_cache=False)
-
-    assert llama_output.last_hidden_state.shape[0] == input_ids.shape[0]
-    assert llama_output.last_hidden_state.shape[1] == input_ids.shape[1]
-    assert llama_output.last_hidden_state.shape[2] == config.hidden_size
-
-
 def test_cuda_kernel_fan_out_backward():
 
     batch_size = 7

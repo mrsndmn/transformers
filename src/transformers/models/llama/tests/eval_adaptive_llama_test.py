@@ -44,7 +44,7 @@ def test_eval_adaptive_hcg_llama():
     # checkpoint = './adaptive_hcg_slm2_360M_w_0.0_l_12_test/checkpoint-124987/'
     checkpoint = 'HuggingFaceTB/SmolLM-360M'
 
-    dummy_adaptive_fan_in = [ True ] * 12
+    dummy_adaptive_fan_in = [ True ] * (model_orig.config.num_hidden_layers // 2)
     dummy_adaptive_fan_in[7] = False
     model = build_adaptive_llama_from_llama_checkpoint(
         checkpoint,

@@ -182,7 +182,7 @@ class HardConcreteGate(nn.Module):
         self.register_buffer("adjust_range", torch.tensor(adjust_range))
 
         assert count_log_a > 0
-        self.hcg_log_a = nn.Parameter(torch.full((count_log_a,), log_a))
+        self.hcg_log_a = nn.Parameter(torch.full((count_log_a,), float(log_a)))
 
         self.register_buffer("random_buffer", torch.rand(1, max_seq_len, 1, dtype=torch.float32), persistent=False)
 
