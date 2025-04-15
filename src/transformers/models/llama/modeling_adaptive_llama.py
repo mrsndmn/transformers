@@ -675,7 +675,11 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         assert (len(is_dummy_fan_in) - sum(is_dummy_fan_in)) == 1, 'only one not dummy fan in'
         # not dummy index
         self.fan_in_idx = is_dummy_fan_in.index(False)
-        self.fan_out_idx = config.num_hidden_layers - self.fan_in_idx - 1
+
+        if config.single_layer_hopping:
+            self.fan_out_idx = self.fan_in_idx + 1
+        else:
+            self.fan_out_idx = config.num_hidden_layers - self.fan_in_idx - 1
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
 

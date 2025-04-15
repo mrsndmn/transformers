@@ -33,6 +33,7 @@ def build_adaptive_llama_from_llama_checkpoint(
         merging_type='hcg',
         hcg_temperature=1.0,
         hcg_log_a=1.0,
+        single_layer_hopping=False,
         learnt_temperature=False,
         flash_attention=True,
         scale_not_pruned_gradients=0.0,
@@ -67,6 +68,7 @@ def build_adaptive_llama_from_llama_checkpoint(
     config.pretrain_fan_out_projection = pretrain_fan_out_projection
     config.concrete_uniform_pruning = concrete_uniform_pruning
     config.concrete_stop_word_pruning = concrete_stop_word_pruning
+    config.single_layer_hopping = single_layer_hopping
 
     if flash_attention:
         config._attn_implementation = 'flash_attention_2'

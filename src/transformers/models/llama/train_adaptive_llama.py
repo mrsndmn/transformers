@@ -135,6 +135,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
     
     scale_not_pruned_gradients: float = 0.0
 
+    single_layer_hopping: bool = False
+
     generate_merges_transform_impl: str = 'cuda_kernel'
 
     reverse_dummy_adaptive_fan_in_layers: bool = False
