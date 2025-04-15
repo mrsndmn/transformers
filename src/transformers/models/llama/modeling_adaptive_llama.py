@@ -128,6 +128,7 @@ class AdaptiveFanInOutput:
     # * the third one has been merged with 2 embeddings
     merged_embeddings_counts: torch.Tensor # [ bs, new_seq_len ]
 
+    full_merging_map: torch.Tensor
     merging_map: torch.Tensor
     merging_map_logits: torch.Tensor
 
@@ -220,7 +221,7 @@ class HardConcreteGate(nn.Module):
             # avoid nan gradients in backward for learned temperature
             temperature_scale = (attention_mask * self.temperature).unsqueeze(-1) + 1e-6
 
-            log_a = torch.clip(log_a, min=-7, max=7)
+            # log_a = torch.clip(log_a, min=-7, max=7)
 
             sigmoid_arg = (random_buffer_log - one_minus_rand_log + log_a) / temperature_scale
             concrete = self.activation(sigmoid_arg)
@@ -319,7 +320,7 @@ class AdaptiveFanInHCG(nn.Module):
         self.hidden_size = config.hidden_size
 
         # self.hcg = HardConcreteGate(max_seq_len=config.max_position_embeddings, temperature=config.hcg_temperature, learnt_temperature=config.learnt_temperature)
-        self.hcg = HardConcreteGate(count_log_a=config.vocab_size, max_seq_len=config.max_position_embeddings)
+        self.hcg = HardConcreteGate(log_a=config.hcg_log_a, count_log_a=config.vocab_size, max_seq_len=config.max_position_embeddings)
 
         self.merging_type = self.config.merging_type
         assert self.merging_type == 'hcg'
@@ -417,15 +418,21 @@ class AdaptiveFanInHCG(nn.Module):
         if self.training:
             residual_hidden_state = ((1 - concrete) * residual_hidden_state)
             hidden_state = concrete * hidden_state
+            full_concrete = concrete
         else:
-            concrete[concrete > 0.0] = 1.0
-            # concrete[concrete <= 0.5] = 0.0
+            PRUNE_PERCENT = 0.0
+
+            # concrete[concrete > 0.0] = 1.0
+            hard_concrete_percent = 0.5
+            concrete[concrete <= hard_concrete_percent] = 0.0
+            concrete[concrete > hard_concrete_percent] = 1.0
+            full_concrete = concrete
+
             # concrete[:, :, :] = 1
 
             residual_hidden_state = ((1 - concrete) * residual_hidden_state)
             hidden_state = concrete * hidden_state
 
-            PRUNE_PERCENT = 0.0
             concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
 
             print("concrete_bool", concrete_bool.sum().item(), '/', concrete_bool.numel())
@@ -459,6 +466,7 @@ class AdaptiveFanInHCG(nn.Module):
             attention_mask=attention_mask,
             merged_embeddings_counts=merged_embeddings_counts,
             special_embeddings_mask=special_embeddings_mask,
+            full_merging_map=full_concrete,
             merging_map=concrete,
             merging_map_logits=p_open,
         )
@@ -510,7 +518,7 @@ class AdaptiveFanOutHCG(nn.Module):
             AdaptiveFanOutOutput: input hidden states
         """
 
-        if self.projection_enabled:
+        if self.projection_enabled and False:
             residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
         else:
             residual_hidden_states_projection = residual_hidden_states
@@ -663,12 +671,16 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         self.vocab_size = config.vocab_size
 
         assert config.num_hidden_layers % 2 == 0
-        num_hidden_layers_half = config.num_hidden_layers // 2
-
+        # num_hidden_layers_half = config.num_hidden_layers // 2
 
         is_dummy_fan_in = config.dummy_adaptive_fan_in
         if is_dummy_fan_in is None:
-            is_dummy_fan_in = [ False ] * num_hidden_layers_half
+            is_dummy_fan_in = [ False ] * config.num_hidden_layers
+
+        assert (len(is_dummy_fan_in) - sum(is_dummy_fan_in)) == 1, 'only one not dummy fan in'
+        # not dummy index
+        self.fan_in_idx = is_dummy_fan_in.index(False)
+        self.fan_out_idx = config.num_hidden_layers - self.fan_in_idx - 1
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
 
@@ -682,14 +694,9 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             raise ValueError(f"Unknown merging type: {config.merging_type}")
 
 
-        self.adaptive_down = nn.ModuleList(
-            [get_fan_in_module(is_dummy_fan_in[i]) for i in range(num_hidden_layers_half)]
-        )
-        self.layers_down = nn.ModuleList(
-            [LlamaDecoderLayer(config, layer_idx) for layer_idx in range(num_hidden_layers_half)]
-        )
-        self.layers_up = nn.ModuleList(
-            [LlamaDecoderLayer(config, layer_idx + num_hidden_layers_half) for layer_idx in range(num_hidden_layers_half)]
+        self.fan_in = get_fan_in_module(False)
+        self.layers = nn.ModuleList(
+            [LlamaDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
 
         def get_fan_out_module(is_dummy):
@@ -698,10 +705,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
             return AdaptiveFanOutHCG(config)
 
-        is_dummy_fan_out = list(reversed(is_dummy_fan_in))
-        self.adaptive_up = nn.ModuleList(
-            [get_fan_out_module(is_dummy_fan_out[i]) for i in range(num_hidden_layers_half)]
-        )
+        self.fan_out = get_fan_out_module(False)
 
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.rotary_emb = LlamaRotaryEmbedding(config=config)
@@ -716,35 +720,57 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
     def set_input_embeddings(self, value):
         self.embed_tokens = value
 
-    def _init_adaptive_layers(self):
-        for adaptive_down in self.adaptive_down:
-            if hasattr(adaptive_down, 'fan_in_mlp'):
+    def forward_decoder_layer(self, decoder_layer, hidden_states, attention_mask, position_ids, past_key_values, output_attentions, use_cache, cache_position, position_embeddings):
+        if self.gradient_checkpointing and self.training:
+            layer_outputs = self._gradient_checkpointing_func(
+                decoder_layer.__call__,
+                hidden_states,
+                attention_mask,
+                position_ids,
+                past_key_values,
+                output_attentions,
+                use_cache,
+                cache_position,
+                position_embeddings,
+            )
+        else:
+            layer_outputs = decoder_layer(
+                hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_values,
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                position_embeddings=position_embeddings,
+            )
+        
+        return layer_outputs
 
-                fan_in_mlps = adaptive_down.fan_in_mlp
-                if not isinstance(fan_in_mlps, nn.Sequential):
-                    fan_in_mlps = [ fan_in_mlps ]
+    def forward_decoder_layers(self, decoder_layers, hidden_states, attention_mask, position_ids, past_key_values, output_attentions, output_hidden_states, use_cache, cache_position, position_embeddings, all_hidden_states, all_self_attns):
 
-                for fan_in_mlp in fan_in_mlps:
-                    if not isinstance(fan_in_mlp, nn.Linear):
-                        continue
+        for decoder_layer in decoder_layers:
+            if output_hidden_states:
+                all_hidden_states += (hidden_states,)
 
-                    torch.nn.init.xavier_uniform_(fan_in_mlp.weight.data)
-                    if fan_in_mlp.bias is not None:
-                        fan_in_mlp.bias.data.fill_(0)
+            layer_outputs = self.forward_decoder_layer(
+                decoder_layer,
+                hidden_states,
+                attention_mask,
+                position_ids,
+                past_key_values,
+                output_attentions,
+                use_cache,
+                cache_position,
+                position_embeddings,
+            )
 
-        for adaptive_up in self.adaptive_up:
-            if hasattr(adaptive_up, 'fan_out_linear'):
-                fan_out_mlps = adaptive_up.fan_out_linear
+            hidden_states = layer_outputs[0]
 
-                for fan_out_mlp in fan_out_mlps.modules():
-                    if not isinstance(fan_out_mlp, nn.Linear):
-                        continue
+            if output_attentions:
+                all_self_attns += (layer_outputs[1],)
 
-                    torch.nn.init.xavier_uniform_(fan_out_mlp.weight.data)
-                    if fan_out_mlp.bias is not None:
-                        fan_out_mlp.bias.data.fill_(0)
-
-        return
+        return hidden_states, all_hidden_states, all_self_attns
 
     @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)
     # @torch.compiler.disable(recursive=False)
@@ -763,6 +789,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        # **flash_attn_kwargs: Unpack[FlashAttentionKwargs],
     ) -> Union[Tuple, AdaptiveBaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -804,6 +831,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         causal_mask = self._update_causal_mask(
             attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
         )
+
         hidden_states = inputs_embeds
 
         # create position embeddings to be shared across the decoder layers
@@ -812,241 +840,120 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        next_decoder_cache = None
 
-        # all_loop_down_special_embeddings_mask = [ ]
-        all_loop_down_merged_embeddings_counts = [ ]
-        all_loop_down_attention_mask = []
-        all_loop_down_residual_attention_mask = []
-        all_loop_down_causal_mask = [ ]
-        all_loop_down_position_embeddings = [ ]
-        all_loop_down_position_ids = [ ]
-        all_loop_down_hidden_states = []
-        all_loop_down_merging_map = [ ]
-        
+        # Before FanIn
+        hidden_states, all_hidden_states, all_self_attns = self.forward_decoder_layers(
+            self.layers[:self.fan_in_idx],
+            hidden_states,
+            causal_mask,
+            position_ids,
+            past_key_values,
+            output_attentions,
+            output_hidden_states,
+            use_cache,
+            cache_position,
+            position_embeddings,
+            all_hidden_states,
+            all_self_attns,
+        )
+
         assert special_embeddings_mask is not None
+        adaptive_down_output: AdaptiveFanInOutput = self.fan_in.forward(
+            input_ids=input_ids,
+            hidden_state=hidden_states,
+            attention_mask=attention_mask,
+            special_embeddings_mask=special_embeddings_mask,
+            stop_words_tokens_mask=stop_words_tokens_mask,
+        )
 
-        loop_down_special_embeddings_mask = special_embeddings_mask
-        loop_down_merged_embeddings_counts = None
-        loop_down_attention_mask = attention_mask
-        loop_down_causal_mask = causal_mask
-        loop_down_position_ids = position_ids
-        loop_down_position_embeddings = position_embeddings
+        hidden_states = adaptive_down_output.hidden_state
+        loop_down_attention_mask = adaptive_down_output.attention_mask
+        merged_embeddings_counts = adaptive_down_output.merged_embeddings_counts
 
+        current_concrete = adaptive_down_output.merging_map
+        full_current_concrete = adaptive_down_output.full_merging_map
+        current_residuals = adaptive_down_output.residual_hidden_state
 
-        fan_in_merging_maps = []
-        fan_in_merging_logits = []
-        fan_in_merging_logits_attention_mask = []
+        sum_pruned_tokens = attention_mask.sum().item() - loop_down_attention_mask.sum().item()
 
-        current_concrete = None
+        fan_in_merging_maps = [ None ] * self.config.num_hidden_layers
+        fan_in_merging_logits = [ None ] * self.config.num_hidden_layers
+        fan_in_merging_logits_attention_mask = [ None ] * self.config.num_hidden_layers
+        fan_in_merging_maps[self.fan_in_idx] = adaptive_down_output.merging_map
+        fan_in_merging_logits[self.fan_in_idx] = adaptive_down_output.merging_map_logits
+        fan_in_merging_logits_attention_mask[self.fan_in_idx] = adaptive_down_output.attention_mask
 
-        for i, (decoder_layer, adaptive_down_layer) in enumerate(zip(self.layers_down, self.adaptive_down)):
+        if not self.fan_in.training:
+            # TODO possibly optimize it with cuda kernel
+            new_seq_len = hidden_states.shape[1]
+            loop_down_cache_position = cache_position[:new_seq_len]
+            loop_down_position_ids = position_ids[:, :new_seq_len]
+            loop_down_position_embeddings = (position_embeddings[0][:, :new_seq_len], position_embeddings[1][:, :new_seq_len])
+        else:
+            # TODO batched cache_position ?
+            loop_down_cache_position = cache_position[:hidden_states.shape[1]]
+            loop_down_position_ids = position_ids * current_concrete
+            loop_down_position_embeddings = (position_embeddings[0] * current_concrete, position_embeddings[1] * current_concrete)
 
-            # if current_concrete is not None:
-            #     print("down layers", i, "current_concrete", current_concrete.sum(), '/', current_concrete.numel())
-
-            if self.training and current_concrete is not None:
-                hidden_states = hidden_states * current_concrete
-
-            if output_hidden_states:
-                all_hidden_states += (hidden_states,)
-
-            # all_loop_down_special_embeddings_mask.append(loop_down_special_embeddings_mask)
-            all_loop_down_causal_mask.append(loop_down_causal_mask)
-            all_loop_down_position_embeddings.append(loop_down_position_embeddings)
-            all_loop_down_residual_attention_mask.append(loop_down_attention_mask)
-            all_loop_down_position_ids.append(loop_down_position_ids)
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
-                    hidden_states,
-                    loop_down_causal_mask,
-                    loop_down_position_ids,
-                    past_key_values,
-                    output_attentions,
-                    use_cache,
-                    cache_position,
-                    loop_down_position_embeddings,
-                    current_concrete, # TODO not supported for gradient checkpointing
-                )
-            else:
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    attention_mask=loop_down_causal_mask,
-                    position_ids=loop_down_position_ids,
-                    past_key_value=past_key_values,
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    position_embeddings=loop_down_position_embeddings,
-                )
-
-            if self.training and current_concrete is not None:
-                hidden_states = hidden_states * current_concrete
-
-            hidden_states = layer_outputs[0]
-
-            adaptive_down_layer: AdaptiveFanInHCG
-
-            adaptive_down_output: AdaptiveFanInOutput = adaptive_down_layer.forward(
-                input_ids=input_ids,
-                hidden_state=hidden_states,
-                attention_mask=loop_down_attention_mask,
-                special_embeddings_mask=loop_down_special_embeddings_mask,
-                stop_words_tokens_mask=stop_words_tokens_mask,
-            )
-
-            all_loop_down_hidden_states.append(adaptive_down_output.residual_hidden_state)
-            all_loop_down_merging_map.append(adaptive_down_output.merging_map)
-
-            if adaptive_down_output.merging_map is not None:
-                current_concrete = adaptive_down_output.merging_map
-
-            fan_in_merging_maps.append(adaptive_down_output.merging_map)
-            fan_in_merging_logits.append(adaptive_down_output.merging_map_logits)
-            fan_in_merging_logits_attention_mask.append(loop_down_attention_mask)
-
-            hidden_states = adaptive_down_output.hidden_state
-
-            loop_down_attention_mask = adaptive_down_output.attention_mask.to(torch.long)
-            assert loop_down_attention_mask.shape[1] > 0, f"loop_down_attention_mask.shape[1] > 0: {loop_down_attention_mask.shape[1]} > 0"
-            all_loop_down_attention_mask.append(loop_down_attention_mask)
-
-            loop_down_merged_embeddings_counts = adaptive_down_output.merged_embeddings_counts
-            all_loop_down_merged_embeddings_counts.append(loop_down_merged_embeddings_counts)
-
-            loop_down_special_embeddings_mask = adaptive_down_output.special_embeddings_mask
-
-            if not isinstance(adaptive_down_layer, NoOpFanIn):
-                if not adaptive_down_layer.training:
-                    # TODO possibly optimize it with cuda kernel
-                    new_seq_len = hidden_states.shape[1]
-                    cache_position = cache_position[:new_seq_len]
-                    loop_down_position_ids = loop_down_position_ids[:, :new_seq_len]
-                    loop_down_position_embeddings = (loop_down_position_embeddings[0][:, :new_seq_len], loop_down_position_embeddings[1][:, :new_seq_len])
-
-                    # concrete_mask = (adaptive_down_output.merging_map_logits > 0).squeeze(-1)
-                    # concrete_mask_cpu = concrete_mask.cpu()
-
-                    # loop_down_position_embeddings_0_cpu = torch.zeros_like(loop_down_position_embeddings[0], device='cpu')
-                    # loop_down_position_embeddings_1_cpu = torch.zeros_like(loop_down_position_embeddings[1], device='cpu')
-
-                    # for batch_i in range(concrete_mask_cpu.shape[0]):
-                    #     current_seq_len = 0
-                    #     for seq_i in range(concrete_mask_cpu.shape[1]):
-                    #         if concrete_mask_cpu[batch_i, seq_i]:
-                    #             loop_down_position_embeddings_0_cpu[batch_i, current_seq_len] = loop_down_position_embeddings[0][batch_i, seq_i]
-                    #             loop_down_position_embeddings_1_cpu[batch_i, current_seq_len] = loop_down_position_embeddings[1][batch_i, seq_i]
-                    #             current_seq_len += 1
-
-                    # loop_down_position_embeddings_0_cpu = loop_down_position_embeddings_0_cpu[:, :new_seq_len]
-                    # loop_down_position_embeddings_1_cpu = loop_down_position_embeddings_1_cpu[:, :new_seq_len]
-
-                    # loop_down_position_embeddings = (loop_down_position_embeddings_0_cpu.to(loop_down_position_embeddings[0].device), loop_down_position_embeddings_1_cpu.to(loop_down_position_embeddings[1].device))
-                else:
-                    # TODO batched cache_position ?
-                    cache_position = cache_position[:hidden_states.shape[1]]
-                    loop_down_position_ids = loop_down_position_ids * current_concrete
-                    loop_down_position_embeddings = (loop_down_position_embeddings[0] * current_concrete, loop_down_position_embeddings[1] * current_concrete)
-
-
-                # concrete = adaptive_down_output.merging_map.bool().flatten()
-                # cache_position = cache_position[concrete]
-                # loop_down_position_ids = loop_down_position_ids[:, concrete]
-                # loop_down_position_embeddings = (loop_down_position_embeddings[0][:, concrete], loop_down_position_embeddings[1][:, concrete])
-
-                loop_down_causal_mask = loop_down_attention_mask
-                # if loop_down_causal_mask is not None:
-                #     loop_down_causal_mask = self._update_causal_mask(
-                #         loop_down_attention_mask, hidden_states, cache_position, past_key_values, output_attentions
-                #     )
-
-
-            # else leave it not changed
-
-            if output_attentions:
-                all_self_attns += (layer_outputs[1],)
-
-            # End loop adaptive down
-
-        sum_pruned_tokens = 0
-
-        assert len(all_loop_down_attention_mask) == len(self.layers_up)
-        assert len(all_loop_down_merged_embeddings_counts) == len(self.layers_up)
-
-        for i, decoder_layer in enumerate(self.layers_up):
-
-            # print("up layers", i, "current_concrete", current_concrete is not None)
-
-            if self.training and current_concrete is not None and i > 0: # i > 0 to avoid double application of concrete
-                hidden_states = hidden_states * current_concrete
+        # FanIn:FanOut
+        for i, decoder_layer in enumerate(self.layers[self.fan_in_idx:self.fan_out_idx]):
 
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            # print("i", i, "hidden_states", hidden_states.shape,)
-
-            adaptive_up_layer: AdaptiveFanOutHCG = self.adaptive_up[i]
-            loop_up_attention_mask = all_loop_down_attention_mask.pop(-1)
-            merged_embeddings_counts = all_loop_down_merged_embeddings_counts.pop(-1)
-            residual_hidden_states = all_loop_down_hidden_states.pop(-1)
-            residual_attention_mask = all_loop_down_residual_attention_mask.pop(-1)
-
-            assert loop_up_attention_mask.shape[1] == hidden_states.shape[1], f"loop_up_attention_mask.shape[1] == hidden_states.shape[1]: {loop_up_attention_mask.shape[1]} != {hidden_states.shape[1]}"
-            assert residual_attention_mask.shape[1] == residual_hidden_states.shape[1], f"residual_attention_mask.shape[1] == residual_hidden_states.shape[1]: {residual_attention_mask.shape[1]} != {residual_hidden_states.shape[1]}"
-            assert residual_attention_mask.shape[1] >= loop_up_attention_mask.shape[1], f"residual_attention_mask.shape[1] >= loop_up_attention_mask.shape[1]: {residual_attention_mask.shape[1]} >= {loop_up_attention_mask.shape[1]}"
-
-            adaptive_up_output: AdaptiveFanOutOutput = adaptive_up_layer.forward(
+            layer_outputs = self.forward_decoder_layer(
+                decoder_layer,
                 hidden_states,
-                loop_up_attention_mask,
-                merged_embeddings_counts,
-                residual_hidden_states,
-                residual_attention_mask,
+                loop_down_attention_mask,
+                loop_down_position_ids,
+                past_key_values,
+                output_attentions,
+                use_cache,
+                loop_down_cache_position,
+                loop_down_position_embeddings,
             )
 
-
-            hidden_states = adaptive_up_output.hidden_state
-            assert hidden_states.shape == residual_hidden_states.shape
-
-            # all_loop_down_special_embeddings_mask
-            loop_up_causal_mask = all_loop_down_causal_mask.pop(-1)
-            loop_up_position_embeddings = all_loop_down_position_embeddings.pop(-1)
-            loop_up_position_ids = all_loop_down_position_ids.pop(-1)
-
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
-                    hidden_states,
-                    loop_up_causal_mask,
-                    loop_up_position_ids,
-                    past_key_values,
-                    output_attentions,
-                    use_cache,
-                    cache_position,
-                    loop_up_position_embeddings,
-                )
-            else:
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    attention_mask=loop_up_causal_mask,
-                    position_ids=loop_up_position_ids,
-                    past_key_value=past_key_values,
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    position_embeddings=loop_up_position_embeddings,
-                )
-
             hidden_states = layer_outputs[0]
-
-            if isinstance(adaptive_up_layer, AdaptiveFanOutHCG):
-                current_concrete = None
-
             if self.training and current_concrete is not None:
                 hidden_states = hidden_states * current_concrete
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
+
+            if current_residuals is not None:
+                (current_residuals,) = decoder_layer.forward_residuals(current_residuals)
+
+
+        current_residuals = current_residuals * (1 - full_current_concrete)
+        print("curr resifuals sum zeros", (current_residuals.sum(-1) == 0).sum())
+        residual_attention_mask = attention_mask
+        adaptive_up_output: AdaptiveFanOutOutput = self.fan_out.forward(
+            hidden_states,
+            loop_down_attention_mask,
+            merged_embeddings_counts,
+            current_residuals,
+            residual_attention_mask,
+        )
+
+
+        hidden_states = adaptive_up_output.hidden_state
+        assert hidden_states.shape == current_residuals.shape
+
+        # After FanOut
+        hidden_states, all_hidden_states, all_self_attns = self.forward_decoder_layers(
+            self.layers[self.fan_out_idx:],
+            hidden_states,
+            causal_mask,
+            position_ids,
+            past_key_values,
+            output_attentions,
+            output_hidden_states,
+            use_cache,
+            cache_position,
+            position_embeddings,
+            all_hidden_states,
+            all_self_attns,
+        )
 
         hidden_states = self.norm(hidden_states)
 
@@ -1247,6 +1154,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         num_logits_to_keep: int = 0,
+        **kwargs,
     ) -> Union[Tuple, AdaptiveCausalLMOutputWithPast]:
         r"""
         Args:
@@ -1322,21 +1230,7 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
 
         loss = None
         if labels is not None:
-            # Upcast to float if we need to compute the loss to avoid potential precision issues
-            logits = logits.float()
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            shift_logits = shift_logits.view(-1, self.config.vocab_size)
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
-            if loss.isnan().any():
-                print("Found nan loss!")
-                breakpoint()
+            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

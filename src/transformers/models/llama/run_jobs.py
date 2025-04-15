@@ -53,8 +53,10 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         lr_scheduler_type = exp.pop('lr_scheduler_type', 'cosine')
         max_grad_norm = exp.pop('max_grad_norm', 1)
 
-        init_hcg_a = exp.pop('init_hcg_a', None)
-        if init_hcg_a is not None:
+        hard_hcg_log_a = exp.pop('hard_hcg_log_a', 0)
+
+        init_hcg_a = exp.pop('init_hcg_a', '')
+        if init_hcg_a != '':
             init_hcg_a = f"--init_hcg_a {init_hcg_a}"
 
         per_device_train_batch_size = exp.pop('per_device_train_batch_size', 32)
@@ -92,7 +94,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
 
         seed = SEED
 
-        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --hcg_learning_rate {hcg_learning_rate} {init_hcg_a} --max_grad_norm {max_grad_norm} --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type {lr_scheduler_type} --merging_type {merging_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection {fan_out_projection} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --bf16 1 --torch_compile {torch_compile} --sparsity_level {sparsity_level} --concrete_random_mask_proba {concrete_random_mask_proba} --lm_loss_max_value {lm_loss_max_value} --hcg_loss_max_value {hcg_loss_max_value} --prohibit_end_of_sentence_pruning {prohibit_end_of_sentence_pruning} --early_stopping_for_pretraining {early_stopping_for_pretraining} --gradient_accumulation_steps {gradient_accumulation_steps} --pretrain_fan_out_projection {pretrain_fan_out_projection} --eval_strategy {eval_strategy} --concrete_uniform_pruning {concrete_uniform_pruning} --concrete_stop_word_pruning {concrete_stop_word_pruning}"
+        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --hcg_learning_rate {hcg_learning_rate} {init_hcg_a} --hard_hcg_log_a {hard_hcg_log_a} --max_grad_norm {max_grad_norm} --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type {lr_scheduler_type} --merging_type {merging_type} --temperature_schedule 0 --freeze_lm_backbone {freeze_lm_backbone} --fan_out_projection {fan_out_projection} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --bf16 1 --torch_compile {torch_compile} --sparsity_level {sparsity_level} --concrete_random_mask_proba {concrete_random_mask_proba} --lm_loss_max_value {lm_loss_max_value} --hcg_loss_max_value {hcg_loss_max_value} --prohibit_end_of_sentence_pruning {prohibit_end_of_sentence_pruning} --early_stopping_for_pretraining {early_stopping_for_pretraining} --gradient_accumulation_steps {gradient_accumulation_steps} --pretrain_fan_out_projection {pretrain_fan_out_projection} --eval_strategy {eval_strategy} --concrete_uniform_pruning {concrete_uniform_pruning} --concrete_stop_word_pruning {concrete_stop_word_pruning}"
 
         print(f"\n\n{script_str}\n\n")
 
@@ -249,7 +251,7 @@ def run_hcg_smollm2_360M_pretrain_fan_out_projection(**kwargs):
 
 def run_hcg_smollm2_360M_hcg(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_no_concrete_scale_attention"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M"
 
     common_params = {
         # Model
@@ -271,6 +273,9 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
         "max_grad_norm": 0,
 
         'instance_type': 'a100.2gpu',
+        'num_train_epochs': 2,
+        "hcg_loss_weight": '0.0',
+
 
         # Training type
         "pretrain_fan_out_projection": "0",
@@ -281,7 +286,89 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
         (
             "12",
             "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
-            "adaptive_hcg_slm2_360M_pretrain_fan_out_projection_12_UVAVTOZ8/checkpoint-37496",
+            "./adaptive_hcg_slm2_360M_w_0.0_l_12_W8T40HNO/checkpoint-124987/",
+        ),
+    ]
+
+    for suffix, in_layers_str, llama_checkpoint in extra_params:
+        exp_config = {
+            "dummy_adaptive_fan_in_layers_str": in_layers_str,
+            "output_dir": f"{experiment_prefix_base_name}_w_0.0_l_{suffix}",
+            "llama_checkpoint": f"{workdir_prefix}/{llama_checkpoint}",
+
+            **common_params,
+        }
+        hcg_experiments.append(exp_config)
+
+
+    extra_params_from_scratch = [
+        (
+            "2",
+            "1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
+        ),
+        (
+            "4",
+            "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
+        ),
+        (
+            "8",
+            "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+        ),
+    ]
+
+    for suffix, in_layers_str in extra_params_from_scratch:
+        exp_config = {
+            "dummy_adaptive_fan_in_layers_str": in_layers_str,
+            "output_dir": f"{experiment_prefix_base_name}_w_0.0_l_{suffix}",
+            **common_params,
+        }
+
+        exp_config['model_type'] = 'pretrained'
+        exp_config['llama_checkpoint'] = 'HuggingFaceTB/SmolLM2-360M'
+
+        hcg_experiments.append(exp_config)
+
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
+
+def run_hcg_smollm2_360M_hcg_post_training(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_slm2_360M_post_training"
+
+    common_params = {
+        # Model
+        "model_type": "pretrained_checkpoint",
+        # "llama_checkpoint": # will be overriden in cycle later,
+        "freeze_lm_backbone": "1",
+        "hard_hcg_log_a": 1,
+
+        # Data
+        "select_train_dataset_items": 1000000,
+        "per_device_train_batch_size": 4,
+
+        # Training
+        "learning_rate": 0.02,
+        "hcg_learning_rate": 0.02,
+        "lr_scheduler_type": "cosine",
+
+        # "hcg_loss_weight": # will be overriden in cycle later,
+        "max_grad_norm": 0,
+
+        'instance_type': 'a100.2gpu',
+
+        # Training type
+        "pretrain_fan_out_projection": "0",
+    }
+
+    hcg_experiments = []
+    extra_params = [
+        (
+            "12",
+            "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
+            "./adaptive_hcg_slm2_360M_w_0.001_l_12_MPKM3VH1/checkpoint-120000/",
         ),
         # (
         #     "4",
@@ -290,8 +377,9 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
         # ),
     ]
 
-    for hcg_loss_weight in [ 0.0 ]:
-    # for hcg_loss_weight in [ 0.001, 0.01, ]:
+    for hcg_loss_weight in [ 0.001, ]:
+    # , 0.01,
+    # for hcg_loss_weight in [ 0.0 ]:
     # for hcg_loss_weight in [ 0.1 ]:
         for suffix, in_layers_str, llama_checkpoint in extra_params:
             exp_config = {
@@ -308,6 +396,7 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
     run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
 
     return
+
 
 
 if __name__ == "__main__":
@@ -331,6 +420,7 @@ if __name__ == "__main__":
     # SLM360M
     # run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
     run_hcg_smollm2_360M_hcg(dry=dry)
+    # run_hcg_smollm2_360M_hcg_post_training(dry=dry)
 
     # Rule based
     # run_hcg_smollm2_360M_hcg_rule_based(dry=dry)

@@ -317,6 +317,28 @@ class LlamaAttention(nn.Module):
 
         return attn_output, attn_weights
 
+    def forward_residuals(
+        self,
+        hidden_states: torch.Tensor,
+        **kwargs: Unpack[FlashAttentionKwargs],
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        input_shape = hidden_states.shape[:-1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
+
+        # Fake values and output projection
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+
+        repeat_count = self.config.num_attention_heads // self.config.num_key_value_heads
+        # value_states = value_states.repeat(1, repeat_count, 1, 1)
+        value_states = value_states.repeat_interleave(repeat_count, dim=1)
+
+        # Identity attention
+        attn_output = value_states
+
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+        attn_output = self.o_proj(attn_output)
+
+        return attn_output
 
 class LlamaDecoderLayer(nn.Module):
     def __init__(self, config: LlamaConfig, layer_idx: int):
@@ -375,6 +397,38 @@ class LlamaDecoderLayer(nn.Module):
             outputs += (self_attn_weights,)
 
         return outputs
+
+
+    def forward_residuals(
+        self,
+        hidden_states: torch.Tensor,
+        **kwargs: Unpack[FlashAttentionKwargs],
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        residual = hidden_states
+
+        hidden_states = self.input_layernorm(hidden_states)
+
+        # Self Attention
+        # hidden_states = self.self_attn.forward_residuals(
+        #     hidden_states=hidden_states,
+        #     **kwargs,
+        # )
+
+        hidden_states = residual + hidden_states
+
+        # Fully Connected
+        residual = hidden_states
+
+        hidden_states = self.post_attention_layernorm(hidden_states)
+
+        hidden_states = self.mlp(hidden_states)
+        hidden_states = residual + hidden_states
+
+        outputs = (hidden_states,)
+
+        return outputs
+
+
 
 
 LLAMA_START_DOCSTRING = r"""

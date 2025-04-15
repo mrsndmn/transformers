@@ -78,6 +78,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     max_grad_norm: float = field(default=None)
     init_hcg_a: Optional[float] = field(default=None)
     clip_hcg_log_a: Optional[float] = field(default=None)
+    hard_hcg_log_a: Optional[bool] = field(default=None)
 
     warmup_steps: int = field(default=500)
     per_device_train_batch_size: int = field(default=32)
@@ -1005,6 +1006,16 @@ def build_model(training_args: AdaptiveTrainingArguments):
             if hasattr(adaptive_down, 'hcg'):
                 adaptive_down.hcg.hcg_log_a.data.clamp_(min=-training_args.clip_hcg_log_a, max=training_args.clip_hcg_log_a)
                 print("Clipped hcg_log_a for adaptive_down", i, "with value", training_args.clip_hcg_log_a)
+
+    if training_args.hard_hcg_log_a is not None and training_args.hard_hcg_log_a:
+        for i, adaptive_down in enumerate(model.model.adaptive_down):
+            if hasattr(adaptive_down, 'hcg'):
+                log_a_data = adaptive_down.hcg.hcg_log_a.data
+                log_a_data[ log_a_data >= 0.0 ] = 10000
+                log_a_data[ log_a_data < 0.0 ] = -10000
+                adaptive_down.hcg.hcg_log_a.data = log_a_data
+                sigmoid = torch.nn.functional.sigmoid(log_a_data)
+                print("Harded hcg_log_a for adaptive_down", i, "with value", sigmoid.min(), sigmoid.max())
 
 
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))

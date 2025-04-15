@@ -16,10 +16,11 @@ import io # Add io import
 if __name__ == "__main__":
     torch.set_default_device('cuda')
 
-    # checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.001_l_12_XY58F4YK"
-    checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.0_l_12_test"
-    # checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.01_l_12_80KF9UFM"
-    # checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.001_l_12_XY58F4YK"
+    # checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.0_l_12_test"
+    # checkpoint_base_path = "./adaptive_hcg_slm2_360M_w_0.001_l_12_G8JNDZJW"
+    # checkpoint_base_path = "./adaptive_hcg_slm2_360M_w_0.001_l_4_IMAL0WD6"
+    checkpoint_base_path = "./adaptive_hcg_slm2_360M_w_0.0_l_12_VXZEU1DJ"
+
     print("checkpoint_base_path", checkpoint_base_path)
     checkpoints = os.listdir(checkpoint_base_path)
     checkpoints = [x for x in checkpoints if x.startswith('checkpoint')]

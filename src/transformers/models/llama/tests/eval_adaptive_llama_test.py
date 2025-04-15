@@ -1,11 +1,13 @@
 
 import torch
 
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, LlamaForCausalLM
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, reorder_mask_for_concrete
 
 
 from transformers.models.llama.merges_transform.generate_merges import prune_tokens_concrete
+
+from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
 
 def test_sdpa_attention():
 
@@ -36,14 +38,29 @@ def test_eval_adaptive_hcg_llama():
     torch.set_default_dtype(bench_dtype)
     torch.set_default_device(device)
 
-    # model_orig = LlamaForCausalLM.from_pretrained("HuggingFaceTB/SmolLM-360M")
+    model_orig = LlamaForCausalLM.from_pretrained("HuggingFaceTB/SmolLM-360M", torch_dtype=bench_dtype)
 
     # checkpoint = './adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/checkpoint-3118'
-    checkpoint = './adaptive_hcg_slm2_360M_w_0.0_l_12_test/checkpoint-124987/'
+    # checkpoint = './adaptive_hcg_slm2_360M_w_0.0_l_12_test/checkpoint-124987/'
+    checkpoint = 'HuggingFaceTB/SmolLM-360M'
 
-    model = AdaptiveLlamaForCausalLM.from_pretrained(
+    dummy_adaptive_fan_in = [ True ] * 12
+    dummy_adaptive_fan_in[7] = False
+    model = build_adaptive_llama_from_llama_checkpoint(
         checkpoint,
-        torch_dtype=bench_dtype,
+        dummy_adaptive_fan_in=dummy_adaptive_fan_in,
+        generate_merges_transform_impl='cuda_kernel',
+        fan_out_projection=True,
+        merging_type='hcg',
+        hcg_temperature=0.33,
+        hcg_log_a=100.0,
+        learnt_temperature=False,
+        flash_attention=True,
+        scale_not_pruned_gradients=0.0,
+        concrete_random_mask_proba=None,
+        concrete_uniform_pruning=None,
+        concrete_stop_word_pruning=None,
+        pretrain_fan_out_projection=False,
     )
 
     model.config.pretrain_fan_out_projection = False
@@ -66,28 +83,33 @@ def test_eval_adaptive_hcg_llama():
 
     with torch.no_grad():
 
+        model_orig.eval()
+        model_orig.to(device)
+        orig_output = model_orig.forward(**text_inputs)
+
         model.eval()
         eval_output = model.forward(**text_inputs)
         print("eval loss", eval_output['loss'])
 
         # Train mode for part of my modules
-        for adaptive_down in model.model.adaptive_down:
-            adaptive_down.train()
+        model.model.fan_in.train()
+        model.model.fan_in.hcg.eval()
 
-        for adaptive_up in model.model.adaptive_up:
-            adaptive_up.train()
-
-        for adaptive_down in model.model.adaptive_down:
-            if hasattr(adaptive_down, 'hcg'):
-                adaptive_down.hcg.eval()
+        model.model.fan_out.train()
 
         train_output = model.forward(**text_inputs)
         print("train loss", train_output['loss'])
 
-        assert (eval_output.fan_in_merging_maps[-5] > 0).sum().item() == (eval_output.fan_in_merging_logits[-5] > 0).sum().item()
+        assert (eval_output.fan_in_merging_maps[7] > 0).sum().item() == (eval_output.fan_in_merging_logits[7] > 0).sum().item()
 
-        assert (eval_output['loss'] < train_output['loss']).all()
+        for i in range(len(orig_output.hidden_states)):
+            assert torch.allclose(orig_output.hidden_states[i], eval_output.hidden_states[i], atol=1e-2), f'Hidden state {i} does not match'
+
+        assert eval_output['loss'].item() < 5
+        assert (eval_output['loss'] <= train_output['loss']).all()
         assert torch.allclose(train_output['loss'], eval_output['loss'], atol=1.5), f'{train_output["loss"].item()} != {eval_output["loss"].item()}'
+
+        assert torch.allclose(orig_output.logits, eval_output.logits, atol=1e-2)
 
 
 def test_prune_tokens_concrete():
