@@ -824,8 +824,7 @@ class AdaptiveLlamaTrainer(Trainer):
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
         super().save_model(output_dir, _internal_call)
 
-        # try:
-        if True:
+        try:
             evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'"
             evaluation_tracker = EvaluationTracker(
                 output_dir=evaluation_output_dir,
@@ -866,8 +865,8 @@ class AdaptiveLlamaTrainer(Trainer):
                 print("results", results)
                 if results is not None:
                     self.log({ "lighteval/wikitext_ppl": results['results']["custom:wikitext_103:0"]["ppl"] })
-        # except Exception as e:
-        #     print("Error in evaluation of PPL", e)
+        except Exception as e:
+            print("Error in evaluation of PPL", e)
 
         self.model.train()
 

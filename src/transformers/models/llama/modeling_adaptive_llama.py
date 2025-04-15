@@ -423,7 +423,8 @@ class AdaptiveFanInHCG(nn.Module):
             PRUNE_PERCENT = 0.0
 
             # concrete[concrete > 0.0] = 1.0
-            hard_concrete_percent = 0.5
+            hard_concrete_percent = self.config.eval_hard_concrete_percent
+            print("hard_concrete_percent", hard_concrete_percent)
             concrete[concrete <= hard_concrete_percent] = 0.0
             concrete[concrete > hard_concrete_percent] = 1.0
             full_concrete = concrete

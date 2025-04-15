@@ -192,6 +192,7 @@ class LlamaConfig(PretrainedConfig):
         concrete_random_mask_proba=0.0,
         concrete_uniform_pruning=0,
         concrete_stop_word_pruning=0,
+        eval_hard_concrete_percent=0.0,
         single_layer_hopping=False,
         # scale_token_frequency=False,
         distributed=False,
@@ -206,6 +207,7 @@ class LlamaConfig(PretrainedConfig):
         self.num_attention_heads = num_attention_heads
 
         self.single_layer_hopping = single_layer_hopping
+        self.eval_hard_concrete_percent = eval_hard_concrete_percent
 
         print("Pretrain fan out projection", pretrain_fan_out_projection)
         self.pretrain_fan_out_projection = pretrain_fan_out_projection
