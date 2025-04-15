@@ -858,7 +858,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         )
 
         assert special_embeddings_mask is not None
-        adaptive_down_output: AdaptiveFanInOutput = self.fan_in.forward(
+        adaptive_down_output: AdaptiveFanInOutput = self.fan_in(
             input_ids=input_ids,
             hidden_state=hidden_states,
             attention_mask=attention_mask,
