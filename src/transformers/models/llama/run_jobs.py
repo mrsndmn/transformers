@@ -274,8 +274,7 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
 
         'instance_type': 'a100.2gpu',
         'num_train_epochs': 2,
-        "hcg_loss_weight": '0.0',
-
+        "hcg_loss_weight": '0.01',
 
         # Training type
         "pretrain_fan_out_projection": "0",
@@ -297,9 +296,10 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
     for suffix, in_layers_str in extra_params_from_scratch:
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": in_layers_str,
-            "output_dir": f"{experiment_prefix_base_name}_w_0.0_l_{suffix}",
             **common_params,
         }
+        weight = exp_config['hcg_loss_weight']
+        exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{float(weight):.3f}_l_{suffix}"
 
         exp_config['model_type'] = 'pretrained'
         exp_config['llama_checkpoint'] = 'HuggingFaceTB/SmolLM2-360M'

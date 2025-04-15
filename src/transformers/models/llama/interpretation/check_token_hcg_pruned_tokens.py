@@ -16,10 +16,8 @@ import io # Add io import
 if __name__ == "__main__":
     torch.set_default_device('cuda')
 
-    # checkpoint_base_path = "adaptive_hcg_slm2_360M_w_0.0_l_12_test"
-    # checkpoint_base_path = "./adaptive_hcg_slm2_360M_w_0.001_l_12_G8JNDZJW"
-    # checkpoint_base_path = "./adaptive_hcg_slm2_360M_w_0.001_l_4_IMAL0WD6"
-    checkpoint_base_path = "./adaptive_hcg_slm2_360M_w_0.0_l_12_VXZEU1DJ"
+    import sys
+    checkpoint_base_path = sys.argv[1]
 
     print("checkpoint_base_path", checkpoint_base_path)
     checkpoints = os.listdir(checkpoint_base_path)
@@ -37,7 +35,7 @@ if __name__ == "__main__":
     token_prob_history = None # Will be {token_idx: []}
     evolution_images = [] # For the second animation
     # Define key upfront, try the standard one first
-    hcg_log_a_key = 'model.adaptive_down.3.hcg.hcg_log_a'
+    hcg_log_a_key = 'model.fan_in.hcg.hcg_log_a'
     tokeniser = None
     vocab_size = None
 
@@ -130,7 +128,7 @@ if __name__ == "__main__":
             continue
 
         # --- Plot Histogram (Only if probs calculated successfully) ---
-        passing_probs_np = passing_probs.cpu().numpy()
+        passing_probs_np = passing_probs.cpu().float().numpy()
 
         fig_hist, ax_hist = plt.subplots(figsize=(10, 6))
         try:

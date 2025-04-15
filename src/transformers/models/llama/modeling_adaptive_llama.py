@@ -435,7 +435,7 @@ class AdaptiveFanInHCG(nn.Module):
 
             concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
 
-            print("concrete_bool", concrete_bool.sum().item(), '/', concrete_bool.numel())
+            print("concrete_bool", concrete_bool.sum().item(), '/', attention_mask.sum().item())
 
             hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m, concrete_merged = prune_tokens_concrete(
                 hidden_state=hidden_state,

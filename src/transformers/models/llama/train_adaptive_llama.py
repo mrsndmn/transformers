@@ -341,7 +341,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
         count_hcg_layers = 0
         hcg_loss = 0
-        if self.args.hcg_loss_weight != 0.0 and  model_config.merging_type == 'hcg':
+        if self.args.hcg_loss_weight != 0.0 and  model_config.merging_type == 'hcg' and model_unwrapped.training:
             for i, (hcg_p_open, hcg_p_open_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                 if hcg_p_open is None:
                     continue
