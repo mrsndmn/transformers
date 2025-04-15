@@ -282,37 +282,15 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
     }
 
     hcg_experiments = []
-    extra_params = [
-        (
-            "12",
-            "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
-            "./adaptive_hcg_slm2_360M_w_0.0_l_12_W8T40HNO/checkpoint-124987/",
-        ),
-    ]
-
-    for suffix, in_layers_str, llama_checkpoint in extra_params:
-        exp_config = {
-            "dummy_adaptive_fan_in_layers_str": in_layers_str,
-            "output_dir": f"{experiment_prefix_base_name}_w_0.0_l_{suffix}",
-            "llama_checkpoint": f"{workdir_prefix}/{llama_checkpoint}",
-
-            **common_params,
-        }
-        hcg_experiments.append(exp_config)
-
 
     extra_params_from_scratch = [
         (
-            "2",
-            "1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1",
-        ),
-        (
-            "4",
-            "1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1",
-        ),
-        (
             "8",
             "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+        ),
+        (
+            "12",
+            "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
         ),
     ]
 

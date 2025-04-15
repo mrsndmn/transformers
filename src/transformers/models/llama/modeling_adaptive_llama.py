@@ -500,9 +500,6 @@ class AdaptiveFanOutHCG(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.projection_enabled: bool = config.fan_out_projection
-
-        self.fan_out_linear = LlamaMLP(config)
 
     def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask) -> AdaptiveFanOutOutput:
         """Returns base hidden states
@@ -518,10 +515,8 @@ class AdaptiveFanOutHCG(nn.Module):
             AdaptiveFanOutOutput: input hidden states
         """
 
-        if self.projection_enabled and False:
-            residual_hidden_states_projection = self.fan_out_linear(residual_hidden_states)
-        else:
-            residual_hidden_states_projection = residual_hidden_states
+        # No projection
+        residual_hidden_states_projection = residual_hidden_states
 
         if self.training:
             hidden_states = hidden_states + residual_hidden_states_projection
@@ -925,7 +920,6 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
 
         current_residuals = current_residuals * (1 - full_current_concrete)
-        print("curr resifuals sum zeros", (current_residuals.sum(-1) == 0).sum())
         residual_attention_mask = attention_mask
         adaptive_up_output: AdaptiveFanOutOutput = self.fan_out.forward(
             hidden_states,

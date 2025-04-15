@@ -27,9 +27,6 @@ from lighteval.models.transformers.transformers_model import TransformersModelCo
 
 from transformers import GenerationConfig
 
-VOCAB_SIZE = 200
-MAX_SEQ_LEN = 20
-
 import random
 import torch
 import transformers
@@ -466,9 +463,6 @@ class AdaptiveLlamaTrainer(Trainer):
                 log_info[f'{log_prefix}/p_open_q50_mean_{i}'] = concrete_quantiles[1].item()
                 log_info[f'{log_prefix}/p_open_q90_mean_{i}'] = concrete_quantiles[2].item()
 
-                if self.args.learnt_temperature:
-                    log_info[f'{log_prefix}/concrete_{i}_temperature'] = model.model.adaptive_down[i].hcg.temperature.item()
-
             self.log(log_info)
 
         return (loss, outputs) if return_outputs else loss
@@ -828,7 +822,8 @@ class AdaptiveLlamaTrainer(Trainer):
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
         super().save_model(output_dir, _internal_call)
 
-        try:
+        # try:
+        if True:
             evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'"
             evaluation_tracker = EvaluationTracker(
                 output_dir=evaluation_output_dir,
@@ -850,6 +845,10 @@ class AdaptiveLlamaTrainer(Trainer):
             unwrapped_model = self.accelerator.unwrap_model(self.model)
             unwrapped_model.eval()
 
+            unwrapped_model.name_or_path = output_dir
+            # assert unwrapped_model.config.max_length > 100
+            unwrapped_model.config.max_length = unwrapped_model.config.max_position_embeddings
+
             with torch.no_grad():
                 pipeline = Pipeline(
                     tasks=tasks,
@@ -865,8 +864,8 @@ class AdaptiveLlamaTrainer(Trainer):
                 print("results", results)
                 if results is not None:
                     self.log({ "lighteval/wikitext_ppl": results['results']["custom:wikitext_103:0"]["ppl"] })
-        except Exception as e:
-            print("Error in evaluation of PPL", e)
+        # except Exception as e:
+        #     print("Error in evaluation of PPL", e)
 
         self.model.train()
 
@@ -875,10 +874,10 @@ def freeze_lm_backbone(model: nn.Module):
     for p in model.parameters():
         p.requires_grad = False
 
-    for p in model.model.adaptive_down.parameters():
+    for p in model.model.fan_in.parameters():
         p.requires_grad = True
 
-    for p in model.model.adaptive_up.parameters():
+    for p in model.model.fan_out.parameters():
         p.requires_grad = True
 
 
@@ -899,11 +898,9 @@ def build_model(training_args: AdaptiveTrainingArguments):
         assert len(dummy_adaptive_fan_in) == num_layers_half
         llama_config = LlamaConfig(
             hidden_size=128,
-            vocab_size=VOCAB_SIZE,
             intermediate_size=256,
             num_hidden_layers=num_layers,
             num_attention_heads=8,
-            max_position_embeddings=MAX_SEQ_LEN,
             use_cache=False,
             attn_implementation = 'eager',
             dummy_adaptive_fan_in = dummy_adaptive_fan_in,
@@ -989,33 +986,26 @@ def build_model(training_args: AdaptiveTrainingArguments):
     if training_args.freeze_lm_backbone:
         freeze_lm_backbone(model)
 
-    if training_args.pretrain_fan_out_projection:
-        print("Pretrain fan out projection. Freeze Fan In parameters")
-        for adaptive_down in model.model.adaptive_down:
-            for p in adaptive_down.parameters():
-                p.requires_grad = False
+    # if training_args.pretrain_fan_out_projection:
+    #     print("Pretrain fan out projection. Freeze Fan In parameters")
+    #     for adaptive_down in model.model.adaptive_down:
+    #         for p in adaptive_down.parameters():
+    #             p.requires_grad = False
 
     if training_args.init_hcg_a is not None:
-        for i, adaptive_down in enumerate(model.model.adaptive_down):
-            if hasattr(adaptive_down, 'hcg'):
-                adaptive_down.hcg.hcg_log_a.data.fill_(training_args.init_hcg_a)
-                print("Initialized hcg_log_a for adaptive_down", i, "with value", training_args.init_hcg_a)
+        model.model.fan_in.hcg.hcg_log_a.data.fill_(training_args.init_hcg_a)
+        print("Initialized hcg_log_a for fan_in with value", training_args.init_hcg_a)
 
     if training_args.clip_hcg_log_a is not None:
-        for i, adaptive_down in enumerate(model.model.adaptive_down):
-            if hasattr(adaptive_down, 'hcg'):
-                adaptive_down.hcg.hcg_log_a.data.clamp_(min=-training_args.clip_hcg_log_a, max=training_args.clip_hcg_log_a)
-                print("Clipped hcg_log_a for adaptive_down", i, "with value", training_args.clip_hcg_log_a)
+        model.model.fan_in.hcg.hcg_log_a.data.clamp_(min=-training_args.clip_hcg_log_a, max=training_args.clip_hcg_log_a)
 
     if training_args.hard_hcg_log_a is not None and training_args.hard_hcg_log_a:
-        for i, adaptive_down in enumerate(model.model.adaptive_down):
-            if hasattr(adaptive_down, 'hcg'):
-                log_a_data = adaptive_down.hcg.hcg_log_a.data
-                log_a_data[ log_a_data >= 0.0 ] = 10000
-                log_a_data[ log_a_data < 0.0 ] = -10000
-                adaptive_down.hcg.hcg_log_a.data = log_a_data
-                sigmoid = torch.nn.functional.sigmoid(log_a_data)
-                print("Harded hcg_log_a for adaptive_down", i, "with value", sigmoid.min(), sigmoid.max())
+        log_a_data = model.model.fan_in.hcg.hcg_log_a.data
+        log_a_data[ log_a_data >= 0.0 ] = 10000
+        log_a_data[ log_a_data < 0.0 ] = -10000
+        model.model.fan_in.hcg.hcg_log_a.data = log_a_data
+        sigmoid = torch.nn.functional.sigmoid(log_a_data)
+        print("Harded hcg_log_a for fan_in with value", sigmoid.min(), sigmoid.max())
 
 
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
