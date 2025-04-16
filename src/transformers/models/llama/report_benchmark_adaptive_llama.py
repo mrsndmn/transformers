@@ -24,50 +24,15 @@ def count_params(model):
 if __name__ == "__main__":
 
     checkpoints_list = [
-        # # Fixed Loss
         {
-            "exp_name": "SmolLM2 1.7B - L1 - 23.62%",
-            "checkpoint": './adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_1/checkpoint-18743',
-        },
-        {
-            "exp_name": "SmolLM2 1.7B - L2 - 21.82%",
-            "checkpoint": './adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_2/checkpoint-18743',
-        },
-        {
-            "exp_name": "SmolLM2 1.7B - L4 - 24.76%",
-            "checkpoint": './adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_4/checkpoint-18743',
-        },
-        {
-            "exp_name": "SmolLM2 1.7B - L8 - 31.08%",
-            "checkpoint": './adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_8/checkpoint-18743',
-        },
-
-        # # Fixed Percent
-        {
-            "exp_name": 'SmolLM2 1.7B - L8 - 20%',
-            "checkpoint": './adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct20/checkpoint-4993',
-        },
-        {
-            "exp_name": 'SmolLM2 1.7B - L8 - 30%',
-            "checkpoint": './adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct30/checkpoint-4993',
-        },
-        {
-            "exp_name": 'SmolLM2 1.7B - L8 - 40%',
-            "checkpoint": './adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct40/checkpoint-4993',
-        },
-        {
-            "exp_name": 'SmolLM2 1.7B - L8 - 60%',
-            "checkpoint": './adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct60/checkpoint-4993',
-        },
-        {
-            "exp_name": 'SmolLM2 1.7B - L8 - 80%',
-            "checkpoint": './adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct80/checkpoint-4993',
+            "exp_name": "SmolLM2-360M l8 w 0.010",
+            "checkpoint": './adaptive_hcg_slm2_360M_w_0.010_l_8_5U9YQVI8/checkpoint-160000',
         },
 
         # Original
         {
-            "exp_name": "SmolLM2-1.7B Original",
-            "checkpoint": 'HuggingFaceTB/SmolLM2-1.7B',
+            "exp_name": "SmolLM2-360M Original",
+            "checkpoint": 'HuggingFaceTB/SmolLM2-360M',
             # "seq_lengths": [ 128, 2048, 4096, 4096 + 1024, 8192 ]
             # "seq_lengths": [ 2048 ]
         },
@@ -226,7 +191,13 @@ if __name__ == "__main__":
                 }
 
                 if isinstance(current_model, AdaptiveLlamaForCausalLM):
-                    run_info["pruned_tokens"] = input_ids.shape[1] - forward_output.fan_in_merging_logits_attention_mask[-1].shape[-1]
+                    fan_in_mask = None
+                    for x in forward_output.fan_in_merging_logits_attention_mask:
+                        if x is not None:
+                            fan_in_mask = x
+                            break
+
+                    run_info["pruned_tokens"] = input_ids.shape[1] - fan_in_mask.shape[-1]
                 else:
                     run_info["pruned_tokens"] = 0
 

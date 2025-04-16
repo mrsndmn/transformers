@@ -424,7 +424,7 @@ class AdaptiveFanInHCG(nn.Module):
 
             # concrete[concrete > 0.0] = 1.0
             hard_concrete_percent = self.config.eval_hard_concrete_percent
-            print("hard_concrete_percent", hard_concrete_percent)
+            # print("hard_concrete_percent", hard_concrete_percent)
             concrete[concrete <= hard_concrete_percent] = 0.0
             concrete[concrete > hard_concrete_percent] = 1.0
             full_concrete = concrete
@@ -436,7 +436,7 @@ class AdaptiveFanInHCG(nn.Module):
 
             concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
 
-            print("concrete_bool", concrete_bool.sum().item(), '/', attention_mask.sum().item())
+            # print("concrete_bool", concrete_bool.sum().item(), '/', attention_mask.sum().item())
 
             hidden_state_m, merged_embeddings_counts, merged_attention_mask, special_embeddings_mask_m, concrete_merged = prune_tokens_concrete(
                 hidden_state=hidden_state,
