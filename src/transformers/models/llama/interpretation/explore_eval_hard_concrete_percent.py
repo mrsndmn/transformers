@@ -157,7 +157,7 @@ if __name__ == "__main__":
     df = pd.DataFrame(all_results)
     df = df.sort_values(by='eval_hard_concrete_percent')
     print("df", df)
-    df.to_csv("eval_hard_concrete_percent_results.csv", index=False)
+    # df.to_csv("eval_hard_concrete_percent_results.csv", index=False)
 
     # Create figure and axes for plots
     fig, ax1 = plt.subplots(figsize=(10, 5))
@@ -187,5 +187,5 @@ if __name__ == "__main__":
 
 
     plt.show()
-    plt.savefig("eval_hard_concrete_percent_results.png")
+    # plt.savefig("eval_hard_concrete_percent_results.png")
     print("Saved plot to eval_hard_concrete_percent_results.png")
