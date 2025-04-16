@@ -26,7 +26,11 @@ if __name__ == "__main__":
     checkpoints_list = [
         {
             "exp_name": "SmolLM2-360M l8 w 0.010",
-            "checkpoint": './adaptive_hcg_slm2_360M_w_0.010_l_8_5U9YQVI8/checkpoint-160000',
+            "checkpoint": './adaptive_hcg_slm2_360M_w_0.010_l_8_no_self_attn_XKLT4CMQ/checkpoint-230000',
+        },
+        {
+            "exp_name": "SmolLM2-360M l12 w 0.010",
+            "checkpoint": './adaptive_hcg_slm2_360M_w_0.010_l_12_no_self_attn_G8Z0KI2B/checkpoint-230000',
         },
 
         # Original
@@ -59,8 +63,7 @@ if __name__ == "__main__":
         batch_size = checkpoint_desc.get('batch_size', 16)
         bench_iters = checkpoint_desc.get('bench_iters', 10)
         # seq_lengths = checkpoint_desc.get('seq_lengths', [ 128, 1024, 4096, 8192])
-        # seq_lengths = checkpoint_desc.get('seq_lengths', [ 128, 1024, 4096, 8192])
-        seq_lengths = checkpoint_desc.get('seq_lengths', [ 512, 2048, 4096, 4096 + 1024, 4096 + 2048 ])
+        seq_lengths = checkpoint_desc.get('seq_lengths', [ 1024, 2048, 4096, 8192 ])
 
         tokenizer = AutoTokenizer.from_pretrained(checkpoint_path, padding_side='left')
         tokenizer.pad_token_id = 0
@@ -206,4 +209,18 @@ if __name__ == "__main__":
 
                 bench_results.append(run_info)
 
-                pd.DataFrame(bench_results).to_csv('exps_evaluation/benchmarks_by_sequence_length.csv')
+                df = pd.DataFrame(bench_results)
+                df.to_csv('exps_evaluation/benchmarks_by_sequence_length.csv')
+
+                plt.clf()
+
+                for exp_name in df['experiment'].unique():
+                    df_exp = df[df['experiment'] == exp_name]
+                    plt.plot(df_exp['seq_len'], df_exp['elapced_mean'], label=exp_name)
+
+                plt.legend()
+                plt.show()
+                figure_path = f'exps_evaluation/benchmarks_by_sequence_length.png'
+                plt.savefig(figure_path)
+                print(f"Saved figure to {figure_path}")
+

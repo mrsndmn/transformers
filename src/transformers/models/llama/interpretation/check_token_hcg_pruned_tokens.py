@@ -159,7 +159,7 @@ if __name__ == "__main__":
     # --- Save Histogram Animation ---
     if images:
         print("Creating histogram animation...")
-        hist_output_path = 'src/transformers/models/llama/interpretation/pruning_probs_animation.gif'
+        hist_output_path = os.path.join(checkpoint_base_path, 'pruning_probs_animation.gif')
         try:
             imageio.mimsave(hist_output_path, images, fps=2, loop=1)
             print(f"Histogram animation saved to {hist_output_path}")
@@ -236,7 +236,7 @@ if __name__ == "__main__":
 
             # Save evolution animation
             if evolution_images:
-                evol_output_path = 'src/transformers/models/llama/interpretation/random_token_evolution_animation.gif'
+                evol_output_path = os.path.join(checkpoint_base_path, 'random_token_evolution_animation.gif')
                 try:
                     imageio.mimsave(evol_output_path, evolution_images, fps=2, loop=1)
                     print(f"Random token evolution animation saved to {evol_output_path}")

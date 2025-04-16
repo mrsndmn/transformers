@@ -67,114 +67,19 @@ def run_eval_experiments(experiments, job_description_prefix="eval", dry=False):
 
     return
 
+def eval_hcg_no_self_attention(**kwargs):
 
-def eval_hcg_adaptive_pretrain(**kwargs):
-
-    hcg_experiments = [
-        # {
-        #     "pretrained_model": "HuggingFaceTB/SmolLM-360M",
-        # },
-        # {
-        #     "pretrained_model": "HuggingFaceTB/SmolLM-1.7B",
-        # },
-        # # {
-        # #     "pretrained_model": "HuggingFaceTB/SmolLM2-360M",
-        # # },
-        # {
-        #     "pretrained_model": "HuggingFaceTB/SmolLM2-1.7B",
-        # },
-
-        {
-            "pretrained_model": "./adaptive_hcg_360M_layersi_1/checkpoint-24996/",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_360M_layersi_2/checkpoint-24996/",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_360M_layersi_4/checkpoint-24996/",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_360M_layersi_8/checkpoint-24996/",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_360M_layersi_12/checkpoint-24996/",
-        },
-
-
-        {
-            "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_1/checkpoint-18743",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_2/checkpoint-18743",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_4/checkpoint-18743",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_1.7B_layersi_max_loss_1.1_8/checkpoint-18743",
-        },
-
-
-        {
-            "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_1/checkpoint-18743",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_2/checkpoint-18743",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_4/checkpoint-18743",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_slm2_1.7B_layersi_max_loss_1.25_8/checkpoint-18743",
-        },
+    checkpoints = [
+        "adaptive_hcg_slm2_360M_w_0.010_l_12_no_self_attn_G8Z0KI2B/checkpoint-240000",
     ]
 
-    run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
+    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
 
-    return
+    if kwargs.pop('extract_metrics', False):
+        run_extract_metrics(checkpoints)
+    else:
+        run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
 
-def eval_hcg_fixed_percent(**kwargs):
-
-    hcg_experiments = [
-        {
-            "pretrained_model": "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct20/checkpoint-4993",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct30/checkpoint-4993",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct40/checkpoint-4993",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct60/checkpoint-4993",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_8_pr_pct80/checkpoint-4993",
-        },
-    ]
-
-    run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
-
-    return
-
-def eval_hcg_strange_8layer(**kwargs):
-
-    hcg_experiments = [
-        {
-            "pretrained_model": "./run_hcg_smollm1dot7B_layer_8_8/checkpoint-18743",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_slm1_1.7B_layer_8_fixed_pruning_percent_8_pr_pct10/checkpoint-18743",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_slm1_1.7B_layer_8_fixed_pruning_percent_8_pr_pct20/checkpoint-18743",
-        },
-        {
-            "pretrained_model": "./adaptive_hcg_slm1_1.7B_layer_8_fixed_pruning_percent_8_pr_pct40/checkpoint-18743",
-        },
-    ]
-
-    run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
 
     return
 
@@ -387,16 +292,13 @@ if __name__ == "__main__":
 
     print("dry", dry)
 
-    # Gumbel
-    # eval_gumbel_adaptive_pretrain(dry=dry)
-    # run_gumbel_adaptive(dry=dry)
-
     # eval_hcg_adaptive_pretrain(dry=dry)
     # eval_hcg_fixed_percent(dry=dry)
 
     # eval_hcg_strange_8layer(dry=dry)
+    eval_hcg_no_self_attention(dry=dry, extract_metrics=extract_metrics)
 
     # no_crutch_loss_eval(dry=dry)
     # no_crutch_loss_normalize_token_frequenct_eval(dry=dry, extract_metrics=extract_metrics)
     # no_crutch_loss_normalize_token_frequenct_eval_bs_1m(dry=dry, extract_metrics=extract_metrics)
-    baselines_rule_based_eval(dry=dry, extract_metrics=extract_metrics)
+    # baselines_rule_based_eval(dry=dry, extract_metrics=extract_metrics)

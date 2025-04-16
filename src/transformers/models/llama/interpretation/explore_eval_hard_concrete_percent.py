@@ -69,7 +69,7 @@ if __name__ == "__main__":
     all_results = []
     hook_handle = None # Variable to store the hook handle
 
-    for eval_hard_concrete_percent in range(0, 11, 2): # Iterate up to 1.0
+    for eval_hard_concrete_percent in range(0, 10, 2): # Iterate up to 1.0
         eval_hard_concrete_percent = eval_hard_concrete_percent / 10.0
         model.config.eval_hard_concrete_percent = eval_hard_concrete_percent
         print(f"--- Evaluating with eval_hard_concrete_percent = {eval_hard_concrete_percent} ---")
