@@ -38,11 +38,11 @@ def test_eval_adaptive_hcg_llama():
     torch.set_default_dtype(bench_dtype)
     torch.set_default_device(device)
 
-    model_orig = LlamaForCausalLM.from_pretrained("HuggingFaceTB/SmolLM-360M", torch_dtype=bench_dtype)
+    model_orig = LlamaForCausalLM.from_pretrained("HuggingFaceTB/SmolLM2-360M", torch_dtype=bench_dtype)
 
     # checkpoint = './adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/checkpoint-3118'
     # checkpoint = './adaptive_hcg_slm2_360M_w_0.0_l_12_test/checkpoint-124987/'
-    checkpoint = 'HuggingFaceTB/SmolLM-360M'
+    checkpoint = 'HuggingFaceTB/SmolLM2-360M'
 
     dummy_adaptive_fan_in = [ True ] * (model_orig.config.num_hidden_layers // 2)
     dummy_adaptive_fan_in[7] = False

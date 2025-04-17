@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
     data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(1) ]
     from datasets import load_dataset
-    smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files)
+    smollm_corpus = load_dataset("HuggingFaceTB/SmolLM2-corpus", split="train", data_files=data_files)
 
     smollm_corpus = smollm_corpus.map(lambda x: {"text_length": len(x["text"])})
     smollm_corpus = smollm_corpus.sort('text_length')

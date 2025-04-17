@@ -70,7 +70,11 @@ def run_eval_experiments(experiments, job_description_prefix="eval", dry=False):
 def eval_hcg_no_self_attention(**kwargs):
 
     checkpoints = [
-        "adaptive_hcg_slm2_360M_w_0.010_l_12_no_self_attn_G8Z0KI2B/checkpoint-240000",
+        # "adaptive_hcg_slm2_360M_w_0.010_l_12_no_self_attn_G8Z0KI2B/checkpoint-240000",
+        "./adaptive_hcg_slm2_1.7B_l_10_init_from_XKLT4CMQ/",
+        "./adaptive_hcg_slm2_1.7B_l_8_init_from_XKLT4CMQ/",
+        "./adaptive_hcg_slm2_1.7B_l_4_init_from_XKLT4CMQ/",
+        "./adaptive_hcg_slm2_1.7B_l_2_init_from_XKLT4CMQ/",
     ]
 
     hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]

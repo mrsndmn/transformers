@@ -925,11 +925,11 @@ def build_model(training_args: AdaptiveTrainingArguments):
     elif training_args.model_type == 'pretrained':
         from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
 
-        # llama_checkpoint = "HuggingFaceTB/SmolLM-1.7B"
-        # llama_checkpoint = "HuggingFaceTB/SmolLM-135M"
+        # llama_checkpoint = "HuggingFaceTB/SmolLM2-1.7B"
+        # llama_checkpoint = "HuggingFaceTB/SmolLM2-135M"
         llama_checkpoint = training_args.llama_checkpoint
         if llama_checkpoint is None or llama_checkpoint == "":
-            llama_checkpoint = "HuggingFaceTB/SmolLM-360M"
+            llama_checkpoint = "HuggingFaceTB/SmolLM2-360M"
 
         assert not llama_checkpoint.startswith("./")
 
@@ -966,7 +966,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
     elif training_args.model_type == 'SmolLM-1.7B':
-        llama_checkpoint = "HuggingFaceTB/SmolLM-1.7B"
+        llama_checkpoint = "HuggingFaceTB/SmolLM2-1.7B"
         model = LlamaForCausalLM.from_pretrained(llama_checkpoint, )
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
     else:
@@ -1086,7 +1086,7 @@ if __name__ == "__main__":
 
         # load and tokenize
         # data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(20) ]
-        # smollm_corpus = load_dataset("HuggingFaceTB/smollm-corpus", split="train", data_files=data_files, num_proc=16)
+        # smollm_corpus = load_dataset("HuggingFaceTB/SmolLM2-corpus", split="train", data_files=data_files, num_proc=16)
 
         state = PartialState()
         with state.local_main_process_first():

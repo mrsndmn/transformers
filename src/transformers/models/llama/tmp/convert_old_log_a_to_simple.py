@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     old_log_a_weights_state_dict = safetensors.torch.load_file(old_log_a_weights)
 
-    checkpoint = 'HuggingFaceTB/SmolLM-360M'
+    checkpoint = 'HuggingFaceTB/SmolLM2-360M'
     dummy_adaptive_fan_in = [ True ] * 12
     dummy_adaptive_fan_in[11] = False
     model = build_adaptive_llama_from_llama_checkpoint(

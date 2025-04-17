@@ -10,7 +10,7 @@ def test_build_adaptive_llama_use_cache(use_cache):
 
     torch.set_default_device('cuda')
 
-    llama_checkpoint = 'HuggingFaceTB/SmolLM-135M'
+    llama_checkpoint = 'HuggingFaceTB/SmolLM2-135M'
     pretrained_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch.bfloat16)
 
     tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)

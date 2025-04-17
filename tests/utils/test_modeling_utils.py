@@ -1029,7 +1029,7 @@ class ModelUtilsTest(TestCasePlus):
         # Now though these should be around the same.
         # TODO: Look for good bounds to check that their timings are near the same
 
-        mname = "HuggingFaceTB/SmolLM-135M"
+        mname = "HuggingFaceTB/SmolLM2-135M"
 
         preamble = "from transformers import AutoModel"
         one_liner_str = f'{preamble}; AutoModel.from_pretrained("{mname}", low_cpu_mem_usage=False)'

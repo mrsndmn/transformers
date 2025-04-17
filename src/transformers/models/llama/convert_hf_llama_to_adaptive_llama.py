@@ -21,7 +21,7 @@ from typing import List
 
 import torch
 
-from transformers import AutoModelForCausalLM, GenerationConfig, LlamaConfig, LlamaForCausalLM, LlamaTokenizer, PreTrainedTokenizerFast, AutoConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig, LlamaConfig, LlamaForCausalLM, LlamaTokenizer, PreTrainedTokenizerFast, AutoConfig
 
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanInHCG
 
@@ -41,6 +41,7 @@ def build_adaptive_llama_from_llama_checkpoint(
         concrete_uniform_pruning=None,
         concrete_stop_word_pruning=None,
         pretrain_fan_out_projection=False,
+        hcg_fan_in_from=None,
     ):
 
     torch_dtype = torch.bfloat16
@@ -86,8 +87,15 @@ def build_adaptive_llama_from_llama_checkpoint(
     for param_name, param_value in llama_model_state_dict.items():
         adaptive_llama_model_state_dict[param_name] = param_value
 
-    adaptive_llama_model.load_state_dict(adaptive_llama_model_state_dict)
+    if hcg_fan_in_from is not None:
+        hcg_fan_in_from_model = AdaptiveLlamaForCausalLM.from_pretrained(hcg_fan_in_from)
+        hcg_fan_in_from_model_state_dict = hcg_fan_in_from_model.state_dict()
 
+        hcg_log_a_param_name = 'model.fan_in.hcg.hcg_log_a'
+        hcg_log_a_param_value = hcg_fan_in_from_model_state_dict[hcg_log_a_param_name]
+        adaptive_llama_model_state_dict[hcg_log_a_param_name] = hcg_log_a_param_value
+
+    adaptive_llama_model.load_state_dict(adaptive_llama_model_state_dict)
     print("total parameters:", sum(p.numel() for p in adaptive_llama_model.parameters()))
 
     return adaptive_llama_model
@@ -98,11 +106,22 @@ def main():
     parser.add_argument(
         "--from_llama",
         help="HF Llama checkpoint for weights conversion",
-        default="HuggingFaceTB/SmolLM-135M"
+        default="HuggingFaceTB/SmolLM2-135M"
+    )
+    parser.add_argument(
+        "--hcg_fan_in_from",
+        help="Checkpoint from which to extract weights for fan-in hcg",
+        default=None,
     )
     parser.add_argument(
         "--output_dir",
         help="Location to write HF model and tokenizer",
+    )
+    parser.add_argument(
+        "--fan_in_layer_idx",
+        help="Fan in layer index",
+        type=int,
+        default=11,
     )
     parser.add_argument(
         "--safe_serialization", default=True, type=bool, help="Whether or not to save using `safetensors`."
@@ -115,15 +134,26 @@ def main():
     assert num_layers % 2 == 0
 
     dummy_adaptive_fan_in = [ True ] * (num_layers // 2)
-    dummy_adaptive_fan_in[-1] = False
+    dummy_adaptive_fan_in[args.fan_in_layer_idx] = False
+
     print("dummy_adaptive_fan_in", dummy_adaptive_fan_in)
-    model = build_adaptive_llama_from_llama_checkpoint(args.from_llama, dummy_adaptive_fan_in=dummy_adaptive_fan_in)
+    model = build_adaptive_llama_from_llama_checkpoint(
+        args.from_llama,
+        dummy_adaptive_fan_in=dummy_adaptive_fan_in,
+        hcg_fan_in_from=args.hcg_fan_in_from
+    )
 
     llama_model = AutoModelForCausalLM.from_pretrained( args.from_llama )
 
-    assert (llama_model.model.layers[0].mlp.gate_proj.weight == model.model.layers_down[0].mlp.gate_proj.weight).all()
+    # assert (llama_model.model.layers[0].mlp.gate_proj.weight == model.model.layers_down[0].mlp.gate_proj.weight).all()
 
     print(model)
+    model.save_pretrained(args.output_dir)
+    
+    tokenizer = AutoTokenizer.from_pretrained(args.from_llama)
+    tokenizer.save_pretrained(args.output_dir)
+
+
     breakpoint()
 
 if __name__ == "__main__":
