@@ -1,6 +1,8 @@
 import sys
 import argparse
 
+from tqdm import tqdm
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
@@ -36,43 +38,37 @@ def pruning_hook(module, input, output):
     total_pruned_tokens += output.attention_mask.sum().item()
 
 def evaluate_ppl_wikitext_103(model):
-    try:
-        evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'" # Removed extra quotes
-        evaluation_tracker = EvaluationTracker(
-            output_dir=evaluation_output_dir,
+    evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'" # Removed extra quotes
+    evaluation_tracker = EvaluationTracker(
+        output_dir=evaluation_output_dir,
+    )
+    pipeline_params = PipelineParameters(
+        launcher_type=ParallelismManager.ACCELERATE,
+        # env_config=env_config,
+        custom_tasks_directory='/workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py',
+        override_batch_size=1,
+        num_fewshot_seeds=1,
+        max_samples=None,
+        use_chat_template=False,
+        system_prompt=None,
+        load_responses_from_details_date_id=None,
+    )
+
+    tasks = "custom|wikitext_103|0|1"
+
+    with torch.no_grad():
+        pipeline = Pipeline(
+            tasks=tasks,
+            pipeline_parameters=pipeline_params,
+            evaluation_tracker=evaluation_tracker,
+            model=model,
         )
-        pipeline_params = PipelineParameters(
-            launcher_type=ParallelismManager.ACCELERATE,
-            # env_config=env_config,
-            custom_tasks_directory='/workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py',
-            override_batch_size=1,
-            num_fewshot_seeds=1,
-            max_samples=None,
-            use_chat_template=False,
-            system_prompt=None,
-            load_responses_from_details_date_id=None,
-        )
+        pipeline.evaluate()
 
-        tasks = "custom|wikitext_103|0|1"
+        pipeline.show_results()
+        results = pipeline.get_results()
 
-        with torch.no_grad():
-            pipeline = Pipeline(
-                tasks=tasks,
-                pipeline_parameters=pipeline_params,
-                evaluation_tracker=evaluation_tracker,
-                model=model,
-            )
-            pipeline.evaluate()
-
-            pipeline.show_results()
-            results = pipeline.get_results()
-
-            print("results", results)
-
-            ppl = results['results']["custom:wikitext_103:0"]["ppl"]
-
-    except Exception as e:
-        print(f"Error during evaluation: {e}")
+        ppl = results['results']["custom:wikitext_103:0"]["ppl"]
 
     return {
         "ppl": ppl,
@@ -80,6 +76,8 @@ def evaluate_ppl_wikitext_103(model):
 
 @torch.no_grad()
 def evaluate_different_percents(model, percent_step=1):
+    global total_initial_tokens, total_pruned_tokens
+
     all_results = []
 
     hook_handle = None # Variable to store the hook handle
@@ -168,8 +166,9 @@ def evaluate_different_percents(model, percent_step=1):
 def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None):
 
     results = []
+    assert len(fan_in_idxs) == len(fan_out_idxs)
 
-    for fan_in_idx, fan_out_idx in zip(fan_in_idxs, fan_out_idxs):
+    for fan_in_idx, fan_out_idx in tqdm(zip(fan_in_idxs, fan_out_idxs), total=len(fan_in_idxs)):
         model.model.fan_in_idx = fan_in_idx
         model.model.fan_out_idx = fan_out_idx
         ppl_results = evaluate_ppl_wikitext_103(model)
@@ -183,9 +182,12 @@ def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None):
         })
 
     df = pd.DataFrame(results)
-    output_file = os.path.join(model.model_name_or_path, f"_ppl_results_fan_in_idx_{fan_in_idxs}_fan_out_idx_{fan_out_idxs}.csv")
-    print("Saved PPL results to", output_file)
+    output_file = os.path.join(model.name_or_path, f"_ppl_results_fan_in_idx_{fan_in_idxs}_fan_out_idx_{fan_out_idxs}.csv")
     df.to_csv(output_file, index=False)
+    print("Saved PPL results to", output_file)
+    print("df", df)
+
+    breakpoint()
 
     return df
 
@@ -214,7 +216,7 @@ if __name__ == "__main__":
     else:
         last_checkpoint_path = os.path.join(checkpoint_base_path, checkpoints[-1])
 
-    last_checkpoint_path = "adaptive_hcg_slm2_1.7B_w_0.010_l_10_no_self_attn_5XMH6AH4/checkpoint-100000/"
+    # last_checkpoint_path = "adaptive_hcg_slm2_1.7B_w_0.010_l_10_no_self_attn_5XMH6AH4/checkpoint-100000/"
 
     # --- Initialization for Random Token Evolution ---
     hcg_log_a_key = 'model.fan_in.hcg.hcg_log_a'
@@ -238,7 +240,7 @@ if __name__ == "__main__":
     if args.percent_step > 0:
         evaluate_different_percents(model, percent_step=args.percent_step)
     else:
-        fan_in_idxs = args.fan_in_idxs.split(',')
-        fan_out_idxs = args.fan_out_idxs.split(',')
+        fan_in_idxs =  list(map(int, args.fan_in_idxs.split(',')))
+        fan_out_idxs = list(map(int, args.fan_out_idxs.split(',')))
         evaluate_different_layers(model, fan_in_idxs=fan_in_idxs, fan_out_idxs=fan_out_idxs)
 
