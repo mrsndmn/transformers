@@ -378,6 +378,68 @@ def run_hcg_smollm2_1_7B_hcg(**kwargs):
     return
 
 
+def run_hcg_llama31_8B_hcg(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_llama31_8B"
+
+    common_params = {
+        # Model
+        "model_type": "pretrained",
+        "llama_checkpoint": "unsloth/Meta-Llama-3.1-8B",
+
+        "freeze_lm_backbone": "1",
+        "init_hcg_a": 1.0,
+
+        # Data
+        "select_train_dataset_items": 1000000,
+        "per_device_train_batch_size": 4,
+
+        # Training
+        "learning_rate": 0.02,
+        "hcg_learning_rate": 0.02,
+        "lr_scheduler_type": "constant_with_warmup",
+
+        # "hcg_loss_weight": # will be overriden in cycle later,
+        "max_grad_norm": 0,
+
+        'instance_type': 'a100.2gpu',
+        'num_train_epochs': 1,
+        "hcg_loss_weight": '0.01',
+
+        # Training type
+        "pretrain_fan_out_projection": "0",
+        "single_layer_hopping": 0,
+    }
+
+    hcg_experiments = []
+
+    extra_params_from_scratch = [
+        (
+            "12",
+            "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
+        ),
+        (
+            "8",
+            "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+        ),
+    ]
+
+    for suffix, in_layers_str in extra_params_from_scratch:
+        exp_config = {
+            "dummy_adaptive_fan_in_layers_str": in_layers_str,
+            **common_params,
+        }
+        weight = exp_config['hcg_loss_weight']
+        exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{float(weight):.3f}_l_{suffix}_no_self_attn"
+
+        hcg_experiments.append(exp_config)
+
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
+
 
 def run_hcg_smollm2_360M_hcg_post_training(**kwargs):
 
@@ -465,7 +527,10 @@ if __name__ == "__main__":
     # SLM360M
     # run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
     # run_hcg_smollm2_360M_hcg(dry=dry)
-    run_hcg_smollm2_1_7B_hcg(dry=dry)
+
+    # run_hcg_smollm2_1_7B_hcg(dry=dry)
+    run_hcg_llama31_8B_hcg(dry=dry)
+
     # run_hcg_smollm2_360M_hcg_post_training(dry=dry)
 
     # Rule based
