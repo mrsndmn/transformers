@@ -895,6 +895,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             loop_down_position_ids = position_ids * current_concrete
             loop_down_position_embeddings = (position_embeddings[0] * current_concrete, position_embeddings[1] * current_concrete)
 
+        
         # FanIn:FanOut
         for i, decoder_layer in enumerate(self.layers[self.fan_in_idx:self.fan_out_idx]):
 

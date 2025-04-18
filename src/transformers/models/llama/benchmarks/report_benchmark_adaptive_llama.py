@@ -25,18 +25,14 @@ if __name__ == "__main__":
 
     checkpoints_list = [
         {
-            "exp_name": "SmolLM2-360M l8 w 0.010",
-            "checkpoint": './adaptive_hcg_slm2_360M_w_0.010_l_8_no_self_attn_XKLT4CMQ/checkpoint-230000',
-        },
-        {
-            "exp_name": "SmolLM2-360M l12 w 0.010",
-            "checkpoint": './adaptive_hcg_slm2_360M_w_0.010_l_12_no_self_attn_G8Z0KI2B/checkpoint-230000',
+            "exp_name": "SmolLM2-1.7B l10 w 0.010",
+            "checkpoint": './adaptive_hcg_slm2_1.7B_w_0.010_l_10_no_self_attn_5XMH6AH4/checkpoint-210000',
         },
 
         # Original
         {
             "exp_name": "SmolLM2-360M Original",
-            "checkpoint": 'HuggingFaceTB/SmolLM2-360M',
+            "checkpoint": 'HuggingFaceTB/SmolLM2-1.7B',
             # "seq_lengths": [ 128, 2048, 4096, 4096 + 1024, 8192 ]
             # "seq_lengths": [ 2048 ]
         },
@@ -49,7 +45,7 @@ if __name__ == "__main__":
 
     data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(1) ]
     from datasets import load_dataset
-    smollm_corpus = load_dataset("HuggingFaceTB/SmolLM2-corpus", split="train", data_files=data_files)
+    smollm_corpus = load_dataset("HuggingFaceTB/SmolLM-corpus", split="train", data_files=data_files)
 
     smollm_corpus = smollm_corpus.map(lambda x: {"text_length": len(x["text"])})
     smollm_corpus = smollm_corpus.sort('text_length')
@@ -63,7 +59,7 @@ if __name__ == "__main__":
         batch_size = checkpoint_desc.get('batch_size', 16)
         bench_iters = checkpoint_desc.get('bench_iters', 10)
         # seq_lengths = checkpoint_desc.get('seq_lengths', [ 128, 1024, 4096, 8192])
-        seq_lengths = checkpoint_desc.get('seq_lengths', [ 1024, 2048, 4096, 8192 ])
+        seq_lengths = checkpoint_desc.get('seq_lengths', [ 1024, 2048, 4096 ])
 
         tokenizer = AutoTokenizer.from_pretrained(checkpoint_path, padding_side='left')
         tokenizer.pad_token_id = 0

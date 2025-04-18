@@ -36,16 +36,28 @@ if __name__ == "__main__":
     torch.set_default_device('cuda')
 
     import sys
-    checkpoint_base_path = sys.argv[1]
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint_base_path", type=str, required=True)
+    parser.add_argument("--percent_step", type=int, default=1)
+    parser.add_argument("--normalize_hcg_log_a", action='store_true', default=False)
+    args = parser.parse_args()
+
+    normalize_hcg_log_a = args.normalize_hcg_log_a
+    checkpoint_base_path = args.checkpoint_base_path
 
     print("checkpoint_base_path", checkpoint_base_path)
     checkpoints = os.listdir(checkpoint_base_path)
     checkpoints = [x for x in checkpoints if x.startswith('checkpoint')]
     checkpoints = sorted(checkpoints, key=lambda x: int(x.split('-')[1]))
 
-    if not checkpoints:
-        print("No checkpoints found.")
-        exit()
+    if len(checkpoints) == 0:
+        print("No checkpoints found. Assuming the checkpoint_base_path is a single checkpoint.")
+        last_checkpoint_path = checkpoint_base_path
+    else:
+        last_checkpoint_path = os.path.join(checkpoint_base_path, checkpoints[-1])
+
 
     # --- Initialization for Random Token Evolution ---
     num_random_tokens = 10
@@ -59,17 +71,21 @@ if __name__ == "__main__":
     vocab_size = None
 
     # Load tokenizer and select random tokens from the first checkpoint
-    last_checkpoint_path = os.path.join(checkpoint_base_path, checkpoints[-1])
-    print(f"Loading tokenizer and initial state from: {checkpoints[0]}")
+    print(f"Loading tokenizer and state from: {last_checkpoint_path}")
 
     tokeniser = AutoTokenizer.from_pretrained(last_checkpoint_path)
     model = AdaptiveLlamaForCausalLM.from_pretrained(last_checkpoint_path, torch_dtype=torch.bfloat16)
     model.eval()
 
+    if normalize_hcg_log_a:
+        log_a = model.model.fan_in.hcg.hcg_log_a.data
+        log_a = log_a / log_a.abs().max() * 5 # 5 is for sigmoid at least 0 or at least 1
+        model.model.fan_in.hcg.hcg_log_a.data = log_a
+
     all_results = []
     hook_handle = None # Variable to store the hook handle
 
-    for eval_hard_concrete_percent in range(0, 10, 2): # Iterate up to 1.0
+    for eval_hard_concrete_percent in range(0, 10, args.percent_step): # Iterate up to 1.0
         eval_hard_concrete_percent = eval_hard_concrete_percent / 10.0
         model.config.eval_hard_concrete_percent = eval_hard_concrete_percent
         print(f"--- Evaluating with eval_hard_concrete_percent = {eval_hard_concrete_percent} ---")
@@ -156,7 +172,7 @@ if __name__ == "__main__":
 
     df = pd.DataFrame(all_results)
     df = df.sort_values(by='eval_hard_concrete_percent')
-    print("df", df)
+    print("Pruning Percent", df)
     # df.to_csv("eval_hard_concrete_percent_results.csv", index=False)
 
     # Create figure and axes for plots
@@ -185,7 +201,6 @@ if __name__ == "__main__":
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax2.legend(lines + lines2, labels + labels2, loc='upper left')
 
-
     plt.show()
-    # plt.savefig("eval_hard_concrete_percent_results.png")
+    plt.savefig(os.path.join(checkpoint_base_path, f"eval_hard_concrete_percent_results_nomralize_{normalize_hcg_log_a}.png"))
     print("Saved plot to eval_hard_concrete_percent_results.png")
