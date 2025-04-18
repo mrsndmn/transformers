@@ -1,6 +1,5 @@
 import time
 import argparse
-from tqdm.auto import tqdm
 import torch
 
 from torch.utils.data import DataLoader
@@ -17,6 +16,7 @@ from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_a
 
 import matplotlib.pyplot as plt
 
+import argparse
 
 def count_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -28,10 +28,31 @@ if __name__ == "__main__":
             "exp_name": "SmolLM2-1.7B l10 w 0.010",
             "checkpoint": './adaptive_hcg_slm2_1.7B_w_0.010_l_10_no_self_attn_5XMH6AH4/checkpoint-210000',
         },
+        {
+            "exp_name": "SmolLM2-1.7B l8 w 0.010",
+            "checkpoint": './adaptive_hcg_slm2_1.7B_w_0.010_l_10_no_self_attn_5XMH6AH4/checkpoint-210000',
+            "override_fan_in_idx": 8,
+        },
+        {
+            "exp_name": "SmolLM2-1.7B l4 w 0.010",
+            "checkpoint": './adaptive_hcg_slm2_1.7B_w_0.010_l_10_no_self_attn_5XMH6AH4/checkpoint-210000',
+            "override_fan_in_idx": 4,
+        },
+        {
+            "exp_name": "SmolLM2-1.7B l2 w 0.010",
+            "checkpoint": './adaptive_hcg_slm2_1.7B_w_0.010_l_10_no_self_attn_5XMH6AH4/checkpoint-210000',
+            "override_fan_in_idx": 2,
+        },
+        {
+            "exp_name": "SmolLM2-1.7B l1 w 0.010",
+            "checkpoint": './adaptive_hcg_slm2_1.7B_w_0.010_l_10_no_self_attn_5XMH6AH4/checkpoint-210000',
+            "override_fan_in_idx": 1,
+        },
+
 
         # Original
         {
-            "exp_name": "SmolLM2-360M Original",
+            "exp_name": "SmolLM2-1.7B Original",
             "checkpoint": 'HuggingFaceTB/SmolLM2-1.7B',
             # "seq_lengths": [ 128, 2048, 4096, 4096 + 1024, 8192 ]
             # "seq_lengths": [ 2048 ]
@@ -52,14 +73,14 @@ if __name__ == "__main__":
     smollm_corpus = smollm_corpus.select(range(len(smollm_corpus) - 500, len(smollm_corpus)))
     print("text len", len(smollm_corpus[-1]['text']))
 
-    for checkpoint_desc in tqdm(checkpoints_list, desc="checkpoints"):
+    for checkpoint_desc in checkpoints_list:
         checkpoint_path = checkpoint_desc['checkpoint']
         exp_name = checkpoint_desc['exp_name']
 
-        batch_size = checkpoint_desc.get('batch_size', 16)
-        bench_iters = checkpoint_desc.get('bench_iters', 10)
-        # seq_lengths = checkpoint_desc.get('seq_lengths', [ 128, 1024, 4096, 8192])
-        seq_lengths = checkpoint_desc.get('seq_lengths', [ 1024, 2048, 4096 ])
+        batch_size = checkpoint_desc.get('batch_size', 32)
+        bench_iters = checkpoint_desc.get('bench_iters', 3)
+        seq_lengths = checkpoint_desc.get('seq_lengths', [ 128, 1024, 4096 ])
+        # seq_lengths = checkpoint_desc.get('seq_lengths', [ 1024, 2048, 4096 ])
 
         tokenizer = AutoTokenizer.from_pretrained(checkpoint_path, padding_side='left')
         tokenizer.pad_token_id = 0
@@ -100,6 +121,15 @@ if __name__ == "__main__":
                 **model_kwargs,
             )
 
+            override_fan_in_idx = checkpoint_desc.get('override_fan_in_idx', None)
+            if override_fan_in_idx is not None:
+                current_model.config.dummy_adaptive_fan_in = [ True ] * current_model.config.num_hidden_layers
+                current_model.config.dummy_adaptive_fan_in[override_fan_in_idx] = False
+                current_model.model.recalc_fan_in_fan_out_idx()
+
+            print("model fan in idx", current_model.model.fan_in_idx)
+            print("model fan out idx", current_model.model.fan_out_idx)
+
         current_model.to(device)
         current_model.eval()
 
@@ -129,7 +159,7 @@ if __name__ == "__main__":
             orig_special_embeddings_mask = text_inputs['special_embeddings_mask'].to(device)
 
 
-            for sequence_length in tqdm(seq_lengths):
+            for sequence_length in seq_lengths:
 
                 torch.cuda.reset_peak_memory_stats()
 
@@ -216,7 +246,8 @@ if __name__ == "__main__":
 
                 plt.legend()
                 plt.show()
-                figure_path = f'exps_evaluation/benchmarks_by_sequence_length.png'
+                figure_path = f'exps_evaluation/benchmarks_by_sequence_length_ovrd_fan_in_idx.png'
                 plt.savefig(figure_path)
                 print(f"Saved figure to {figure_path}")
 
+    breakpoint()

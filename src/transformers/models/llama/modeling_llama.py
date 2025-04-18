@@ -346,6 +346,8 @@ class LlamaDecoderLayer(nn.Module):
         self.hidden_size = config.hidden_size
 
         self.layer_idx = layer_idx
+        # config._attn_implementation = 'eager'
+        # config._attn_implementation = 'sdpa'
         config._attn_implementation = 'flash_attention_2'
         self.self_attn = LlamaAttention(config=config, layer_idx=layer_idx)
 

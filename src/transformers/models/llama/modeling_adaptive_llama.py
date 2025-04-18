@@ -675,12 +675,8 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
         assert (len(is_dummy_fan_in) - sum(is_dummy_fan_in)) == 1, 'only one not dummy fan in'
         # not dummy index
-        self.fan_in_idx = is_dummy_fan_in.index(False)
 
-        if config.single_layer_hopping:
-            self.fan_out_idx = self.fan_in_idx + 1
-        else:
-            self.fan_out_idx = config.num_hidden_layers - self.fan_in_idx - 1
+        self.recalc_fan_in_fan_out_idx()
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
 
@@ -713,6 +709,16 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
         # Initialize weights and apply final processing
         self.post_init()
+
+    def recalc_fan_in_fan_out_idx(self):
+        self.fan_in_idx = self.config.dummy_adaptive_fan_in.index(False)
+
+        if self.config.single_layer_hopping:
+            self.fan_out_idx = self.fan_in_idx + 1
+        else:
+            self.fan_out_idx = self.config.num_hidden_layers - self.fan_in_idx - 1
+
+        return
 
     def get_input_embeddings(self):
         return self.embed_tokens
@@ -924,10 +930,9 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             if current_residuals is not None:
                 (current_residuals,) = decoder_layer.forward_residuals(current_residuals)
 
-
         current_residuals = current_residuals * (1 - full_current_concrete)
         residual_attention_mask = attention_mask
-        adaptive_up_output: AdaptiveFanOutOutput = self.fan_out.forward(
+        adaptive_up_output: AdaptiveFanOutOutput = self.fan_out(
             hidden_states,
             loop_down_attention_mask,
             merged_embeddings_counts,
