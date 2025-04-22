@@ -316,7 +316,7 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
 
 def run_hcg_smollm2_1_7B_hcg(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_no_forward_residuals"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_forward_residuals"
 
     common_params = {
         # Model
@@ -376,7 +376,7 @@ def run_hcg_smollm2_1_7B_hcg(**kwargs):
 
 def run_hcg_llama31_8B_hcg(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_llama31_8B_no_forward_residuals"
+    experiment_prefix_base_name = "adaptive_hcg_llama31_8B_forward_residuals"
 
     common_params = {
         # Model
