@@ -415,12 +415,8 @@ def run_hcg_llama31_8B_hcg(**kwargs):
 
     extra_params_from_scratch = [
         (
-            "12",
-            "1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1",
-        ),
-        (
-            "8",
-            "1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1",
+            "14",
+            "1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1",
         ),
     ]
 
@@ -528,8 +524,8 @@ if __name__ == "__main__":
     # run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
     # run_hcg_smollm2_360M_hcg(dry=dry)
 
-    run_hcg_smollm2_1_7B_hcg(dry=dry)
-    # run_hcg_llama31_8B_hcg(dry=dry)
+    # run_hcg_smollm2_1_7B_hcg(dry=dry)
+    run_hcg_llama31_8B_hcg(dry=dry)
 
     # run_hcg_smollm2_360M_hcg_post_training(dry=dry)
 
