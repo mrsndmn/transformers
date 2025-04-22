@@ -316,7 +316,7 @@ def run_hcg_smollm2_360M_hcg(**kwargs):
 
 def run_hcg_smollm2_1_7B_hcg(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B"
+    experiment_prefix_base_name = "adaptive_hcg_slm2_1.7B_no_forward_residuals"
 
     common_params = {
         # Model
@@ -365,7 +365,7 @@ def run_hcg_smollm2_1_7B_hcg(**kwargs):
             **common_params,
         }
         weight = exp_config['hcg_loss_weight']
-        exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{float(weight):.3f}_l_{suffix}_no_self_attn"
+        exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{float(weight):.3f}_l_{suffix}"
 
         exp_config['model_type'] = 'pretrained'
         exp_config['llama_checkpoint'] = 'HuggingFaceTB/SmolLM2-1.7B'
@@ -528,8 +528,8 @@ if __name__ == "__main__":
     # run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
     # run_hcg_smollm2_360M_hcg(dry=dry)
 
-    # run_hcg_smollm2_1_7B_hcg(dry=dry)
-    run_hcg_llama31_8B_hcg(dry=dry)
+    run_hcg_smollm2_1_7B_hcg(dry=dry)
+    # run_hcg_llama31_8B_hcg(dry=dry)
 
     # run_hcg_smollm2_360M_hcg_post_training(dry=dry)
 
