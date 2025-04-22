@@ -39,12 +39,22 @@ if __name__ == "__main__":
     tokeniser = None
     vocab_size = None
 
-    # Load tokenizer and select random tokens from the first checkpoint
     first_checkpoint_path = os.path.join(checkpoint_base_path, checkpoints[0])
+
+    max_shards = 4
+    model_file_name = "model.safetensors"
+    first_pretrained_checkpoint = os.path.join(first_checkpoint_path, model_file_name)
+    if not os.path.exists(first_pretrained_checkpoint):
+        model_file_name = "model-00001-of-00004.safetensors"
+        first_pretrained_checkpoint = os.path.join(first_checkpoint_path, model_file_name)
+
+
+    # Load tokenizer and select random tokens from the first checkpoint
     print(f"Loading tokenizer and initial state from: {checkpoints[0]}")
     try:
         tokeniser = AutoTokenizer.from_pretrained(first_checkpoint_path)
-        first_pretrained_checkpoint = os.path.join(first_checkpoint_path, "model.safetensors")
+
+        first_pretrained_checkpoint = os.path.join(first_checkpoint_path, model_file_name)
         first_state_dict = safetensors.torch.load_file(first_pretrained_checkpoint)
 
         # Find hcg_log_a key in the first checkpoint
@@ -53,11 +63,11 @@ if __name__ == "__main__":
             potential_keys = [k for k in first_state_dict.keys() if 'hcg.hcg_log_a' in k]
             if not potential_keys:
                 print(f"Error: Could not find any hcg_log_a key in the first checkpoint: {checkpoints[0]}")
-                exit()
+                exit(1)
             hcg_log_a_key = potential_keys[0]
             print(f"Using alternative key found: {hcg_log_a_key}")
         else:
-             print(f"Using default key: {hcg_log_a_key}")
+            print(f"Using default key: {hcg_log_a_key}")
 
         first_hcg_log_a = first_state_dict[hcg_log_a_key]
         vocab_size = first_hcg_log_a.shape[0]
@@ -75,7 +85,7 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"Error during initialization with {checkpoints[0]}: {e}")
-        exit()
+        exit(1)
 
     # --- Main Loop ---
     images = [] # List to store histogram plot images
@@ -86,7 +96,7 @@ if __name__ == "__main__":
         print(f"Processing checkpoint: {checkpoint} ({i+1}/{len(checkpoints)})")
         checkpoint_path = os.path.join(checkpoint_base_path, checkpoint)
 
-        pretrained_checkpoint = os.path.join(checkpoint_path, "model.safetensors")
+        pretrained_checkpoint = os.path.join(checkpoint_path, model_file_name)
         state_dict = None
         hcg_log_a = None
         passing_probs = None

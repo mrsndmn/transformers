@@ -75,15 +75,15 @@ def evaluate_ppl_wikitext_103(model):
     }
 
 @torch.no_grad()
-def evaluate_different_percents(model, percent_step=1):
+def evaluate_different_percents(model, percent_step=10):
     global total_initial_tokens, total_pruned_tokens
 
     all_results = []
 
     hook_handle = None # Variable to store the hook handle
 
-    for eval_hard_concrete_percent in range(0, 10, percent_step): # Iterate up to 1.0
-        eval_hard_concrete_percent = eval_hard_concrete_percent / 10.0
+    for eval_hard_concrete_percent in range(0, 100, percent_step * 10): # Iterate up to 1.0
+        eval_hard_concrete_percent = eval_hard_concrete_percent / 100.0
         model.config.eval_hard_concrete_percent = eval_hard_concrete_percent
         print(f"--- Evaluating with eval_hard_concrete_percent = {eval_hard_concrete_percent} ---")
 

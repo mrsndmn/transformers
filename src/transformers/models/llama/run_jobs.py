@@ -380,7 +380,7 @@ def run_hcg_smollm2_1_7B_hcg(**kwargs):
 
 def run_hcg_llama31_8B_hcg(**kwargs):
 
-    experiment_prefix_base_name = "adaptive_hcg_llama31_8B"
+    experiment_prefix_base_name = "adaptive_hcg_llama31_8B_no_forward_residuals"
 
     common_params = {
         # Model
@@ -430,7 +430,7 @@ def run_hcg_llama31_8B_hcg(**kwargs):
             **common_params,
         }
         weight = exp_config['hcg_loss_weight']
-        exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{float(weight):.3f}_l_{suffix}_no_self_attn"
+        exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{float(weight):.3f}_l_{suffix}"
 
         hcg_experiments.append(exp_config)
 
