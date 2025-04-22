@@ -927,8 +927,8 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
 
-            # if current_residuals is not None:
-            #     (current_residuals,) = decoder_layer.forward_residuals(current_residuals)
+            if current_residuals is not None:
+                (current_residuals,) = decoder_layer.forward_residuals(current_residuals)
 
         current_residuals = current_residuals * (1 - full_current_concrete)
         residual_attention_mask = attention_mask
