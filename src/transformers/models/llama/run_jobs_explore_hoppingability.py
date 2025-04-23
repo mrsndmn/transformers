@@ -5,12 +5,13 @@ import client_lib # импортируем библиотеку для рабо�
 
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
 from rich.console import Console
 
 import os
 
-assert os.environ.get("WANDB_API_KEY", "") != "", "WANDB_API_KEY is required" 
+assert os.environ.get("WANDB_API_KEY", "") != "", "WANDB_API_KEY is required"
 
 from copy import deepcopy
 
@@ -87,8 +88,19 @@ def run_plot_results(experiments, title=None):
         checkpoints[-1] = "checkpoint-70000"
     last_checkpoint_path = os.path.join(checkpoint_base_path, checkpoints[-1])
 
-    for pruned_percent in set(exp['concrete_random_mask_proba'] for exp in experiments):
-        plt.clf()
+    # Get all unique pruned percentages
+    pruned_percents = sorted(set(exp['concrete_random_mask_proba'] for exp in experiments))
+
+    # Create figure and axis
+    fig, ax = plt.subplots()
+
+    # Dictionary to store data for each pruned percentage
+    data_by_percent = {}
+
+    # Collect all data
+    for pruned_percent in pruned_percents:
+        data_by_percent[pruned_percent] = []
+
         for exp in experiments:
             exp_prefix = exp['exp_prefix']
             prune_percent = exp['concrete_random_mask_proba']
@@ -104,17 +116,40 @@ def run_plot_results(experiments, title=None):
                 continue
 
             df = pd.read_csv(csv_path)
-            plt.plot(df['fan_in_idx'], df['ppl'], label=f"{exp_prefix}")
+            data_by_percent[pruned_percent].append({
+                'fan_in_idx': df['fan_in_idx'],
+                'ppl': df['ppl'],
+                'label': exp_prefix
+            })
 
-        plt.legend()
-        plt.title(title + f" pruned percent {pruned_percent}")
-        plt.ylim(0, 20)
-        plt.show()
-        plt.xlabel("Layer")
-        plt.ylabel("PPL")
-        plot_path = os.path.join(checkpoint_base_path, f"ppl_results_pruned_percent_{pruned_percent}.png")
-        plt.savefig(plot_path)
-        print(f"Plot saved to {plot_path}")
+    # Function to update the plot for animation
+    def update(frame):
+        ax.clear()
+        pruned_percent = pruned_percents[frame]
+
+        for data in data_by_percent[pruned_percent]:
+            ax.plot(data['fan_in_idx'], data['ppl'], label=data['label'])
+
+        ax.legend()
+        ax.set_title(f"{title} pruned percent {pruned_percent}")
+        ax.set_ylim(0, 20)
+        ax.set_xlabel("Layer")
+        ax.set_ylabel("PPL")
+
+        return ax
+
+    # Create animation
+    ani = animation.FuncAnimation(
+        fig, update, frames=len(pruned_percents),
+        interval=1000, blit=False
+    )
+
+    # Save animation
+    animation_path = os.path.join(checkpoint_base_path, f"ppl_results_animation.gif")
+    ani.save(animation_path, writer='pillow')
+    print(f"Animation saved to {animation_path}")
+
+    plt.show()
 
 
 def run_hcg_smollm2_1dot7B_hopppingability(plot_results=False, **kwargs):
