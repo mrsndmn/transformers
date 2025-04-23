@@ -3,6 +3,9 @@ import string
 import random
 import client_lib # импортируем библиотеку для работы с ML Space
 
+import pandas as pd
+import matplotlib.pyplot as plt
+
 from rich.console import Console
 
 import os
@@ -69,12 +72,52 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         if dry:
             print("JOB WAS NOT LAUNCHED")
         else:
-            print(output_dir, job_w_args.submit())
+            print(exp_prefix, job_w_args.submit())
 
     return
 
+def run_plot_results(experiments, title=None):
 
-def run_hcg_smollm2_1dot7B_hopppingability(**kwargs):
+    checkpoint_base_path = experiments[0]['checkpoint_base_path']
+    checkpoints = os.listdir(checkpoint_base_path)
+    checkpoints = [x for x in checkpoints if x.startswith('checkpoint')]
+    checkpoints = sorted(checkpoints, key=lambda x: int(x.split('-')[1]))
+
+    if experiments[0]['checkpoint_base_path'] == "adaptive_hcg_llama31_8B_no_forward_residuals_w_0.010_l_14_OJNVL5F5":
+        checkpoints[-1] = "checkpoint-70000"
+    last_checkpoint_path = os.path.join(checkpoint_base_path, checkpoints[-1])
+
+    for pruned_percent in set(exp['concrete_random_mask_proba'] for exp in experiments):
+        plt.clf()
+        for exp in experiments:
+            exp_prefix = exp['exp_prefix']
+            prune_percent = exp['concrete_random_mask_proba']
+
+            if prune_percent != pruned_percent:
+                continue
+
+            csv_file_name = f"{exp_prefix}_ppl_results.csv"
+            csv_path = os.path.join(last_checkpoint_path, csv_file_name)
+
+            if not os.path.exists(csv_path):
+                print(f"CSV file {csv_path} does not exist")
+                continue
+
+            df = pd.read_csv(csv_path)
+            plt.plot(df['fan_in_idx'], df['ppl'], label=f"{exp_prefix}")
+
+        plt.legend()
+        plt.title(title + f" pruned percent {pruned_percent}")
+        plt.ylim(0, 20)
+        plt.show()
+        plt.xlabel("Layer")
+        plt.ylabel("PPL")
+        plot_path = os.path.join(checkpoint_base_path, f"ppl_results_pruned_percent_{pruned_percent}.png")
+        plt.savefig(plot_path)
+        print(f"Plot saved to {plot_path}")
+
+
+def run_hcg_smollm2_1dot7B_hopppingability(plot_results=False, **kwargs):
 
     hcg_experiments = []
 
@@ -103,12 +146,15 @@ def run_hcg_smollm2_1dot7B_hopppingability(**kwargs):
             }
             hcg_experiments.append(exp_config)
 
-    run_experiments(hcg_experiments, job_description_prefix="Hoppingability SLM2 1.7B: ", **kwargs)
+    if not plot_results:
+        run_experiments(hcg_experiments, job_description_prefix="Hoppingability SLM2 1.7B: ", **kwargs)
+    else:
+        run_plot_results(hcg_experiments, title="SLM2 1.7B")
 
     return
 
 
-def run_hcg_llama31_8B_hopppingability(**kwargs):
+def run_hcg_llama31_8B_hopppingability(plot_results=False, **kwargs):
 
     hcg_experiments = []
 
@@ -116,13 +162,13 @@ def run_hcg_llama31_8B_hopppingability(**kwargs):
         "checkpoint_base_path": "adaptive_hcg_llama31_8B_no_forward_residuals_w_0.010_l_14_OJNVL5F5",
     }
 
-    max_layer_i = 23
+    max_layer_i = 31
 
     for num_hop_layers in [ 1, 4, 8 ]:
         for prune_percent in [ 0.2, 0.4, 0.8 ]:
             fan_in_idxs = []
             fan_out_idxs = []
-            for start_layer in [ 0, 8, 16, 24 27 ]:
+            for start_layer in [ 0, 8, 16, 24, 27 ]:
                 if start_layer + num_hop_layers > max_layer_i:
                     continue
                 fan_in_idxs.append(start_layer)
@@ -137,7 +183,10 @@ def run_hcg_llama31_8B_hopppingability(**kwargs):
             }
             hcg_experiments.append(exp_config)
 
-    run_experiments(hcg_experiments, job_description_prefix="Hoppingability SLM2 1.7B: ", **kwargs)
+    if not plot_results:
+        run_experiments(hcg_experiments, job_description_prefix="Hoppingability Llama3.1 8B: ", **kwargs)
+    else:
+        run_plot_results(hcg_experiments, title="Llama3.1 8B")
 
     return
 
@@ -149,7 +198,8 @@ if __name__ == "__main__":
     import subprocess
 
     dry = len(sys.argv) > 1 and sys.argv[1] == 'dry'
+    plot_results = len(sys.argv) > 1 and sys.argv[1] == 'plot_results'
     print("dry", dry)
 
-    run_hcg_smollm2_1dot7B_hopppingability(dry=dry)
-    run_hcg_llama31_8B_hopppingability(dry=dry)
+    run_hcg_smollm2_1dot7B_hopppingability(dry=dry, plot_results=plot_results)
+    run_hcg_llama31_8B_hopppingability(dry=dry, plot_results=plot_results)

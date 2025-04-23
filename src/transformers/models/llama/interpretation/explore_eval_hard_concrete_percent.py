@@ -197,6 +197,7 @@ def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None, exp_pr
     plt.xlabel('Fan In Index')
     plt.ylabel('Perplexity (PPL)')
     plt.title('Perplexity vs. Fan In Index')
+    plt.ylim(0, 20)
     plt.legend()
     plt.show()
 
