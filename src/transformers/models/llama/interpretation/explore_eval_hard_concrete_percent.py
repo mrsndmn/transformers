@@ -44,6 +44,9 @@ def evaluate_ppl_wikitext_103(model):
     )
     pipeline_params = PipelineParameters(
         launcher_type=ParallelismManager.ACCELERATE,
+        env_config=EnvConfig(
+            cache_dir='/workspace-SR004.nfs2/.cache/huggingface',
+        ),
         # env_config=env_config,
         custom_tasks_directory='/workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py',
         override_batch_size=1,
@@ -163,7 +166,7 @@ def evaluate_different_percents(model, percent_step=10):
     return df
 
 @torch.no_grad()
-def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None):
+def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None, exp_prefix=None):
 
     results = []
     assert len(fan_in_idxs) == len(fan_out_idxs)
@@ -182,12 +185,29 @@ def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None):
         })
 
     df = pd.DataFrame(results)
-    output_file = os.path.join(model.name_or_path, f"_ppl_results_fan_in_idx_{fan_in_idxs}_fan_out_idx_{fan_out_idxs}.csv")
+
+    fan_in_idxs_str = ','.join(map(str, fan_in_idxs))
+    fan_out_idxs_str = ','.join(map(str, fan_out_idxs))
+    if exp_prefix is not None:
+        result_file_name = f"{exp_prefix}_ppl_results"
+    else:
+        result_file_name = f"_ppl_results_fan_in_idx_{fan_in_idxs_str}_fan_out_idx_{fan_out_idxs_str}"
+
+    plt.plot(df['fan_in_idx'], df['ppl'], marker='o', label='PPL')
+    plt.xlabel('Fan In Index')
+    plt.ylabel('Perplexity (PPL)')
+    plt.title('Perplexity vs. Fan In Index')
+    plt.legend()
+    plt.show()
+
+    plot_file_path = os.path.join(checkpoint_base_path, result_file_name + ".png")
+    plt.savefig(plot_file_path)
+    print("Saved PPL results to", plot_file_path)
+
+    output_file = os.path.join(model.name_or_path, result_file_name + ".csv")
     df.to_csv(output_file, index=False)
     print("Saved PPL results to", output_file)
     print("df", df)
-
-    breakpoint()
 
     return df
 
@@ -200,6 +220,8 @@ if __name__ == "__main__":
     parser.add_argument("--normalize_hcg_log_a", action='store_true', default=False)
     parser.add_argument("--fan_in_idxs", default=None)
     parser.add_argument("--fan_out_idxs", default=None)
+    parser.add_argument("--concrete_random_mask_proba", default=None, type=float)
+    parser.add_argument("--exp_prefix", default=None, type=str)
     args = parser.parse_args()
 
     normalize_hcg_log_a = args.normalize_hcg_log_a
@@ -231,6 +253,10 @@ if __name__ == "__main__":
     print("Model fan in idx  ", model.model.fan_in_idx)
     print("Model fan out idx ", model.model.fan_out_idx)
 
+    if args.concrete_random_mask_proba is not None:
+        model.config.concrete_random_mask_proba = float(args.concrete_random_mask_proba)
+        print(f"Setting concrete_random_mask_proba to {args.concrete_random_mask_proba}")
+
     if normalize_hcg_log_a:
         print("Normalizing hcg log a")
         log_a = model.model.fan_in.hcg.hcg_log_a.data
@@ -242,5 +268,5 @@ if __name__ == "__main__":
     else:
         fan_in_idxs =  list(map(int, args.fan_in_idxs.split(',')))
         fan_out_idxs = list(map(int, args.fan_out_idxs.split(',')))
-        evaluate_different_layers(model, fan_in_idxs=fan_in_idxs, fan_out_idxs=fan_out_idxs)
+        evaluate_different_layers(model, fan_in_idxs=fan_in_idxs, fan_out_idxs=fan_out_idxs, exp_prefix=args.exp_prefix)
 

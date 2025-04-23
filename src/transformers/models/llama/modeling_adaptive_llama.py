@@ -901,7 +901,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             loop_down_position_ids = position_ids * current_concrete
             loop_down_position_embeddings = (position_embeddings[0] * current_concrete, position_embeddings[1] * current_concrete)
 
-        
+        # print(f"FanIn:FanOut", self.fan_in_idx, self.fan_out_idx)
         # FanIn:FanOut
         for i, decoder_layer in enumerate(self.layers[self.fan_in_idx:self.fan_out_idx]):
 
@@ -927,9 +927,9 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
 
-            if current_residuals is not None:
-                (current_residuals,) = decoder_layer.forward_residuals(current_residuals)
-                current_residuals = current_residuals * (1 - full_current_concrete)
+            # if current_residuals is not None:
+            #     (current_residuals,) = decoder_layer.forward_residuals(current_residuals)
+            #     current_residuals = current_residuals * (1 - full_current_concrete)
 
         current_residuals = current_residuals * (1 - full_current_concrete)
         residual_attention_mask = attention_mask
