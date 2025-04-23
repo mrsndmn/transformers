@@ -166,7 +166,7 @@ def run_hcg_smollm2_1dot7B_hopppingability(plot_results=False, **kwargs):
         for prune_percent in [ 0.2, 0.4, 0.8 ]:
             fan_in_idxs = []
             fan_out_idxs = []
-            for start_layer in [ 0, 8, 12, 16, 19 ]:
+            for start_layer in [ 0, 2, 4, 8, 10, 12, 14, 16, 19, 20, 22 ]:
                 if start_layer + num_hop_layers > max_layer_i:
                     continue
                 fan_in_idxs.append(start_layer)
@@ -203,7 +203,7 @@ def run_hcg_llama31_8B_hopppingability(plot_results=False, **kwargs):
         for prune_percent in [ 0.2, 0.4, 0.8 ]:
             fan_in_idxs = []
             fan_out_idxs = []
-            for start_layer in [ 0, 8, 16, 24, 27 ]:
+            for start_layer in [ 0, 2, 4, 8, 10, 12, 14, 16, 20, 24, 27, 30 ]:
                 if start_layer + num_hop_layers > max_layer_i:
                     continue
                 fan_in_idxs.append(start_layer)
