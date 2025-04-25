@@ -1,6 +1,9 @@
 import torch
 import datasets
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -64,6 +67,14 @@ def create_animation(heatmap_data, metric_name):
         ax.set_yticks(np.arange(len(token_texts)))
         ax.set_yticklabels(token_texts)
 
+        if is_adaptive and frame > 0 and frame - 1 > model.model.fan_in_idx and frame - 1 < model.model.fan_out_idx:
+            # Ser color of ylabels
+            for i, label in enumerate(ax.get_yticklabels()):
+                if (merging_logits[0, i, 0] == 0.0).item():
+                    label.set_color('red')
+                else:
+                    pass
+
         # Add layer labels on the x-axis
         ax.set_xlabel("Layer")
         ax.set_ylabel("Token")
@@ -83,6 +94,9 @@ def save_animation(fig, ani, output_prefix, checkpoint_name, name_suffix, metric
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", type=str, required=True)
+    parser.add_argument("--llama_checkpoint", type=str, required=True)
+    parser.add_argument("--checkpoint_name", type=str, required=False)
+
     args = parser.parse_args()
 
     print(f"Loading model from {args.checkpoint}")
@@ -91,11 +105,26 @@ if __name__ == "__main__":
 
     logger.info(f"Loading model from {args.checkpoint}")
 
-    model = AutoModelForCausalLM.from_pretrained(args.checkpoint, torch_dtype=torch.bfloat16)
+    logger.info("Loading Adaptive Llama model")
+    is_adaptive = 'adaptive' in args.checkpoint
+    if is_adaptive:
+        model = AdaptiveLlamaForCausalLM.from_pretrained(args.checkpoint, torch_dtype=torch.bfloat16)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(args.checkpoint, torch_dtype=torch.bfloat16)
+
+    logger.info("Loading Vanilla Llama model")
+
+    model_vanilla = model
+    if args.llama_checkpoint != args.checkpoint:
+        model_vanilla = AutoModelForCausalLM.from_pretrained(args.llama_checkpoint, torch_dtype=torch.bfloat16)
+
+    model_vanilla.to(device)
+    model_vanilla.requires_grad_(False)
+
     model.to(device)
     model.requires_grad_(False)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.checkpoint)
+    tokenizer = AutoTokenizer.from_pretrained(args.llama_checkpoint)
     tokenizer.pad_token = tokenizer.eos_token
 
     wikitext_103 = datasets.load_dataset("lighteval/wikitext_103", split="test")
@@ -105,7 +134,7 @@ if __name__ == "__main__":
     model_inputs = tokenizer(texts, return_tensors="pt", padding=True)
     model_inputs = model_inputs.to(device)
 
-    seq_len = min(20, model_inputs['input_ids'].shape[1])  # Limit sequence length
+    seq_len = min(30, model_inputs['input_ids'].shape[1])  # Limit sequence length
 
     model_inputs['input_ids'] = model_inputs['input_ids'][:, :seq_len]
     model_inputs['attention_mask'] = model_inputs['attention_mask'][:, :seq_len]
@@ -115,6 +144,7 @@ if __name__ == "__main__":
     token_texts = [tokenizer.decode(token_id) for token_id in input_ids]
 
     outputs = model(**model_inputs, output_hidden_states=True)
+    outputs_vanilla = model_vanilla(**model_inputs, output_hidden_states=True)
 
     assert model_inputs['input_ids'].shape[0] == 1
 
@@ -122,8 +152,7 @@ if __name__ == "__main__":
 
     # Define configurations for different residual types
     residual_configs = [
-        {"type": "baseline", "name": "distance", "description": "Original (without forward residuals)"},
-        {"type": "all", "name": "forward_residual", "description": "Forward Residuals"},
+        {"type": "baseline", "name": "distance", "description": "Original"},
         {"type": "attn_only", "name": "forward_residual_attn_only", "description": "Forward Residuals (Attention Only)"},
         {"type": "mlp_only", "name": "forward_residual_mlp_only", "description": "Forward Residuals (MLP Only)"}
     ]
@@ -138,7 +167,33 @@ if __name__ == "__main__":
 
     logger.info(f"outputs.hidden_states[0].shape: {outputs.hidden_states[0].shape}")
 
+    got_fan_in = False
+    fan_out_residuals = None
+    merged_embeddings_counts = None
+    attention_mask = None
+    residuals_attention_mask = model_inputs['attention_mask']
+
+    merging_logits = None
+    if is_adaptive:
+        merging_logits = outputs.fan_in_merging_logits[ model.model.fan_in_idx ].cpu()
+
     for i, h_i in enumerate(outputs.hidden_states[:-1]):
+        if is_adaptive:
+            if h_i.shape[1] != seq_len:
+                if not got_fan_in:
+                    got_fan_in = True
+                    fan_out_residuals = outputs.hidden_states[i - 1]
+                    merged_embeddings_counts = outputs.merged_embeddings_counts
+                    attention_mask = torch.ones([ h_i.shape[0], h_i.shape[1] ], device=h_i.device)
+
+                h_i = model.model.fan_out(
+                    hidden_states=h_i,
+                    attention_mask=attention_mask,
+                    merged_embeddings_counts=merged_embeddings_counts,
+                    residual_hidden_states=fan_out_residuals,
+                    residual_attention_mask=residuals_attention_mask,
+                ).hidden_state
+
         h_i = h_i[:, :seq_len]
 
         # Initialize heatmaps for each configuration
@@ -158,7 +213,7 @@ if __name__ == "__main__":
         position_ids = torch.arange(0, seq_len, device='cuda').unsqueeze(0)
         position_embeddings = model.model.rotary_emb(h_i, position_ids)
 
-        compare_hidden_states = outputs.hidden_states[i+1:]
+        compare_hidden_states = outputs_vanilla.hidden_states[i+1:]
         for j, hs_j in enumerate(compare_hidden_states):
             hs_j = hs_j[:, :seq_len]
             llama_layer_for_forward_residuals = i + j
@@ -203,6 +258,8 @@ if __name__ == "__main__":
     output_prefix = "src/transformers/models/llama/analyze"
     os.makedirs(output_prefix, exist_ok=True)
     checkpoint_name = args.checkpoint.split("/")[-1]
+    if args.checkpoint_name is not None:
+        checkpoint_name = args.checkpoint_name
 
     # Create and save animations
     plt.rcParams.update({'font.size': 20})

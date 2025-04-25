@@ -88,14 +88,14 @@ class AdaptiveBaseModelOutputWithPast(BaseModelOutputWithPast):
     fan_in_merging_maps: Optional[torch.Tensor] = None
     fan_in_merging_logits: Optional[torch.Tensor] = None
     fan_in_merging_logits_attention_mask: Optional[torch.Tensor] = None
-
+    merged_embeddings_counts: Optional[torch.Tensor] = None
 @dataclass
 class AdaptiveCausalLMOutputWithPast(CausalLMOutputWithPast):
     sum_pruned_tokens: Optional[torch.Tensor] = None
     fan_in_merging_maps: Optional[torch.Tensor] = None
     fan_in_merging_logits: Optional[torch.Tensor] = None
     fan_in_merging_logits_attention_mask: Optional[torch.Tensor] = None
-
+    merged_embeddings_counts: Optional[torch.Tensor] = None
 class AdaptiveMode(Enum):
     FAN_IN = "fan_in"
     FAN_OUT = "fan_out"
@@ -978,6 +978,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
             fan_in_merging_maps=fan_in_merging_maps,
             fan_in_merging_logits=fan_in_merging_logits,
             fan_in_merging_logits_attention_mask=fan_in_merging_logits_attention_mask,
+            merged_embeddings_counts=merged_embeddings_counts,
         )
 
     def _update_causal_mask(
@@ -1252,5 +1253,6 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
             fan_in_merging_maps=outputs.fan_in_merging_maps,
             fan_in_merging_logits=outputs.fan_in_merging_logits,
             fan_in_merging_logits_attention_mask=outputs.fan_in_merging_logits_attention_mask,
+            merged_embeddings_counts=outputs.merged_embeddings_counts,
         )
 
