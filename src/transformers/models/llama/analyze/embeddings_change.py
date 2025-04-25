@@ -37,7 +37,10 @@ if __name__ == "__main__":
     # [ num_layers - 1, seq_len ]
     num_layers = model.config.num_hidden_layers
     seq_len = outputs.hidden_states[0].shape[1]
-    seq_len = 100
+    seq_len = min(100, seq_len)  # Limit sequence length
+
+    # Store all similarity heatmaps for animation
+    all_similarities = []
 
     for i, h_i in enumerate(outputs.hidden_states[:-1]):
         similarities_headmap = torch.zeros(len(outputs.hidden_states) - 1, seq_len)
@@ -49,19 +52,31 @@ if __name__ == "__main__":
             assert cosine_similarity.shape[0] == 1
             similarities_headmap[i + j, :] = cosine_similarity[0, :seq_len]
 
-        # Plot
-        plt.clf()
-        plt.gcf().set_size_inches(30, 10)
-        plt.imshow(similarities_headmap)
-        plt.colorbar()
-        plt.show()
-        plt.title(f"Layer {i}")
+        all_similarities.append(similarities_headmap.cpu().numpy())
 
-        output_prefix = "src/transformers/models/llama/analyze"
-        checkpoint_name = args.checkpoint.split("/")[-1]
-        fig_path = f"{output_prefix}/{checkpoint_name}_embeddings_change_{i}.png"
-        plt.savefig(fig_path)
-        print(f"Figure saved to {fig_path}")
+    # Create animation
+    plt.rcParams.update({'font.size': 22})
+    fig, ax = plt.subplots(figsize=(30, 10))
+
+    def update(frame):
+        ax.clear()
+        im = ax.imshow(all_similarities[frame], aspect='auto')
+        ax.set_title(f"Layer {frame}")
+        return [im]
+
+    ani = FuncAnimation(fig, update, frames=len(all_similarities), blit=True)
+
+    # Save as MP4
+    output_prefix = "src/transformers/models/llama/analyze"
+    checkpoint_name = args.checkpoint.split("/")[-1]
+    video_path = f"{output_prefix}/{checkpoint_name}_embeddings_change.mp4"
+
+    # Make sure directory exists
+    os.makedirs(output_prefix, exist_ok=True)
+
+    # Save animation
+    ani.save(video_path, writer='ffmpeg', fps=1)
+    print(f"Video saved to {video_path}")
 
 
 
