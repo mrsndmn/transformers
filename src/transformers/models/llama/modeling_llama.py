@@ -401,7 +401,11 @@ class LlamaDecoderLayer(nn.Module):
         return outputs
 
 
-    def forward_residuals(
+    def forward_residuals(self, *args, **kwargs):
+        return self.forward_residuals_mlp_only(*args, **kwargs)
+
+
+    def forward_residuals_mlp_only(
         self,
         hidden_states: torch.Tensor,
         **kwargs: Unpack[FlashAttentionKwargs],
@@ -409,7 +413,6 @@ class LlamaDecoderLayer(nn.Module):
         residual = hidden_states
 
         # hidden_states = self.input_layernorm(hidden_states)
-
         # Self Attention
         # hidden_states = self.self_attn.forward_residuals(
         #     hidden_states=hidden_states,
@@ -424,6 +427,26 @@ class LlamaDecoderLayer(nn.Module):
         hidden_states = self.post_attention_layernorm(hidden_states)
 
         hidden_states = self.mlp(hidden_states)
+        hidden_states = residual + hidden_states
+
+        outputs = (hidden_states,)
+
+        return outputs
+
+
+    def forward_residuals_attention_only(
+        self,
+        hidden_states: torch.Tensor,
+        **kwargs: Unpack[FlashAttentionKwargs],
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        residual = hidden_states
+
+        hidden_states = self.input_layernorm(hidden_states)
+        # Self Attention
+        hidden_states = self.self_attn.forward_residuals(
+            hidden_states=hidden_states,
+            **kwargs,
+        )
         hidden_states = residual + hidden_states
 
         outputs = (hidden_states,)

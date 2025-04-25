@@ -45,12 +45,12 @@ if __name__ == "__main__":
 
     wikitext_103 = datasets.load_dataset("lighteval/wikitext_103", split="test")
 
-    texts = [ "The quick brown fox jumps over the lazy dog" ]
+    texts = [ "The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog." ]
 
     model_inputs = tokenizer(texts, return_tensors="pt", padding=True)
     model_inputs = model_inputs.to(device)
 
-    seq_len = min(10, model_inputs['input_ids'].shape[1])  # Limit sequence length
+    seq_len = min(20, model_inputs['input_ids'].shape[1])  # Limit sequence length
 
     model_inputs['input_ids'] = model_inputs['input_ids'][:, :seq_len]
     model_inputs['attention_mask'] = model_inputs['attention_mask'][:, :seq_len]
@@ -73,6 +73,13 @@ if __name__ == "__main__":
     all_cos_distances_forward_residual = []
     all_l1_distances_forward_residual = []
 
+    # New arrays for attention only and mlp only
+    all_cos_distances_forward_residual_attn_only = []
+    all_l1_distances_forward_residual_attn_only = []
+
+    all_cos_distances_forward_residual_mlp_only = []
+    all_l1_distances_forward_residual_mlp_only = []
+
     logger.info(f"outputs.hidden_states[0].shape: {outputs.hidden_states[0].shape}")
 
     for i, h_i in enumerate(outputs.hidden_states[:-1]):
@@ -84,8 +91,18 @@ if __name__ == "__main__":
         cos_distances_headmap_forward_residual = torch.ones(len(outputs.hidden_states) - 1, seq_len)
         l1_distances_heatmap_forward_residual = torch.ones(len(outputs.hidden_states) - 1, seq_len)
 
+        # New heatmaps for attention only and mlp only
+        cos_distances_headmap_forward_residual_attn_only = torch.ones(len(outputs.hidden_states) - 1, seq_len)
+        l1_distances_heatmap_forward_residual_attn_only = torch.ones(len(outputs.hidden_states) - 1, seq_len)
+
+        cos_distances_headmap_forward_residual_mlp_only = torch.ones(len(outputs.hidden_states) - 1, seq_len)
+        l1_distances_heatmap_forward_residual_mlp_only = torch.ones(len(outputs.hidden_states) - 1, seq_len)
+
         h_i_forward_residual = h_i.clone()
-        position_ids = torch.arange( 0, seq_len, device='cuda' ).unsqueeze(0)
+        h_i_forward_residual_attn_only = h_i.clone()
+        h_i_forward_residual_mlp_only = h_i.clone()
+
+        position_ids = torch.arange(0, seq_len, device='cuda').unsqueeze(0)
         position_embeddings = model.model.rotary_emb(h_i, position_ids)
 
         compare_hidden_states = outputs.hidden_states[i+1:]
@@ -93,32 +110,47 @@ if __name__ == "__main__":
             hs_j = hs_j[:, :seq_len]
 
             llama_layer_for_forward_residuals = i + j
-            # h_i_forward_residual = model.model.layers[llama_layer_for_forward_residuals].forward_residuals(h_i_forward_residual)[0]
+            # Regular forward residuals
             h_i_forward_residual = model.model.layers[llama_layer_for_forward_residuals].forward_residuals(
                 h_i_forward_residual,
-                # position_embeddings=position_embeddings,
-                # position_ids=position_ids,
             )[0]
+
+            # Attention only residuals
+            h_i_forward_residual_attn_only = model.model.layers[llama_layer_for_forward_residuals].forward_residuals_attention_only(
+                h_i_forward_residual_attn_only,
+            )[0]
+
+            # MLP only residuals
+            h_i_forward_residual_mlp_only = model.model.layers[llama_layer_for_forward_residuals].forward_residuals_mlp_only(
+                h_i_forward_residual_mlp_only,
+            )[0]
+
             if j == len(compare_hidden_states) - 1:
                 h_i_forward_residual = model.model.norm(h_i_forward_residual)
+                h_i_forward_residual_attn_only = model.model.norm(h_i_forward_residual_attn_only)
+                h_i_forward_residual_mlp_only = model.model.norm(h_i_forward_residual_mlp_only)
 
-            # print("h_i_forward_residual - hs_j abs sum", (h_i_forward_residual - hs_j).abs().sum())
-            # assert torch.allclose(h_i_forward_residual, hs_j)
-            # breakpoint()
-
-            # [ 1, seq_len ]
+            # Regular forward residuals
             cosine_distance = norm_compute_cosine_distance(h_i_forward_residual, hs_j)
             cos_distances_headmap_forward_residual[i + j, :] = cosine_distance[0, :seq_len]
-
-            # Calculate L2 norm differences
             l1_diff = compute_l1_distance(h_i_forward_residual, hs_j)
             l1_distances_heatmap_forward_residual[i + j, :] = l1_diff[0, :seq_len] * 10
 
-            # [ 1, seq_len ]
+            # Attention only residuals
+            cosine_distance = norm_compute_cosine_distance(h_i_forward_residual_attn_only, hs_j)
+            cos_distances_headmap_forward_residual_attn_only[i + j, :] = cosine_distance[0, :seq_len]
+            l1_diff = compute_l1_distance(h_i_forward_residual_attn_only, hs_j)
+            l1_distances_heatmap_forward_residual_attn_only[i + j, :] = l1_diff[0, :seq_len] * 10
+
+            # MLP only residuals
+            cosine_distance = norm_compute_cosine_distance(h_i_forward_residual_mlp_only, hs_j)
+            cos_distances_headmap_forward_residual_mlp_only[i + j, :] = cosine_distance[0, :seq_len]
+            l1_diff = compute_l1_distance(h_i_forward_residual_mlp_only, hs_j)
+            l1_distances_heatmap_forward_residual_mlp_only[i + j, :] = l1_diff[0, :seq_len] * 10
+
+            # Original comparison (without forward residuals)
             cosine_distance = norm_compute_cosine_distance(h_i, hs_j)
             cos_distances_headmap[i + j, :] = cosine_distance[0, :seq_len]
-
-            # Calculate L2 norm differences
             l1_diff = compute_l1_distance(h_i, hs_j)
             l1_distances_heatmap[i + j, :] = l1_diff[0, :seq_len] * 10
 
@@ -127,6 +159,12 @@ if __name__ == "__main__":
 
         all_cos_distances_forward_residual.append(cos_distances_headmap_forward_residual.cpu().numpy())
         all_l1_distances_forward_residual.append(l1_distances_heatmap_forward_residual.cpu().numpy())
+
+        all_cos_distances_forward_residual_attn_only.append(cos_distances_headmap_forward_residual_attn_only.cpu().numpy())
+        all_l1_distances_forward_residual_attn_only.append(l1_distances_heatmap_forward_residual_attn_only.cpu().numpy())
+
+        all_cos_distances_forward_residual_mlp_only.append(cos_distances_headmap_forward_residual_mlp_only.cpu().numpy())
+        all_l1_distances_forward_residual_mlp_only.append(l1_distances_heatmap_forward_residual_mlp_only.cpu().numpy())
 
     # Create animation for cosine similarity
     plt.rcParams.update({'font.size': 25})
@@ -195,6 +233,36 @@ if __name__ == "__main__":
     # ani_l1.save(video_path_l1, writer='ffmpeg', fps=1)
     # plt.close(fig_l1)
     # print(f"L1 distance video saved to {video_path_l1}")
+
+    # Forward Residuals Attention Only
+    logger.info(f"Creating Animation for Cosine Distance Forward Residuals (Attention Only)")
+    fig_cos, ani_cos = create_animation(all_cos_distances_forward_residual_attn_only, "Cosine Distance (Attention Only)")
+    video_path_cos = f"{output_prefix}/{checkpoint_name}_embeddings_cosine_distance_forward_residual_attn_only.mp4"
+    ani_cos.save(video_path_cos, writer='ffmpeg', fps=1)
+    plt.close(fig_cos)
+    print(f"Cosine distance video (attention only) saved to {video_path_cos}")
+
+    # # Create and save L2 distance animation
+    # fig_l1, ani_l1 = create_animation(all_l1_distances_forward_residual_attn_only, "L1 Distance (Attention Only)")
+    # video_path_l1 = f"{output_prefix}/{checkpoint_name}_embeddings_l1_distance_forward_residual_attn_only.mp4"
+    # ani_l1.save(video_path_l1, writer='ffmpeg', fps=1)
+    # plt.close(fig_l1)
+    # print(f"L1 distance video (attention only) saved to {video_path_l1}")
+
+    # Forward Residuals MLP Only
+    logger.info(f"Creating Animation for Cosine Distance Forward Residuals (MLP Only)")
+    fig_cos, ani_cos = create_animation(all_cos_distances_forward_residual_mlp_only, "Cosine Distance (MLP Only)")
+    video_path_cos = f"{output_prefix}/{checkpoint_name}_embeddings_cosine_distance_forward_residual_mlp_only.mp4"
+    ani_cos.save(video_path_cos, writer='ffmpeg', fps=1)
+    plt.close(fig_cos)
+    print(f"Cosine distance video (MLP only) saved to {video_path_cos}")
+
+    # # Create and save L2 distance animation
+    # fig_l1, ani_l1 = create_animation(all_l1_distances_forward_residual_mlp_only, "L1 Distance (MLP Only)")
+    # video_path_l1 = f"{output_prefix}/{checkpoint_name}_embeddings_l1_distance_forward_residual_mlp_only.mp4"
+    # ani_l1.save(video_path_l1, writer='ffmpeg', fps=1)
+    # plt.close(fig_l1)
+    # print(f"L1 distance video (MLP only) saved to {video_path_l1}")
 
 
     breakpoint()
