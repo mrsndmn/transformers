@@ -81,7 +81,9 @@ if __name__ == "__main__":
                 for special_token in special_tokens:
                     text_inputs['special_embeddings_mask'][ text_inputs['input_ids'] == special_token ] = 1
 
-            forward_output = model.forward(**text_inputs)
+            forward_output = model.forward(**text_inputs, labels=text_inputs['input_ids'])
+
+            print("loss", forward_output['loss'].item())
 
             token_will_be_passed = None
             fan_in_merging_logits = None
