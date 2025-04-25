@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
     wikitext_103 = datasets.load_dataset("lighteval/wikitext_103", split="test")
 
-    texts = ["The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog."]
+    texts = ["The quick brown fox jumps over the lazy dog. Быстрая коричневая лиса прыгает через ленивую собаку."]
 
     model_inputs = tokenizer(texts, return_tensors="pt", padding=True)
     model_inputs = model_inputs.to(device)
