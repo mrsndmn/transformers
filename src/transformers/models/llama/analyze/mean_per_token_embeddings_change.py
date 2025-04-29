@@ -140,8 +140,9 @@ if __name__ == "__main__":
     output_dir = os.path.join("results", "token_embeddings_change")
     os.makedirs(output_dir, exist_ok=True)
 
-    torch.save(per_token_heatmaps, os.path.join(output_dir, f"token_heatmaps_{args.llama_checkpoint.split('/')[-1]}.pt"))
-    logger.info(f"Saved results to {output_dir}")
+    output_path = os.path.join(output_dir, f"token_heatmaps_{args.llama_checkpoint.split('/')[-1]}.pt")
+    torch.save(per_token_heatmaps, output_path)
+    logger.info(f"Saved results to {output_path}")
 
 
 
