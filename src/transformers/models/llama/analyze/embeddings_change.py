@@ -255,7 +255,7 @@ if __name__ == "__main__":
             results[name]["l1"].append(heatmaps[name]["l1"].cpu().numpy())
 
     # Make sure directory exists
-    output_prefix = "src/transformers/models/llama/analyze"
+    output_prefix = "src/transformers/models/llama/analyze/videos"
     os.makedirs(output_prefix, exist_ok=True)
     checkpoint_name = args.checkpoint.split("/")[-1]
     if args.checkpoint_name is not None:
