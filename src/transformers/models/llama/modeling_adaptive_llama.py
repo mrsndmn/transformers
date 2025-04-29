@@ -103,6 +103,8 @@ class AdaptiveMode(Enum):
 @dataclass
 class AdaptiveFanInOutput:
     # new_seq_len is less then input seq_len
+    input_ids: torch.Tensor # [ bs, seq_len ]
+    input_ids_attention_mask: torch.Tensor # [ bs, seq_len ]
 
     # Схлопнутые эмбэддинги
     hidden_state: torch.Tensor # [ bs, new_seq_len, hidden_size ]
@@ -141,8 +143,9 @@ class NoOpFanIn(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
 
-    def forward(self, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, **kwargs) -> AdaptiveFanInOutput:
+    def forward(self, input_ids: torch.Tensor, hidden_state: torch.Tensor, attention_mask: torch.Tensor, special_embeddings_mask: torch.Tensor, merging_log_probas: torch.Tensor=None, **kwargs) -> AdaptiveFanInOutput:
         res = AdaptiveFanInOutput(
+            input_ids=input_ids,
             hidden_state=hidden_state,
             residual_hidden_state=hidden_state,
             attention_mask=attention_mask,
@@ -234,10 +237,6 @@ class HardConcreteGate(nn.Module):
         # concrete = torch.clip(concrete, min=self.eps, max=1-self.eps)
         concrete = torch.clip(concrete, min=0, max=1)
         concrete[attention_mask == 0] = 0
-
-        # print('attention_mask.sum()', attention_mask.sum())
-        # print('attention_mask.numel()', attention_mask.numel())
-        # print('attention_mask.sum / numel', attention_mask.sum() / attention_mask.numel())
 
         if os.environ.get("DEBUG_NAN", "0") == "1" and concrete.isnan().any():
             print("found nan after hcg")
@@ -457,14 +456,16 @@ class AdaptiveFanInHCG(nn.Module):
 
             concrete = concrete_merged.unsqueeze(-1)
             hidden_state = hidden_state_m
-            attention_mask = merged_attention_mask
+            merged_attention_mask
             special_embeddings_mask = special_embeddings_mask_m
 
 
         res = AdaptiveFanInOutput(
+            input_ids=input_ids,
+            input_ids_attention_mask=attention_mask,
             hidden_state=hidden_state,
             residual_hidden_state=residual_hidden_state,
-            attention_mask=attention_mask,
+            attention_mask=merged_attention_mask,
             merged_embeddings_counts=merged_embeddings_counts,
             special_embeddings_mask=special_embeddings_mask,
             full_merging_map=full_concrete,

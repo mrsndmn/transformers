@@ -1,5 +1,6 @@
 import sys
 import argparse
+import torch.nn as nn
 
 from tqdm import tqdm
 
@@ -24,12 +25,19 @@ from lighteval.logging.evaluation_tracker import EvaluationTracker
 from lighteval.models.transformers.transformers_model import TransformersModelConfig
 
 # --- Global variables for hook ---
+pruned_input_ids_counts = None
 total_initial_tokens = 0
 total_pruned_tokens = 0
 
 # --- Hook function ---
 def pruning_hook(module, input, output):
-    global total_initial_tokens, total_pruned_tokens
+    global total_initial_tokens, total_pruned_tokens, pruned_input_ids_counts
+
+    input_ids = output.input_ids
+    attention_mask = output.input_ids_attention_mask
+    pruned_input_ids = input_ids.flatten()[(((~output.full_merging_map.bool().flatten(1)) & attention_mask.bool()).flatten().bool())]
+
+    pruned_input_ids_counts += torch.bincount(pruned_input_ids, minlength=module.config.vocab_size)
 
     # Assuming the first element of input tuple is hidden_states
     # and the second is the attention_mask we need. Adjust if structure differs.
@@ -79,13 +87,17 @@ def evaluate_ppl_wikitext_103(model):
 
 @torch.no_grad()
 def evaluate_different_percents(model, percent_step=10):
-    global total_initial_tokens, total_pruned_tokens
+    global total_initial_tokens, total_pruned_tokens, pruned_input_ids_counts
+
+    assert percent_step > 0
+
+    pruned_input_ids_counts = torch.zeros(model.config.vocab_size, dtype=torch.long)
 
     all_results = []
 
     hook_handle = None # Variable to store the hook handle
 
-    for eval_hard_concrete_percent in range(0, 100, percent_step * 10): # Iterate up to 1.0
+    for eval_hard_concrete_percent in range(0, 100, percent_step):
         eval_hard_concrete_percent = eval_hard_concrete_percent / 100.0
         model.config.eval_hard_concrete_percent = eval_hard_concrete_percent
         print(f"--- Evaluating with eval_hard_concrete_percent = {eval_hard_concrete_percent} ---")
@@ -160,10 +172,46 @@ def evaluate_different_percents(model, percent_step=10):
     ax2.legend(lines + lines2, labels + labels2, loc='upper left')
 
     plt.show()
-    plt.savefig(os.path.join(checkpoint_base_path, f"eval_hard_concrete_percent_results_nomralize_{normalize_hcg_log_a}.png"))
+    plt.savefig(os.path.join(checkpoint_base_path, f"eval_hard_concrete_percent_results_nomralize.png"))
     print("Saved plot to eval_hard_concrete_percent_results.png")
 
+    print("pruned_input_ids_counts", pruned_input_ids_counts)
+    print("max", pruned_input_ids_counts.max(), "argmax", pruned_input_ids_counts.argmax())
+
+    tokenizer = AutoTokenizer.from_pretrained(model.name_or_path)
+    print("Top 10 frequently pruned tokens:")
+
+    for i in pruned_input_ids_counts.argsort()[-10:]:
+        token_string = tokenizer.decode(i).replace('\n', '\\n')
+        print(f"Token {i} [{token_string}]: {pruned_input_ids_counts[i]}")
+
+    pruned_input_ids_counts_file = os.path.join(checkpoint_base_path, f"pruned_input_ids_counts.pt")
+    torch.save(pruned_input_ids_counts, pruned_input_ids_counts_file)
+    print("Saved pruned_input_ids_counts to", pruned_input_ids_counts_file)
+
     return df
+
+@torch.no_grad()
+def analyze_most_confident_pruned_tokens(model, checkpoint_base_path):
+
+    hcg_log_a = model.model.fan_in.hcg.hcg_log_a
+    all_inputs = torch.arange(model.config.vocab_size, device=hcg_log_a.device, dtype=torch.long)
+    all_inputs = all_inputs.unsqueeze(0)
+    attention_mask = torch.ones_like(all_inputs, dtype=torch.long)
+
+    most_confident_pruned_tokens = model.model.fan_in.hcg(all_inputs, attention_mask).squeeze(-1)
+
+    tokenizer = AutoTokenizer.from_pretrained(model.name_or_path)
+
+    pruned_tokens = (all_inputs[ most_confident_pruned_tokens == 0.0 ]).flatten()
+    print("pruned_tokens", pruned_tokens.shape[0], 'vocab_size', model.config.vocab_size, 'pruned_percent {:.2f}%'.format(pruned_tokens.shape[0] / model.config.vocab_size * 100))
+
+    print("Sample from pruned tokens:")
+    for token in random.sample(pruned_tokens.tolist(), 10):
+        print(f"Token {token} [{tokenizer.decode(token)}]: {hcg_log_a[token]}")
+
+    return most_confident_pruned_tokens
+
 
 @torch.no_grad()
 def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None, exp_prefix=None):
@@ -217,6 +265,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_base_path", type=str, required=True)
+    parser.add_argument("--analyze_most_confident_pruned_tokens", action='store_true', default=False)
     parser.add_argument("--percent_step", type=int, default=0)
     parser.add_argument("--normalize_hcg_log_a", action='store_true', default=False)
     parser.add_argument("--fan_in_idxs", default=None)
@@ -266,6 +315,8 @@ if __name__ == "__main__":
 
     if args.percent_step > 0:
         evaluate_different_percents(model, percent_step=args.percent_step)
+    elif args.analyze_most_confident_pruned_tokens:
+        most_confident_pruned_tokens = analyze_most_confident_pruned_tokens(model, checkpoint_base_path=checkpoint_base_path)
     else:
         fan_in_idxs =  list(map(int, args.fan_in_idxs.split(',')))
         fan_out_idxs = list(map(int, args.fan_out_idxs.split(',')))
