@@ -33,6 +33,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_tokens", type=int, default=1000, help="Maximum number of tokens to save raw embeddings for")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size for processing")
     parser.add_argument("--save_interval", type=int, default=100, help="Save intermediate results every N batches")
+    parser.add_argument("--trim_quantile", type=float, default=0.1, help="Trim this quantile of outliers from each embedding before computing distances")
 
     args = parser.parse_args()
     skip_layers = args.skip_layers
@@ -69,6 +70,30 @@ if __name__ == "__main__":
 
     # For intermediate savings
     checkpoint_path = os.path.join(output_dir, f"token_heatmaps_{args.llama_checkpoint.split('/')[-1]}_checkpoint.pt")
+
+    # Function to trim outliers from embeddings
+    def trim_embeddings(h_i, hs_j, quantile):
+        if quantile <= 0 or quantile >= 0.5:
+            return h_i, hs_j
+
+        # Create a copy to avoid modifying the original tensors
+        h_i_trimmed = h_i.clone()
+        hs_j_trimmed = hs_j.clone()
+
+        # Process each feature dimension separately
+        lower_bound = torch.quantile(h_i, quantile)
+        upper_bound = torch.quantile(h_i, 1.0 - quantile)
+        # Apply clipping to h_i values
+        h_i_trimmed = torch.clamp(h_i, lower_bound, upper_bound)
+
+        # Compute quantiles for hs_j values in this dimension
+        lower_bound = torch.quantile(hs_j, quantile)
+        upper_bound = torch.quantile(hs_j, 1.0 - quantile)
+
+        # Apply clipping to hs_j values
+        hs_j_trimmed = torch.clamp(hs_j, lower_bound, upper_bound)
+
+        return h_i_trimmed, hs_j_trimmed
 
     batch_count = 0
     for batch in tqdm(wikitext_103.iter(batch_size=batch_size), total=total_batches):
@@ -107,10 +132,16 @@ if __name__ == "__main__":
             hs_j = outputs_vanilla.hidden_states[i+skip_layers]
             hs_j = hs_j[:, :seq_len]
 
+            # Trim outliers from embeddings if requested
+            if args.trim_quantile > 0:
+                h_i_trimmed, hs_j_trimmed = trim_embeddings(h_i, hs_j, args.trim_quantile)
+            else:
+                h_i_trimmed, hs_j_trimmed = h_i, hs_j
+
             # Compute distances for each configuration
             cos_distance, l1_distance = compute_distances(
-                h_i,
-                hs_j,
+                h_i_trimmed,
+                hs_j_trimmed,
                 seq_len,
             )
 
