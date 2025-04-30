@@ -33,7 +33,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_tokens", type=int, default=1000, help="Maximum number of tokens to save raw embeddings for")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size for processing")
     parser.add_argument("--save_interval", type=int, default=100, help="Save intermediate results every N batches")
-    parser.add_argument("--trim_quantile", type=float, default=0.1, help="Trim this quantile of outliers from each embedding before computing distances")
+    parser.add_argument("--trim_quantile", type=float, default=0.0, help="Trim this quantile of outliers from each embedding before computing distances")
 
     args = parser.parse_args()
     skip_layers = args.skip_layers
@@ -80,18 +80,20 @@ if __name__ == "__main__":
         h_i_trimmed = h_i.clone()
         hs_j_trimmed = hs_j.clone()
 
-        # Process each feature dimension separately
-        lower_bound = torch.quantile(h_i, quantile)
-        upper_bound = torch.quantile(h_i, 1.0 - quantile)
-        # Apply clipping to h_i values
-        h_i_trimmed = torch.clamp(h_i, lower_bound, upper_bound)
+        h_i_float = h_i.float()
+        hs_j_float = hs_j.float()
 
-        # Compute quantiles for hs_j values in this dimension
-        lower_bound = torch.quantile(hs_j, quantile)
-        upper_bound = torch.quantile(hs_j, 1.0 - quantile)
+        lower_bound_h_i = torch.quantile(h_i_float, quantile, dim=-1)
+        upper_bound_h_i = torch.quantile(h_i_float, 1.0 - quantile, dim=-1)
 
-        # Apply clipping to hs_j values
-        hs_j_trimmed = torch.clamp(hs_j, lower_bound, upper_bound)
+        lower_bound_hs_j = torch.quantile(hs_j_float, quantile, dim=-1)
+        upper_bound_hs_j = torch.quantile(hs_j_float, 1.0 - quantile, dim=-1)
+
+        h_i_trimmed[h_i_trimmed < lower_bound_h_i.unsqueeze(-1)] = 0
+        h_i_trimmed[h_i_trimmed > upper_bound_h_i.unsqueeze(-1)] = 0
+
+        hs_j_trimmed[hs_j_trimmed < lower_bound_hs_j.unsqueeze(-1)] = 0
+        hs_j_trimmed[hs_j_trimmed > upper_bound_hs_j.unsqueeze(-1)] = 0
 
         return h_i_trimmed, hs_j_trimmed
 

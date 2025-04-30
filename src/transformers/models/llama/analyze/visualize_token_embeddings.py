@@ -25,7 +25,7 @@ def plot_token_heatmap(token_id, token_data, tokenizer, output_dir, metric="cos"
     plt.bar(range(num_layers), mean_data)
     plt.xlabel("Layer")
     plt.ylabel(f"{metric.upper()} Distance")
-    plt.title(f"Token '{token_str}' (ID: {token_id}) Mean {metric.upper()} Distance Across Layers")
+    plt.title(f"Token '{token_str}' (ID: {token_id}, Frequency: {token_data['count']}) - Mean {metric.upper()} Distance Across Layers")
 
     # Add error bars if standard deviation is available
     if f"std_{metric}" in token_data:
