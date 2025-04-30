@@ -12,6 +12,7 @@ from matplotlib.animation import FuncAnimation
 import os
 import argparse
 import logging
+import gc
 
 from transformers.models.llama.analyze.embeddings_change import compute_distances
 
@@ -28,6 +29,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--llama_checkpoint", type=str, required=True)
     parser.add_argument("--skip_layers", type=int, default=1)
+    parser.add_argument("--save_embeddings", action="store_true", help="Whether to save raw embeddings data")
+    parser.add_argument("--max_tokens", type=int, default=1000, help="Maximum number of tokens to save raw embeddings for")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size for processing")
+    parser.add_argument("--save_interval", type=int, default=100, help="Save intermediate results every N batches")
 
     args = parser.parse_args()
     skip_layers = args.skip_layers
@@ -45,13 +50,29 @@ if __name__ == "__main__":
 
     wikitext_103: datasets.Dataset = datasets.load_dataset("lighteval/wikitext_103", split="test")
 
+    print("len wikitext_103", len(wikitext_103))
+    wikitext_103 = wikitext_103.select(range(30))
+
     # token_id -> list[heatmaps]
     per_token_heatmaps = dict()
 
-    batch_size = 4
+    # Dictionary to store raw embeddings if requested
+    if args.save_embeddings:
+        per_token_embeddings = dict()
+
+    batch_size = args.batch_size
     total_batches = len(wikitext_103) // batch_size
 
+    # Create output directories
+    output_dir = os.path.join("results", "token_embeddings_change")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # For intermediate savings
+    checkpoint_path = os.path.join(output_dir, f"token_heatmaps_{args.llama_checkpoint.split('/')[-1]}_checkpoint.pt")
+
+    batch_count = 0
     for batch in tqdm(wikitext_103.iter(batch_size=batch_size), total=total_batches):
+        batch_count += 1
         texts = batch['text']
 
         model_inputs = tokenizer(texts, return_tensors="pt", padding=True)
@@ -71,8 +92,8 @@ if __name__ == "__main__":
         )
 
         heatmaps = {
-            "cos": torch.ones(len(outputs_vanilla.hidden_states) - 1, seq_len, dtype=torch.float64),
-            "l1": torch.ones(len(outputs_vanilla.hidden_states) - 1, seq_len, dtype=torch.float64),
+            "cos": torch.ones(len(outputs_vanilla.hidden_states) - 1, seq_len, dtype=torch.float64).to("cpu"),
+            "l1": torch.ones(len(outputs_vanilla.hidden_states) - 1, seq_len, dtype=torch.float64).to("cpu"),
         }
 
         for i, h_i in enumerate(outputs_vanilla.hidden_states[:-1]):
@@ -93,11 +114,22 @@ if __name__ == "__main__":
                 seq_len,
             )
 
-            heatmaps["cos"][i, :] = cos_distance.to(torch.float64)
-            heatmaps["l1"][i, :] = l1_distance.to(torch.float64)
+            heatmaps["cos"][i, :] = cos_distance.to(torch.float64).to("cpu")
+            heatmaps["l1"][i, :] = l1_distance.to(torch.float64).to("cpu")
 
         # Process each token in the batch considering attention mask
         batch_size = model_inputs['input_ids'].shape[0]
+
+        if args.save_embeddings:
+            # Pre-extract and move all hidden states to CPU to avoid memory issues
+            cpu_hidden_states = []
+            for layer_hidden in outputs_vanilla.hidden_states:
+                cpu_hidden_states.append(layer_hidden.detach().cpu())
+
+            # Free GPU memory
+            del outputs_vanilla
+            torch.cuda.empty_cache()
+
         for batch_idx in range(batch_size):
             for seq_idx in range(seq_len):
                 # Skip masked tokens
@@ -119,8 +151,50 @@ if __name__ == "__main__":
                 per_token_heatmaps[token_id]["l1"].append(heatmaps["l1"][:, seq_idx])
                 per_token_heatmaps[token_id]["count"] += 1
 
+                # Store raw embeddings if requested and we haven't stored too many tokens yet
+                if args.save_embeddings and len(per_token_embeddings) < args.max_tokens:
+                    if token_id not in per_token_embeddings:
+                        per_token_embeddings[token_id] = {
+                            "layer_embeddings": [],
+                            "count": 0
+                        }
+
+                    # Extract all layer embeddings for this token
+                    token_embeddings = []
+                    for layer_idx, layer_hidden in enumerate(cpu_hidden_states):
+                        # Get the embedding vector for this token at this layer - already on CPU
+                        emb = layer_hidden[batch_idx, seq_idx]
+                        token_embeddings.append(emb)
+
+                    # Store the list of embeddings for all layers
+                    per_token_embeddings[token_id]["layer_embeddings"].append(token_embeddings)
+                    per_token_embeddings[token_id]["count"] += 1
+
+        # Free memory
+        if args.save_embeddings:
+            del cpu_hidden_states
+        else:
+            del outputs_vanilla
+
+        model_inputs = model_inputs.to("cpu")
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        # Save intermediate results every N batches
+        if args.save_interval > 0 and batch_count % args.save_interval == 0:
+            logger.info(f"Saving intermediate results after {batch_count} batches...")
+
+            # Save heatmaps
+            torch.save(per_token_heatmaps, checkpoint_path)
+
+            # Also save embeddings if we're collecting them
+            if args.save_embeddings:
+                embeddings_checkpoint_path = os.path.join(output_dir, f"token_embeddings_{args.llama_checkpoint.split('/')[-1]}_checkpoint.pt")
+                torch.save(per_token_embeddings, embeddings_checkpoint_path)
+
     # Calculate mean heatmaps for each token
-    for token_id, data in per_token_heatmaps.items():
+    logger.info("Computing statistics for collected data...")
+    for token_id, data in tqdm(per_token_heatmaps.items(), desc="Processing heatmaps"):
         if data["count"] > 0:
             # Stack all collected heatmaps and compute mean
             cos_stack = torch.stack(data["cos"], dim=0)
@@ -133,16 +207,59 @@ if __name__ == "__main__":
             data["std_cos"] = torch.std(cos_stack, dim=0)
             data["std_l1"] = torch.std(l1_stack, dim=0)
 
+            # Free memory by replacing the raw lists with their statistics
+            data["cos"] = None
+            data["l1"] = None
+
+    # Calculate mean embeddings for each token if requested
+    if args.save_embeddings:
+        logger.info("Computing embedding statistics...")
+        for token_id, data in tqdm(per_token_embeddings.items(), desc="Processing embeddings"):
+            if data["count"] > 0:
+                # For each layer, compute mean embedding across all occurrences
+                mean_embeddings = []
+                std_embeddings = []
+
+                # Rearrange the data to get all embeddings for each layer
+                num_layers = len(data["layer_embeddings"][0])
+                layer_embeddings = [[] for _ in range(num_layers)]
+
+                for token_occurrence in data["layer_embeddings"]:
+                    for layer_idx, layer_emb in enumerate(token_occurrence):
+                        layer_embeddings[layer_idx].append(layer_emb)
+
+                # Compute mean and std for each layer
+                for layer_idx in range(num_layers):
+                    layer_embs = torch.stack(layer_embeddings[layer_idx], dim=0)
+                    layer_embs = layer_embs.to('cuda')
+                    mean_embeddings.append(torch.mean(layer_embs, dim=0).to('cpu'))
+                    std_embeddings.append(torch.std(layer_embs, dim=0).to('cpu'))
+
+                data["mean_embeddings"] = mean_embeddings
+                data["std_embeddings"] = std_embeddings
+
+                # Compute embedding differences between consecutive layers
+                data["embedding_diffs"] = []
+                for i in range(len(mean_embeddings) - 1):
+                    data["embedding_diffs"].append(mean_embeddings[i+1] - mean_embeddings[i])
+
+                # Free memory
+                data["layer_embeddings"] = None
+                gc.collect()
+
     # Save or process the results
     logger.info(f"Processed {len(per_token_heatmaps)} unique token ids")
 
-    # Optional: save the results to disk
-    output_dir = os.path.join("results", "token_embeddings_change")
-    os.makedirs(output_dir, exist_ok=True)
-
+    # Save the results to disk
     output_path = os.path.join(output_dir, f"token_heatmaps_{args.llama_checkpoint.split('/')[-1]}.pt")
     torch.save(per_token_heatmaps, output_path)
-    logger.info(f"Saved results to {output_path}")
+    logger.info(f"Saved heatmaps to {output_path}")
+
+    # Save raw embeddings if requested
+    if args.save_embeddings:
+        embeddings_path = os.path.join(output_dir, f"token_embeddings_{args.llama_checkpoint.split('/')[-1]}.pt")
+        torch.save(per_token_embeddings, embeddings_path)
+        logger.info(f"Saved raw embeddings for {len(per_token_embeddings)} tokens to {embeddings_path}")
 
 
 
