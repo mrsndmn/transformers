@@ -277,8 +277,7 @@ if __name__ == "__main__":
                     data["embedding_diffs"].append(mean_embeddings[i+1] - mean_embeddings[i])
 
                 # Free memory
-                data["layer_embeddings"] = None
-                gc.collect()
+                # data["layer_embeddings"] = None
 
     # Save or process the results
     logger.info(f"Processed {len(per_token_heatmaps)} unique token ids")
