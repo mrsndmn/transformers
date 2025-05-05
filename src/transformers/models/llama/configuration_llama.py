@@ -179,6 +179,7 @@ class LlamaConfig(PretrainedConfig):
         rope_scaling=None,
         attention_bias=False,
         attention_dropout=0.0,
+        mlp_bias=False,
         head_dim=None,
         dummy_adaptive_fan_in=None,
         fan_in_idx=None,
@@ -202,6 +203,7 @@ class LlamaConfig(PretrainedConfig):
     ):
         self.vocab_size = vocab_size
         self.max_position_embeddings = max_position_embeddings
+        self.mlp_bias = mlp_bias
 
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
