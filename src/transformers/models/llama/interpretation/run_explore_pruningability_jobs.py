@@ -123,6 +123,15 @@ def llama31_8b_instruct_pruningability(**kwargs):
             "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
         })
 
+    for hop_layers in [ 1, 2, 4, 6, 8 ]:
+        experiments.append({
+            "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_instruct_w_1.000_l_14_IHHIQR0I/",
+            "exp_prefix": f"llama31_8B_rand10_hop_layers_{hop_layers}",
+            "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
+            "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
+            "concrete_random_mask_proba": '0.1',
+        })
+
     run_explore_pruningability_experiments(experiments, **kwargs)
 
     return
@@ -189,5 +198,5 @@ if __name__ == "__main__":
     # llama31_8b_pruningability(dry=dry)
     # llama31_8b_instruct_pruningability(dry=dry)
 
-    qwen25_7b_pruningability(dry=dry)
-    qwen25_7b_instruct_pruningability(dry=dry)
+    # qwen25_7b_pruningability(dry=dry)
+    # qwen25_7b_instruct_pruningability(dry=dry)
