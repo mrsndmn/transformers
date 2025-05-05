@@ -71,18 +71,22 @@ def run_explore_pruningability_experiments(experiments, job_description_prefix="
 
 def llama31_8b_pruningability(**kwargs):
 
+
+    experiments = []
+
     # --- Vocab 20 ---
-    experiments = [
-        {
+    # for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
+    for hop_layers in [ 10, 12 ]:
+        experiments.append({
             "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_0.100_l_14_4FMRKTX3/",
-            "exp_prefix": "llama31_8B_vocab20_hop_layers_8",
-            "fan_in_idxs": ",".join(map(str, range(32-8))),
-            "fan_out_idxs": ",".join(map(lambda x: str(x+8), range(32-8))),
-        },
-    ]
+            "exp_prefix": f"llama31_8B_vocab20_hop_layers_{hop_layers}",
+            "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
+            "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
+        })
 
     # --- Vocab 50 ---
-    for hop_layers in [ 1, 4, 8 ]:
+    # for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
+    for hop_layers in [ 10, 12 ]:
         experiments.append({
             "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/",
             "exp_prefix": f"llama31_8B_vocab50_hop_layers_{hop_layers}",
@@ -100,7 +104,8 @@ def llama31_8b_instruct_pruningability(**kwargs):
     experiments = []
 
     # --- Vocab 20 ---
-    for hop_layers in [ 1, 4, 8 ]:
+    # for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
+    for hop_layers in [ 10, 12 ]:
         experiments.append({
             "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_instruct_w_0.100_l_14_4FMRKTX3/",
             "exp_prefix": f"llama31_8B_vocab20_hop_layers_{hop_layers}",
@@ -109,12 +114,53 @@ def llama31_8b_instruct_pruningability(**kwargs):
         })
 
     # --- Vocab 50 ---
-    for hop_layers in [ 1, 4, 8 ]:
+    for hop_layers in [ 10, 12 ]:
+    # for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
         experiments.append({
             "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_instruct_w_1.000_l_14_IHHIQR0I/",
             "exp_prefix": f"llama31_8B_vocab50_hop_layers_{hop_layers}",
             "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
             "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
+        })
+
+    run_explore_pruningability_experiments(experiments, **kwargs)
+
+    return
+
+
+def qwen25_7b_pruningability(**kwargs):
+
+    experiments = []
+
+    # --- Rand 20 ---
+    for hop_layers in [ 1, 4, 8, 12, 16 ]:
+        experiments.append({
+            # TODO
+            # "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_0.100_l_14_4FMRKTX3/",
+            "exp_prefix": f"qwen25_7B_rand20_hop_layers_{hop_layers}",
+            "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
+            "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
+            "concrete_random_mask_proba": '0.2',
+        })
+
+    run_explore_pruningability_experiments(experiments, **kwargs)
+
+    return
+
+
+def qwen25_7b_instruct_pruningability(**kwargs):
+
+    experiments = []
+
+    # --- Rand 20 ---
+    for hop_layers in [ 1, 4, 8, 12, 16 ]:
+        experiments.append({
+            # TODO
+            # "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_instruct_w_0.100_l_14_4FMRKTX3/",
+            "exp_prefix": f"qwen25_7B_rand20_hop_layers_{hop_layers}",
+            "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
+            "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
+            "concrete_random_mask_proba": '0.2',
         })
 
     run_explore_pruningability_experiments(experiments, **kwargs)
@@ -132,4 +178,7 @@ if __name__ == "__main__":
     print("dry", dry)
 
     # llama31_8b_pruningability(dry=dry)
-    llama31_8b_instruct_pruningability(dry=dry)
+    # llama31_8b_instruct_pruningability(dry=dry)
+
+    qwen25_7b_pruningability(dry=dry)
+    qwen25_7b_instruct_pruningability(dry=dry)

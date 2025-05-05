@@ -1,47 +1,12 @@
-# /workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_no_forward_residuals_w_0.010_l_14_OJNVL5F5/checkpoint-124987/num_hop_layers_4_prune_percent_0.2_ppl_results.csv
-# /workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_no_forward_residuals_w_0.010_l_14_OJNVL5F5/checkpoint-124987/num_hop_layers_2_prune_percent_0.2_ppl_results.csv
-# /workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_no_forward_residuals_w_0.010_l_14_OJNVL5F5/checkpoint-124987/num_hop_layers_1_prune_percent_0.2_ppl_results.csv
-
-# num_hop_layers_4_prune_percent_0.2_ppl_results.csv
-# df     fan_in_idx  fan_out_idx        ppl
-# 0            0            4  91.470419
-# 1            1            5  10.243339
-# 2            2            6  10.721656
-# 3            3            7   9.600824
-# 4            4            8   8.692064
-# 5            5            9   6.992516
-# 6            6           10   5.740384
-# 7            7           11   5.832965
-# 8            8           12   5.233830
-# 9            9           13   5.779100
-# 10          10           14   5.860275
-# 11          11           15   5.664833
-# 12          12           16   6.647267
-# 13          13           17   5.561055
-# 14          14           18   5.778818
-# 15          15           19   5.493226
-# 16          16           20   5.944042
-# 17          17           21   6.526022
-# 18          18           22   6.202088
-# 19          19           23   5.610238
-# 20          20           24   6.500368
-# 21          21           25   8.709837
-# 22          22           26   4.334691
-# 23          23           27   5.939303
-# 24          24           28   8.397463
-# 25          25           29   6.324311
-# 26          26           30  32.140509
-# 27          27           31  48.232915
-
-
+import re
+import argparse
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
 
 if __name__ == "__main__":
-    import argparse
-    import os
-    import pandas as pd
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    import numpy as np
 
     parser = argparse.ArgumentParser(description='Draw a heatmap from CSV files')
     parser.add_argument('--input', nargs='+', required=True, help='CSV files to process')
@@ -57,7 +22,7 @@ if __name__ == "__main__":
         df = pd.read_csv(csv_file)
         # Extract basename without extension as a label
         basename = os.path.splitext(os.path.basename(csv_file))[0]
-        df['file'] = basename[:len("num_hop_layers_X")]
+        df['file'] = re.sub(r'.*(hop_layers_\d+).*', r'\1', basename)
         data_frames.append(df)
 
     # Combine all data
