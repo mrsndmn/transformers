@@ -35,7 +35,8 @@ def run_eval_experiments(experiments, job_description_prefix="eval", dry=False):
         if len(exp.keys()) > 0:
             raise ValueError("Invalid exp values!")
 
-        script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 4 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|arc|0|1,custom|piqa|0|1,custom|wikitext_103|0|1"\''
+        script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 4 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|arc|0|1,custom|wikitext_103|0|1"\''
+        # script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 4 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|arc|0|1,custom|piqa|0|1,custom|wikitext_103|0|1"\''
 
         print(f"\n\n{script_str}\n\n")
 
@@ -86,6 +87,23 @@ def eval_hcg_no_self_attention(**kwargs):
 
 
     return
+
+def explicit_fanin_fanout_eval(**kwargs):
+
+    checkpoints = [
+        "./adaptive_hcg_llama31_8B_w_0.100_l_14_4FMRKTX3/explicit_fanin_22_fanout_26-checkpoint-124987/",
+    ]
+
+    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
+
+    if kwargs.pop('extract_metrics', False):
+        run_extract_metrics(checkpoints)
+    else:
+        run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
+
+
+    return
+
 
 def saturday_morninig_eval(**kwargs):
 
@@ -274,7 +292,7 @@ def run_extract_metrics(checkpoints: list[str]):
                 metric = metric_dict['qem']
                 metric_stderr = metric_dict['qem_stderr']
             elif 'ppl' in metric_dict:
-                metric = metric_dict['ppl']
+                metric = metric_dict['ppl'] / 100
                 metric_stderr = metric_dict['ppl_stderr']
             elif len(metric_dict.keys()) > 0:
                 raise ValueError("unknown metrics:", metric_dict)
@@ -300,7 +318,8 @@ if __name__ == "__main__":
     # eval_hcg_fixed_percent(dry=dry)
 
     # eval_hcg_strange_8layer(dry=dry)
-    eval_hcg_no_self_attention(dry=dry, extract_metrics=extract_metrics)
+    # eval_hcg_no_self_attention(dry=dry, extract_metrics=extract_metrics)
+    explicit_fanin_fanout_eval(dry=dry, extract_metrics=extract_metrics)
 
     # no_crutch_loss_eval(dry=dry)
     # no_crutch_loss_normalize_token_frequenct_eval(dry=dry, extract_metrics=extract_metrics)

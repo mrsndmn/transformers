@@ -678,6 +678,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         # not dummy index
 
         self.recalc_fan_in_fan_out_idx()
+        print(f"fan_in_idx: {self.fan_in_idx}, fan_out_idx: {self.fan_out_idx}")
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
 
@@ -712,6 +713,12 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         self.post_init()
 
     def recalc_fan_in_fan_out_idx(self):
+
+        if self.config.fan_in_idx is not None and self.config.fan_out_idx is not None:
+            self.fan_in_idx = self.config.fan_in_idx
+            self.fan_out_idx = self.config.fan_out_idx
+            return
+
         self.fan_in_idx = self.config.dummy_adaptive_fan_in.index(False)
 
         if self.config.single_layer_hopping:

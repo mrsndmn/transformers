@@ -182,6 +182,8 @@ class LlamaConfig(PretrainedConfig):
         mlp_bias=False,
         head_dim=None,
         dummy_adaptive_fan_in=None,
+        fan_in_idx=None,
+        fan_out_idx=None,
         generate_merges_transform_impl='python',
         fan_out_projection=True,
         merging_type='hcg',
@@ -217,7 +219,11 @@ class LlamaConfig(PretrainedConfig):
         self.dummy_adaptive_fan_in = dummy_adaptive_fan_in
         
         assert len(self.dummy_adaptive_fan_in) == (num_hidden_layers // 2)
-        
+
+        # assert fan_in_idx is not None and fan_out_idx is not None
+        self.fan_in_idx = fan_in_idx
+        self.fan_out_idx = fan_out_idx
+
         self.concrete_random_mask_proba = concrete_random_mask_proba
         self.concrete_uniform_pruning = concrete_uniform_pruning
         self.concrete_stop_word_pruning = concrete_stop_word_pruning

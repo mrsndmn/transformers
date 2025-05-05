@@ -24,6 +24,14 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+def remove_outliers(embeddings, quantile=0.0):
+    embeddings_float = embeddings.float()
+    lower_bound = torch.quantile(embeddings_float, quantile, dim=-1)
+    upper_bound = torch.quantile(embeddings_float, 1.0 - quantile, dim=-1)
+
+    embeddings_float[embeddings_float < lower_bound] = 0
+    embeddings_float[embeddings_float > upper_bound] = 0
+    return embeddings_float
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -73,27 +81,12 @@ if __name__ == "__main__":
 
     # Function to trim outliers from embeddings
     def trim_embeddings(h_i, hs_j, quantile):
-        if quantile <= 0 or quantile >= 0.5:
-            return h_i, hs_j
+        # if quantile <= 0 or quantile >= 0.5:
+        #     return h_i, hs_j
 
         # Create a copy to avoid modifying the original tensors
-        h_i_trimmed = h_i.clone()
-        hs_j_trimmed = hs_j.clone()
-
-        h_i_float = h_i.float()
-        hs_j_float = hs_j.float()
-
-        lower_bound_h_i = torch.quantile(h_i_float, quantile, dim=-1)
-        upper_bound_h_i = torch.quantile(h_i_float, 1.0 - quantile, dim=-1)
-
-        lower_bound_hs_j = torch.quantile(hs_j_float, quantile, dim=-1)
-        upper_bound_hs_j = torch.quantile(hs_j_float, 1.0 - quantile, dim=-1)
-
-        h_i_trimmed[h_i_trimmed < lower_bound_h_i.unsqueeze(-1)] = 0
-        h_i_trimmed[h_i_trimmed > upper_bound_h_i.unsqueeze(-1)] = 0
-
-        hs_j_trimmed[hs_j_trimmed < lower_bound_hs_j.unsqueeze(-1)] = 0
-        hs_j_trimmed[hs_j_trimmed > upper_bound_hs_j.unsqueeze(-1)] = 0
+        h_i_trimmed = remove_outliers(h_i, quantile)
+        hs_j_trimmed = remove_outliers(hs_j, quantile)
 
         return h_i_trimmed, hs_j_trimmed
 

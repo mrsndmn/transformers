@@ -79,6 +79,7 @@ if __name__ == "__main__":
         annot=True,
         cmap='rocket_r',
         fmt=".2f",
+        vmin=3,
         linewidths=0.5,
         robust=True  # Use robust estimation for color scale
     )
