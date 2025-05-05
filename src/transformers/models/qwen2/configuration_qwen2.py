@@ -248,3 +248,6 @@ class Qwen2Config(PretrainedConfig):
             tie_word_embeddings=tie_word_embeddings,
             **kwargs,
         )
+
+        self.max_length = max_position_embeddings
+

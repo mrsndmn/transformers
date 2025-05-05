@@ -202,6 +202,7 @@ class LlamaConfig(PretrainedConfig):
     ):
         self.vocab_size = vocab_size
         self.max_position_embeddings = max_position_embeddings
+
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
         self.num_hidden_layers = num_hidden_layers
@@ -268,6 +269,9 @@ class LlamaConfig(PretrainedConfig):
             tie_word_embeddings=tie_word_embeddings,
             **kwargs,
         )
+
+        self.max_length = max_position_embeddings
+
 
 
 __all__ = ["LlamaConfig"]
