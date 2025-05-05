@@ -102,7 +102,7 @@ def llama31_8b_instruct_pruningability(**kwargs):
     # --- Vocab 20 ---
     for hop_layers in [ 1, 4, 8 ]:
         experiments.append({
-            "checkpoint_base_path":  "TODO", # "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/",
+            "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_instruct_w_0.100_l_14_4FMRKTX3/",
             "exp_prefix": f"llama31_8B_vocab20_hop_layers_{hop_layers}",
             "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
             "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
@@ -111,7 +111,7 @@ def llama31_8b_instruct_pruningability(**kwargs):
     # --- Vocab 50 ---
     for hop_layers in [ 1, 4, 8 ]:
         experiments.append({
-            "checkpoint_base_path":  "TODO", # "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/",
+            "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_instruct_w_1.000_l_14_IHHIQR0I/",
             "exp_prefix": f"llama31_8B_vocab50_hop_layers_{hop_layers}",
             "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
             "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
@@ -131,4 +131,5 @@ if __name__ == "__main__":
 
     print("dry", dry)
 
-    llama31_8b_pruningability(dry=dry)
+    # llama31_8b_pruningability(dry=dry)
+    llama31_8b_instruct_pruningability(dry=dry)

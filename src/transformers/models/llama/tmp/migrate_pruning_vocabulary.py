@@ -1,4 +1,4 @@
-
+import os
 import torch
 import argparse
 from transformers import AutoTokenizer
@@ -18,12 +18,13 @@ if __name__ == "__main__":
     donor_checkpoint = args.donor_checkpoint
     target_model_checkpoint = args.target_model_checkpoint
     output_dir = args.output_dir
+    os.makedirs(output_dir, exist_ok=True)
+
     donor_model = AdaptiveLlamaForCausalLM.from_pretrained(donor_checkpoint, torch_dtype=torch.bfloat16)
 
     target_model = build_adaptive_llama_from_llama_checkpoint(
         llama_checkpoint=target_model_checkpoint,
-        dummy_adaptive_fan_in=donor_model.model.fan_in_idx,
-        dummy_adaptive_fan_out=donor_model.model.fan_out_idx,
+        dummy_adaptive_fan_in=donor_model.config.dummy_adaptive_fan_in,
     )
 
     target_model.model.fan_in.hcg.hcg_log_a.data.copy_(donor_model.model.fan_in.hcg.hcg_log_a.data)
