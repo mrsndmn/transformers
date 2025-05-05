@@ -24,6 +24,8 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig, LlamaConfig, LlamaForCausalLM, LlamaTokenizer, PreTrainedTokenizerFast, AutoConfig
 
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanInHCG
+from transformers.models.qwen2.modeling_adaptive_qwen2 import AdaptiveQwen2ForCausalLM
+from transformers.models.qwen2.modeling_qwen2 import Qwen2Config
 
 def build_adaptive_llama_from_llama_checkpoint(
         llama_checkpoint,
@@ -42,6 +44,7 @@ def build_adaptive_llama_from_llama_checkpoint(
         concrete_stop_word_pruning=None,
         pretrain_fan_out_projection=False,
         hcg_fan_in_from=None,
+        adaptive_model_class=AdaptiveLlamaForCausalLM,
     ):
 
     torch_dtype = torch.bfloat16
@@ -52,7 +55,7 @@ def build_adaptive_llama_from_llama_checkpoint(
     if flash_attention:
         config_kwargs["attn_implementation"] = 'flash_attention_2'
 
-    config: LlamaConfig = AutoConfig.from_pretrained(llama_checkpoint, **config_kwargs)
+    config = AutoConfig.from_pretrained(llama_checkpoint, **config_kwargs)
 
     if dummy_adaptive_fan_in is not None:
         assert len(dummy_adaptive_fan_in) == config.num_hidden_layers // 2
@@ -79,7 +82,7 @@ def build_adaptive_llama_from_llama_checkpoint(
 
     dtype_orig = torch.get_default_dtype()
     torch.set_default_dtype(torch.bfloat16)
-    adaptive_llama_model = AdaptiveLlamaForCausalLM(config)
+    adaptive_llama_model = adaptive_model_class(config)
     torch.set_default_dtype(dtype_orig)
 
     adaptive_llama_model_state_dict = adaptive_llama_model.state_dict()
@@ -88,7 +91,7 @@ def build_adaptive_llama_from_llama_checkpoint(
         adaptive_llama_model_state_dict[param_name] = param_value
 
     if hcg_fan_in_from is not None:
-        hcg_fan_in_from_model = AdaptiveLlamaForCausalLM.from_pretrained(hcg_fan_in_from)
+        hcg_fan_in_from_model = adaptive_model_class.from_pretrained(hcg_fan_in_from)
         hcg_fan_in_from_model_state_dict = hcg_fan_in_from_model.state_dict()
 
         hcg_log_a_param_name = 'model.fan_in.hcg.hcg_log_a'
@@ -103,6 +106,12 @@ def build_adaptive_llama_from_llama_checkpoint(
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model_type",
+        help="Model type",
+        default="llama",
+    )
+
     parser.add_argument(
         "--from_llama",
         help="HF Llama checkpoint for weights conversion",
@@ -129,7 +138,16 @@ def main():
 
     args = parser.parse_args()
 
-    llama_config = LlamaConfig.from_pretrained(args.from_llama)
+    model_type = args.model_type
+
+    if model_type == "llama":
+        adaptive_model_class = AdaptiveLlamaForCausalLM
+    elif model_type == "qwen2":
+        adaptive_model_class = AdaptiveQwen2ForCausalLM
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
+    llama_config = AutoConfig.from_pretrained(args.from_llama)
     num_layers = llama_config.num_hidden_layers
     assert num_layers % 2 == 0
 
@@ -140,16 +158,17 @@ def main():
     model = build_adaptive_llama_from_llama_checkpoint(
         args.from_llama,
         dummy_adaptive_fan_in=dummy_adaptive_fan_in,
-        hcg_fan_in_from=args.hcg_fan_in_from
+        hcg_fan_in_from=args.hcg_fan_in_from,
+        adaptive_model_class=adaptive_model_class,
     )
 
-    llama_model = AutoModelForCausalLM.from_pretrained( args.from_llama )
+    # llama_model = AutoModelForCausalLM.from_pretrained( args.from_llama )
 
     # assert (llama_model.model.layers[0].mlp.gate_proj.weight == model.model.layers_down[0].mlp.gate_proj.weight).all()
 
     print(model)
     model.save_pretrained(args.output_dir)
-    
+
     tokenizer = AutoTokenizer.from_pretrained(args.from_llama)
     tokenizer.save_pretrained(args.output_dir)
 

@@ -91,18 +91,11 @@ from ...utils import (
     replace_return_docstrings,
     is_torch_flex_attn_available,
 )
-from .configuration_llama import LlamaConfig
-from .modeling_llama import (
-    LlamaDecoderLayer,
-    LlamaRMSNorm,
-    LlamaRotaryEmbedding,
-    LlamaMLP,
-    apply_rotary_pos_emb,
-)
+from .configuration_qwen2 import Qwen2Config
 
 from transformers.models.llama.merges_transform.generate_merges import fan_out_restore_residuals, prune_tokens_concrete
 
-from transformers.models.qwen2.modeling_qwen2 import Qwen2Model, Qwen2Config, Qwen2DecoderLayer, Qwen2RotaryEmbedding, Qwen2RMSNorm, KwargsForCausalLM
+from transformers.models.qwen2.modeling_qwen2 import Qwen2Model, Qwen2DecoderLayer, Qwen2RotaryEmbedding, Qwen2RMSNorm, KwargsForCausalLM
 
 logger = logging.get_logger(__name__)
 
@@ -354,6 +347,8 @@ class AdaptiveQwen2Model(AdaptiveQwen2PreTrainedModel):
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
+
+        # breakpoint()
 
         # Before FanIn
         hidden_states, all_hidden_states, all_self_attns = self.forward_decoder_layers(
@@ -641,14 +636,17 @@ class AdaptiveQwen2Model(AdaptiveQwen2PreTrainedModel):
                 )
         return causal_mask
 
-class Qwen2ForCausalLM(AdaptiveQwen2PreTrainedModel, GenerationMixin):
+class AdaptiveQwen2ForCausalLM(AdaptiveQwen2PreTrainedModel, GenerationMixin):
     _tied_weights_keys = ["lm_head.weight"]
     _tp_plan = {"lm_head": "colwise_rep"}
     _pp_plan = {"lm_head": (["hidden_states"], ["logits"])}
 
     def __init__(self, config):
         super().__init__(config)
-        self.model = Qwen2Model(config)
+
+        self.config._attn_implementation = 'flash_attention_2'
+
+        self.model = AdaptiveQwen2Model(config)
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
@@ -688,7 +686,7 @@ class Qwen2ForCausalLM(AdaptiveQwen2PreTrainedModel, GenerationMixin):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         **kwargs,
     ) -> Union[Tuple, AdaptiveCausalLMOutputWithPast]:
         r"""
@@ -755,13 +753,9 @@ class Qwen2ForCausalLM(AdaptiveQwen2PreTrainedModel, GenerationMixin):
         )
 
         hidden_states = outputs[0]
-        if self.config.pretraining_tp > 1:
-            lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.config.pretraining_tp, dim=0)
-            logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.config.pretraining_tp)]
-            logits = torch.cat(logits, dim=-1)
-        else:
-            # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
-            logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :])
+        # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
 
         loss = None
         if labels is not None:

@@ -33,11 +33,15 @@ def run_explore_pruningability_experiments(experiments, job_description_prefix="
         exp_prefix = exp.pop('exp_prefix')
         fan_in_idxs = exp.pop('fan_in_idxs')
         fan_out_idxs = exp.pop('fan_out_idxs')
+        concrete_random_mask_proba = exp.pop('concrete_random_mask_proba', None)
+
+        if concrete_random_mask_proba is not None:
+            concrete_random_mask_proba = f"--concrete_random_mask_proba {concrete_random_mask_proba}"
 
         if len(exp.keys()) > 0:
-            raise ValueError("Invalid exp values!")
+            raise ValueError("Invalid exp values:" + ",".join(exp.keys()))
 
-        script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python src/transformers/models/llama/interpretation/explore_eval_hard_concrete_percent.py --checkpoint_base_path {checkpoint_base_path} --exp_prefix {exp_prefix} --fan_in_idxs {fan_in_idxs} --fan_out_idxs {fan_out_idxs} \''
+        script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python src/transformers/models/llama/interpretation/explore_eval_hard_concrete_percent.py --checkpoint_base_path {checkpoint_base_path} --exp_prefix {exp_prefix} --fan_in_idxs {fan_in_idxs} --fan_out_idxs {fan_out_idxs} {concrete_random_mask_proba} \''
 
         print(f"\n\n{script_str}\n\n")
 
@@ -75,8 +79,7 @@ def llama31_8b_pruningability(**kwargs):
     experiments = []
 
     # --- Vocab 20 ---
-    # for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
-    for hop_layers in [ 10, 12 ]:
+    for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
         experiments.append({
             "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_0.100_l_14_4FMRKTX3/",
             "exp_prefix": f"llama31_8B_vocab20_hop_layers_{hop_layers}",
@@ -85,8 +88,7 @@ def llama31_8b_pruningability(**kwargs):
         })
 
     # --- Vocab 50 ---
-    # for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
-    for hop_layers in [ 10, 12 ]:
+    for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
         experiments.append({
             "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/",
             "exp_prefix": f"llama31_8B_vocab50_hop_layers_{hop_layers}",
@@ -104,8 +106,7 @@ def llama31_8b_instruct_pruningability(**kwargs):
     experiments = []
 
     # --- Vocab 20 ---
-    # for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
-    for hop_layers in [ 10, 12 ]:
+    for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
         experiments.append({
             "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_instruct_w_0.100_l_14_4FMRKTX3/",
             "exp_prefix": f"llama31_8B_vocab20_hop_layers_{hop_layers}",
@@ -114,8 +115,7 @@ def llama31_8b_instruct_pruningability(**kwargs):
         })
 
     # --- Vocab 50 ---
-    for hop_layers in [ 10, 12 ]:
-    # for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
+    for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
         experiments.append({
             "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_instruct_w_1.000_l_14_IHHIQR0I/",
             "exp_prefix": f"llama31_8B_vocab50_hop_layers_{hop_layers}",
@@ -133,10 +133,9 @@ def qwen25_7b_pruningability(**kwargs):
     experiments = []
 
     # --- Rand 20 ---
-    for hop_layers in [ 1, 4, 8, 12, 16 ]:
+    for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
         experiments.append({
-            # TODO
-            # "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_0.100_l_14_4FMRKTX3/",
+            "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25-7B-init/",
             "exp_prefix": f"qwen25_7B_rand20_hop_layers_{hop_layers}",
             "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
             "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
@@ -153,10 +152,9 @@ def qwen25_7b_instruct_pruningability(**kwargs):
     experiments = []
 
     # --- Rand 20 ---
-    for hop_layers in [ 1, 4, 8, 12, 16 ]:
+    for hop_layers in [ 1, 2, 4, 6, 8, 10, 12, 16 ]:
         experiments.append({
-            # TODO
-            # "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_instruct_w_0.100_l_14_4FMRKTX3/",
+            "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25-7B-instruct-init/",
             "exp_prefix": f"qwen25_7B_rand20_hop_layers_{hop_layers}",
             "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
             "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
