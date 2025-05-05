@@ -44,8 +44,13 @@ def build_adaptive_llama_from_llama_checkpoint(
         concrete_stop_word_pruning=None,
         pretrain_fan_out_projection=False,
         hcg_fan_in_from=None,
-        adaptive_model_class=AdaptiveLlamaForCausalLM,
+        adaptive_model_class=None
     ):
+
+    if adaptive_model_class is None:
+        adaptive_model_class = AdaptiveLlamaForCausalLM
+        if "qwen" in llama_checkpoint.lower():
+            adaptive_model_class = AdaptiveQwen2ForCausalLM
 
     torch_dtype = torch.bfloat16
     llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)

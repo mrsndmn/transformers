@@ -432,6 +432,63 @@ def run_hcg_llama31_8B_hcg(**kwargs):
     return
 
 
+def run_hcg_qwen25_7B_hcg(**kwargs):
+
+    experiment_prefix_base_name = "adaptive_hcg_qwen25_7B"
+
+    common_params = {
+        # Model
+        "model_type": "pretrained",
+        "llama_checkpoint": "Qwen/Qwen2.5-7B",
+
+        "freeze_lm_backbone": "1",
+        "init_hcg_a": 1.0,
+
+        # Data
+        "select_train_dataset_items": 1000000,
+        "per_device_train_batch_size": 4,
+
+        # Training
+        "learning_rate": 0.04,
+        "hcg_learning_rate": 0.04,
+        "lr_scheduler_type": "constant_with_warmup",
+
+        "max_grad_norm": 0,
+
+        'instance_type': 'a100.2gpu',
+        'num_train_epochs': 1,
+
+        # Training type
+        "pretrain_fan_out_projection": "0",
+        "single_layer_hopping": 0,
+    }
+
+    hcg_experiments = []
+
+    extra_params_from_scratch = [
+        (
+            "12",
+            "1,1,1,1,1,1,1,1,1,1,1,0,1,1",
+        ),
+    ]
+
+    for hcg_loss_weight in [ 0.1, 1.0 ]:
+        for suffix, in_layers_str in extra_params_from_scratch:
+            exp_config = {
+                "dummy_adaptive_fan_in_layers_str": in_layers_str,
+                **common_params,
+            }
+            exp_config['hcg_loss_weight'] = hcg_loss_weight
+            exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{hcg_loss_weight:.3f}_l_{suffix}"
+
+            hcg_experiments.append(exp_config)
+
+
+    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
+
+    return
+
+
 
 def run_hcg_smollm2_360M_hcg_post_training(**kwargs):
 
@@ -521,7 +578,8 @@ if __name__ == "__main__":
     # run_hcg_smollm2_360M_hcg(dry=dry)
 
     # run_hcg_smollm2_1_7B_hcg(dry=dry)
-    run_hcg_llama31_8B_hcg(dry=dry)
+    # run_hcg_llama31_8B_hcg(dry=dry)
+    run_hcg_qwen25_7B_hcg(dry=dry)
 
     # run_hcg_smollm2_360M_hcg_post_training(dry=dry)
 

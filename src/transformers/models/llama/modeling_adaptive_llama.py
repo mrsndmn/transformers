@@ -418,6 +418,7 @@ class AdaptiveFanInHCG(nn.Module):
             residual_hidden_state = ((1 - concrete) * residual_hidden_state)
             hidden_state = concrete * hidden_state
             full_concrete = concrete
+            merged_attention_mask = attention_mask
         else:
             PRUNE_PERCENT = 0.0
 
