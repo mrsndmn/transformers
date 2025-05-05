@@ -545,6 +545,7 @@ MODEL_FOR_CAUSAL_LM_MAPPING_NAMES = OrderedDict(
         ("jetmoe", "JetMoeForCausalLM"),
         ("llama", "LlamaForCausalLM"),
         ("adaptive_llama", "AdaptiveLlamaForCausalLM"),
+        ("adaptive_qwen2", "AdaptiveQwen2ForCausalLM"),
         ("mamba", "MambaForCausalLM"),
         ("mamba2", "Mamba2ForCausalLM"),
         ("marian", "MarianForCausalLM"),

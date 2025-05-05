@@ -17,6 +17,7 @@ from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_a
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanInOutput
 from transformers.models.llama.train_adaptive_llama import freeze_lm_backbone
+from transformers.models.qwen2.modeling_adaptive_qwen2 import AdaptiveQwen2ForCausalLM
 import imageio  # Add imageio import
 import io # Add io import
 
@@ -297,7 +298,16 @@ if __name__ == "__main__":
     print(f"Loading tokenizer and state from: {last_checkpoint_path}")
 
     tokeniser = AutoTokenizer.from_pretrained(last_checkpoint_path)
-    model = AdaptiveLlamaForCausalLM.from_pretrained(last_checkpoint_path, torch_dtype=torch.bfloat16)
+
+    if 'qwen' in last_checkpoint_path:
+        model_class = AdaptiveQwen2ForCausalLM
+    elif 'llama' in last_checkpoint_path:
+        model_class = AdaptiveLlamaForCausalLM
+    else:
+        raise ValueError(f"Unknown model type: {last_checkpoint_path}")
+
+    model = model_class.from_pretrained(last_checkpoint_path, torch_dtype=torch.bfloat16)
+
     model.eval()
 
     print("Model fan in idx  ", model.model.fan_in_idx)
