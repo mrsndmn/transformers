@@ -53,7 +53,7 @@ def build_adaptive_llama_from_llama_checkpoint(
             adaptive_model_class = AdaptiveQwen2ForCausalLM
 
     torch_dtype = torch.bfloat16
-    llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
+    llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype, device_map='cpu')
     llama_model_state_dict = llama_model.state_dict()
 
     config_kwargs = {}
@@ -96,7 +96,7 @@ def build_adaptive_llama_from_llama_checkpoint(
         adaptive_llama_model_state_dict[param_name] = param_value
 
     if hcg_fan_in_from is not None:
-        hcg_fan_in_from_model = adaptive_model_class.from_pretrained(hcg_fan_in_from)
+        hcg_fan_in_from_model = adaptive_model_class.from_pretrained(hcg_fan_in_from, device_map='cpu')
         hcg_fan_in_from_model_state_dict = hcg_fan_in_from_model.state_dict()
 
         hcg_log_a_param_name = 'model.fan_in.hcg.hcg_log_a'
@@ -135,7 +135,7 @@ def main():
         "--fan_in_layer_idx",
         help="Fan in layer index",
         type=int,
-        default=11,
+        required=True,
     )
     parser.add_argument(
         "--safe_serialization", default=True, type=bool, help="Whether or not to save using `safetensors`."

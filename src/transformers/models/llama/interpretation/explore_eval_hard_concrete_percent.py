@@ -87,7 +87,7 @@ def evaluate_ppl_wikitext_103(model):
     }
 
 @torch.no_grad()
-def evaluate_different_percents(model, percent_step=10):
+def evaluate_different_percents(model, percent_step=10, max_percent=100, min_percent=0):
     global total_initial_tokens, total_pruned_tokens, pruned_input_ids_counts
 
     assert percent_step > 0
@@ -98,7 +98,7 @@ def evaluate_different_percents(model, percent_step=10):
 
     hook_handle = None # Variable to store the hook handle
 
-    for eval_hard_concrete_percent in range(0, 100, percent_step):
+    for eval_hard_concrete_percent in range(min_percent, max_percent, percent_step):
         eval_hard_concrete_percent = eval_hard_concrete_percent / 100.0
         model.config.eval_hard_concrete_percent = eval_hard_concrete_percent
         print(f"--- Evaluating with eval_hard_concrete_percent = {eval_hard_concrete_percent} ---")
@@ -144,7 +144,10 @@ def evaluate_different_percents(model, percent_step=10):
     df = pd.DataFrame(all_results)
     df = df.sort_values(by='eval_hard_concrete_percent')
     print("Pruning Percent", df)
-    # df.to_csv("eval_hard_concrete_percent_results.csv", index=False)
+
+    result_explore_pruningability_file_path = os.path.join(checkpoint_base_path, f"eval_hard_concrete_percent_results.csv")
+    df.to_csv(result_explore_pruningability_file_path, index=False)
+    print(f"Saved results to {result_explore_pruningability_file_path}")
 
     # Create figure and axes for plots
     fig, ax1 = plt.subplots(figsize=(10, 5))
@@ -165,7 +168,7 @@ def evaluate_different_percents(model, percent_step=10):
     ax2.tick_params(axis='y', labelcolor=color)
 
     # Add title and legend
-    plt.title('Perplexity and Pruned Token Percentage vs. Eval Hard Concrete Percent')
+    plt.title(f'Perplexity and Pruned Token Percentage vs. Eval Hard Concrete Percent\n{checkpoint_base_path}')
     fig.tight_layout() # Adjust layout to prevent overlap
     # Combine legends from both axes
     lines, labels = ax1.get_legend_handles_labels()
@@ -173,8 +176,9 @@ def evaluate_different_percents(model, percent_step=10):
     ax2.legend(lines + lines2, labels + labels2, loc='upper left')
 
     plt.show()
-    plt.savefig(os.path.join(checkpoint_base_path, f"eval_hard_concrete_percent_results_nomralize.png"))
-    print("Saved plot to eval_hard_concrete_percent_results.png")
+    figure_file_path = os.path.join(checkpoint_base_path, f"eval_hard_concrete_percent_results_nomralize.png")
+    plt.savefig(figure_file_path)
+    print(f"Saved plot to {figure_file_path}")
 
     print("pruned_input_ids_counts", pruned_input_ids_counts)
     print("max", pruned_input_ids_counts.max(), "argmax", pruned_input_ids_counts.argmax())
@@ -268,6 +272,8 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_base_path", type=str, required=True)
     parser.add_argument("--analyze_most_confident_pruned_tokens", action='store_true', default=False)
     parser.add_argument("--percent_step", type=int, default=0)
+    parser.add_argument("--min_percent", type=int, default=70)
+    parser.add_argument("--max_percent", type=int, default=95)
     parser.add_argument("--normalize_hcg_log_a", action='store_true', default=False)
     parser.add_argument("--fan_in_idxs", default=None)
     parser.add_argument("--fan_out_idxs", default=None)
@@ -324,7 +330,8 @@ if __name__ == "__main__":
         model.model.fan_in.hcg.hcg_log_a.data = log_a
 
     if args.percent_step > 0:
-        evaluate_different_percents(model, percent_step=args.percent_step)
+        print(f"Evaluating different percents with percent_step={args.percent_step} and max_percent={args.max_percent}")
+        evaluate_different_percents(model, percent_step=args.percent_step, max_percent=args.max_percent, min_percent=args.min_percent)
     elif args.analyze_most_confident_pruned_tokens:
         most_confident_pruned_tokens = analyze_most_confident_pruned_tokens(model, checkpoint_base_path=checkpoint_base_path)
     else:

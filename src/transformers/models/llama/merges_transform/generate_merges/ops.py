@@ -20,6 +20,7 @@ def fan_out_restore_residuals(
     # torch._check(residual_hidden_states.dtype == torch.float)
     torch._check(residual_hidden_states.device == residual_hidden_states.device)
     torch._check(merged_embeddings_counts.device == residual_hidden_states.device)
+    torch._check(residual_hidden_states_attention_mask.device == residual_hidden_states.device)
 
     orig_dtype = residual_hidden_states.dtype
     residual_hidden_states = residual_hidden_states.to(torch.float32)

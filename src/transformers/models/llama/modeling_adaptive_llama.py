@@ -524,6 +524,8 @@ class AdaptiveFanOutHCG(nn.Module):
         if self.training:
             hidden_states = hidden_states + residual_hidden_states_projection
         else:
+            # print(merged_embeddings_counts.device, hidden_states.device, residual_hidden_states_projection.device, residual_attention_mask.device)
+            # breakpoint()
             hidden_states = fan_out_restore_residuals(merged_embeddings_counts, hidden_states, residual_hidden_states_projection, residual_attention_mask)
 
         return AdaptiveFanOutOutput(hidden_state=hidden_states)
@@ -942,8 +944,14 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
         current_residuals = current_residuals * (1 - full_current_concrete)
         residual_attention_mask = attention_mask
+
+        hidden_states_device = hidden_states.device
+        hidden_states_fan_out = hidden_states.to(loop_down_attention_mask.device)
+
+        # print(hidden_states_fan_out.device ,loop_down_attention_mask.device ,merged_embeddings_counts.device ,current_residuals.device ,residual_attention_mask.device)
+        # breakpoint()
         adaptive_up_output: AdaptiveFanOutOutput = self.fan_out(
-            hidden_states,
+            hidden_states_fan_out,
             loop_down_attention_mask,
             merged_embeddings_counts,
             current_residuals,
@@ -951,7 +959,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         )
 
 
-        hidden_states = adaptive_up_output.hidden_state
+        hidden_states = adaptive_up_output.hidden_state.to(hidden_states_device)
         assert hidden_states.shape == current_residuals.shape
 
         # After FanOut
