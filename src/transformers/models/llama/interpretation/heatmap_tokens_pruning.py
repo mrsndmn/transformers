@@ -11,6 +11,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Draw a heatmap from CSV files')
     parser.add_argument('--input', nargs='+', required=True, help='CSV files to process')
     parser.add_argument('--output', required=True, help='Output directory to save the heatmap')
+    parser.add_argument('--fig_width', type=int, default=20, help='Figure width')
+    parser.add_argument('--fig_height', type=int, default=5, help='Figure height')
     parser.add_argument('--max_ppl', type=float, default=10, help='Maximum PPL value to consider')
     args = parser.parse_args()
 
@@ -41,7 +43,7 @@ if __name__ == "__main__":
     )
 
     # Create the heatmap
-    plt.figure(figsize=(20, 5))
+    plt.figure(figsize=(args.fig_width, args.fig_height))
     heatmap = sns.heatmap(
         pivot_df,
         annot=True,

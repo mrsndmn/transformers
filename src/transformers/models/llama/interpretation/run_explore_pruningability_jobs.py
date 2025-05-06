@@ -167,7 +167,7 @@ def llama31_70b_instruct_pruningability(**kwargs):
 HOP_LAYERS_QWEN25_7B = [ 1, 2, 4, 6, 8, 10, 12, 14 ]
 HOP_LAYERS_QWEN25_7B += [ 3, 5, 7, 9, 11, 13 ]
 
-def qwen25_7b_pruningability(**kwargs):
+def qwen25_7b_pruningability_rand(**kwargs):
 
     experiments = []
 
@@ -186,7 +186,7 @@ def qwen25_7b_pruningability(**kwargs):
     return
 
 
-def qwen25_7b_instruct_pruningability(**kwargs):
+def qwen25_7b_instruct_pruningability_rand(**kwargs):
 
     experiments = []
 
@@ -203,6 +203,45 @@ def qwen25_7b_instruct_pruningability(**kwargs):
     run_explore_pruningability_experiments(experiments, **kwargs)
 
     return
+
+
+
+def qwen25_7b_pruningability(**kwargs):
+
+    experiments = []
+
+    # --- Rand 30 ---
+    for hop_layers in HOP_LAYERS_QWEN25_7B:
+        experiments.append({
+            "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25_7B_w_0.100_l_12_GWPA6TMB/",
+            "exp_prefix": f"qwen25_7B_vocab30_hop_layers_{hop_layers}",
+            "fan_in_idxs": ",".join(map(str, range(28-hop_layers))),
+            "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(28-hop_layers))),
+        })
+
+    run_explore_pruningability_experiments(experiments, **kwargs)
+
+    return
+
+
+def qwen25_7b_instruct_pruningability(**kwargs):
+
+    experiments = []
+
+    # --- Vocab 80 ---
+    for hop_layers in HOP_LAYERS_QWEN25_7B:
+        experiments.append({
+            "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25_7B_w_1.000_l_12_HJMJVNL8/",
+            "exp_prefix": f"qwen25_7B_instruct_vocab80_hop_layers_{hop_layers}",
+            "fan_in_idxs": ",".join(map(str, range(28-hop_layers))),
+            "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(28-hop_layers))),
+        })
+
+    run_explore_pruningability_experiments(experiments, **kwargs)
+
+    return
+
+
 
 #
 # Generate heatmaps
@@ -236,7 +275,9 @@ if __name__ == "__main__":
 
     # llama31_8b_pruningability(dry=dry)
     # llama31_8b_instruct_pruningability(dry=dry)
-    llama31_70b_instruct_pruningability(dry=dry) # TODO draw heatmaps
+    # llama31_70b_instruct_pruningability(dry=dry)
 
-    # qwen25_7b_pruningability(dry=dry)
-    # qwen25_7b_instruct_pruningability(dry=dry)
+    # qwen25_7b_pruningability_rand(dry=dry)
+    # qwen25_7b_instruct_pruningability_rand(dry=dry)
+    qwen25_7b_pruningability(dry=dry)
+    qwen25_7b_instruct_pruningability(dry=dry)

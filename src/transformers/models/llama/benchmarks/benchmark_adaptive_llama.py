@@ -20,6 +20,17 @@ if __name__ == "__main__":
         required=True,
     )
     parser.add_argument(
+        "--fan_in_index",
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
+        "--fan_out_index",
+        type=int,
+        default=None,
+    )
+    
+    parser.add_argument(
         "--llama_checkpoint",
         default='HuggingFaceTB/SmolLM2-1.7B',
         # required=True,
@@ -55,11 +66,15 @@ if __name__ == "__main__":
 
     model = AdaptiveLlamaForCausalLM.from_pretrained( checkpoint, torch_dtype=bench_dtype )
 
+    if args.fan_in_index is not None:
+        model.model.fan_in_idx = args.fan_in_index
+    if args.fan_out_index is not None:
+        model.model.fan_out_idx = args.fan_out_index
+
     model.to(device)
     model.eval()
 
     # model.config.
-
 
     print("model params:", count_params(model))
     print("model.model.fan_in", model.model.fan_in)
@@ -98,7 +113,7 @@ if __name__ == "__main__":
                     special_embeddings_mask[special_embeddings_mask > 1] = 0
                     model_inputs['special_embeddings_mask'] = special_embeddings_mask
 
-                max_new_tokens = 20
+                max_new_tokens = 100
                 gen_params = {
                     "do_sample": False,
                     "min_new_tokens": 1,
@@ -143,8 +158,8 @@ if __name__ == "__main__":
             pruned_tokens = []
             total_tokens = []
 
-            # for i, current_model in enumerate([llama_model, model]):
-            for i, current_model in enumerate([model]):
+            for i, current_model in enumerate([llama_model, model]):
+            # for i, current_model in enumerate([model]):
             # for i, current_model in enumerate([llama_model]):
                 # for i, current_model in enumerate([model]):
                 for scale in tqdm(range(1, 2)):
