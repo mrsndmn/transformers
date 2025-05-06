@@ -234,9 +234,9 @@ if __name__ == "__main__":
 
     print("dry", dry)
 
-    llama31_8b_pruningability(dry=dry)
-    llama31_8b_instruct_pruningability(dry=dry)
+    # llama31_8b_pruningability(dry=dry)
+    # llama31_8b_instruct_pruningability(dry=dry)
     llama31_70b_instruct_pruningability(dry=dry) # TODO draw heatmaps
 
-    qwen25_7b_pruningability(dry=dry)
-    qwen25_7b_instruct_pruningability(dry=dry)
+    # qwen25_7b_pruningability(dry=dry)
+    # qwen25_7b_instruct_pruningability(dry=dry)

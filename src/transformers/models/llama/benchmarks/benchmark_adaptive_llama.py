@@ -133,7 +133,6 @@ if __name__ == "__main__":
 
                     if isinstance(current_model, AdaptiveLlamaForCausalLM):
                         print("pruned tokens")
-                
         else:
 
             import matplotlib.pyplot as plt
