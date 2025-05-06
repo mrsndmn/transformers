@@ -2,6 +2,7 @@ import time
 import argparse
 from tqdm.auto import tqdm
 import torch
+import numpy as np
 
 from transformers import LlamaConfig, AutoTokenizer, LlamaForCausalLM
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanInHCG
@@ -96,15 +97,16 @@ if __name__ == "__main__":
             #         current_model.eval()
             #     else:
             #         current_model.train()
-            for current_model in tqdm([model]):
+            for current_model in tqdm([model, llama_model]):
+            # for current_model in tqdm([model]):
 
-                model_inputs = {
-                    "input_ids": torch.load('inputs_ids.pt').to(device),
-                    "attention_mask": torch.load('batch.input_mask.pt').to(device),
-                }
+                # model_inputs = {
+                #     "input_ids": torch.load('inputs_ids.pt').to(device),
+                #     "attention_mask": torch.load('batch.input_mask.pt').to(device),
+                # }
 
-                # model_inputs = tokenizer([ 'Question: Which Lloyd Webber musical premiered in the US on 10th December 1993?\nAnswer:', 'Question: How are you?\nAnswer:', ], return_tensors='pt', padding=True)
-                # model_inputs = model_inputs.to(device)
+                model_inputs = tokenizer([ 'Question: Which Lloyd Webber musical premiered in the US on 10th December 1993?\nAnswer:', 'Question: How are you?\nAnswer:', ], return_tensors='pt', padding=True)
+                model_inputs = model_inputs.to(device)
 
                 print('model_inputs["input_ids"].shape', model_inputs['input_ids'].shape)
 
@@ -113,26 +115,24 @@ if __name__ == "__main__":
                     special_embeddings_mask[special_embeddings_mask > 1] = 0
                     model_inputs['special_embeddings_mask'] = special_embeddings_mask
 
-                max_new_tokens = 100
+                max_new_tokens = 10
                 gen_params = {
                     "do_sample": False,
-                    "min_new_tokens": 1,
+                    "min_new_tokens": max_new_tokens,
                     "max_new_tokens": max_new_tokens,
-                    "early_stopping": True,
-                    "num_beams": 1,
-                    "repetition_penalty": 1.0,
-                    "remove_invalid_values": True,
+                    # "early_stopping": True,
+                    # "num_beams": 1,
                     "eos_token_id": tokenizer.eos_token_id,
                     "pad_token_id": tokenizer.eos_token_id,
                     "forced_eos_token_id": tokenizer.eos_token_id,
                     "stop_strings": [tokenizer.eos_token, '<|im_end|>'],
                     "tokenizer": tokenizer,
                     "use_cache": False,
-                    "no_repeat_ngram_size": 4,
                     "num_return_sequences": 1,
                 }
 
-                current_model.train()
+                current_model.config.use_cache = gen_params['use_cache']
+                current_model.eval()
 
                 with torch.no_grad():
                     start_time = time.time()
@@ -142,6 +142,7 @@ if __name__ == "__main__":
                     )
                     print("model", type(current_model))
                     print("duration:", time.time() - start_time)
+                    print("generated sequence length:", out.shape[-1])
                     print("tokens per second:", out.shape[-1] / (time.time() - start_time))
                     print("generation decode:", tokenizer.batch_decode(out))
                     print("generation decode:", "\n\n".join(tokenizer.batch_decode(out, skip_special_tokens=True)))
@@ -188,33 +189,69 @@ if __name__ == "__main__":
                         # with profile(activities=activities) as prof:
                         with profile(activities=activities, profile_memory=True, record_shapes=True, with_stack=True) as prof:
                             with record_function("model_inference"):
-                                forward_output = current_model.forward(**text_inputs)
-                                logits_cpu = forward_output['logits'].cpu()
+                                model_inputs = tokenizer([ 'Question: Which Lloyd Webber musical premiered in the US on 10th December 1993?\nAnswer:', 'Question: How are you?\nAnswer:', ], return_tensors='pt', padding=True)
+                                model_inputs = model_inputs.to(device)
+
+                                print('model_inputs["input_ids"].shape', model_inputs['input_ids'].shape)
+
+                                if isinstance(current_model, AdaptiveLlamaForCausalLM):
+                                    special_embeddings_mask = model_inputs['attention_mask'].cumsum(-1)
+                                    special_embeddings_mask[special_embeddings_mask > 1] = 0
+                                    model_inputs['special_embeddings_mask'] = special_embeddings_mask
+
+                                max_new_tokens = 10
+                                gen_params = {
+                                    "do_sample": False,
+                                    "min_new_tokens": max_new_tokens,
+                                    "max_new_tokens": max_new_tokens,
+                                    # "early_stopping": True,
+                                    # "num_beams": 1,
+                                    "eos_token_id": tokenizer.eos_token_id,
+                                    "pad_token_id": tokenizer.eos_token_id,
+                                    "forced_eos_token_id": tokenizer.eos_token_id,
+                                    "stop_strings": [tokenizer.eos_token, '<|im_end|>'],
+                                    "tokenizer": tokenizer,
+                                    "use_cache": False,
+                                    "num_return_sequences": 1,
+                                }
+
+                                current_model.config.use_cache = gen_params['use_cache']
+                                current_model.eval()
+
+                                out = current_model.generate(
+                                    **model_inputs,
+                                    **gen_params,
+                                )
+
+                                forward_output = current_model.forward(**text_inputs, use_cache=False)
+                                torch.cuda.synchronize()
 
                         prof.export_chrome_trace(f"trace_{i}_{type(current_model)}.json")
                         # prof.export_memory_timeline(f"trace_mem_{i}_{type(current_model)}.html")
                         print(prof.key_averages().table(sort_by="self_cuda_memory_usage", row_limit=20))
 
-                    start = time.time()
                     print("bench_iters", bench_iters)
 
                     forward_output = None
-                    logits_cpu = None
 
+                    durations = []
                     for _ in range(bench_iters):
                         del forward_output
-                        del logits_cpu
-                        torch.cuda.empty_cache()
+                        # torch.cuda.empty_cache()
 
-                        forward_output = current_model.forward(**text_inputs)
-                        logits_cpu = forward_output['logits'][0,0,0].item()
+                        start = time.time()
+                        forward_output = current_model.forward(**text_inputs, use_cache=False)
+                        torch.cuda.synchronize()
+                        durations.append( time.time() - start )
 
                     if bench_iters > 0:
-                        elapced_mean = (time.time() - start) / bench_iters
+                        elapced_mean = np.mean(durations)
+                        elapced_std = np.std(durations)
                     else:
                         elapced_mean = 0
+                        elapced_std = 0
 
-                    print("elapced_mean", elapced_mean, "model", type(current_model))
+                    print("elapced_mean", elapced_mean, "std", elapced_std, "model", type(current_model))
 
                     # if isinstance(current_model, AdaptiveLlamaForCausalLM):
                     #     model_points.append(elapced_mean)
