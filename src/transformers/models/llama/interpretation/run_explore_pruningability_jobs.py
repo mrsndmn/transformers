@@ -219,6 +219,15 @@ def qwen25_7b_pruningability(**kwargs):
             "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(28-hop_layers))),
         })
 
+    # --- Vocab 80 ---
+    for hop_layers in HOP_LAYERS_QWEN25_7B:
+        experiments.append({
+            "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25_7B_w_1.000_l_12_HJMJVNL8/",
+            "exp_prefix": f"qwen25_7B_vocab80_hop_layers_{hop_layers}",
+            "fan_in_idxs": ",".join(map(str, range(28-hop_layers))),
+            "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(28-hop_layers))),
+        })
+
     run_explore_pruningability_experiments(experiments, **kwargs)
 
     return
@@ -228,10 +237,19 @@ def qwen25_7b_instruct_pruningability(**kwargs):
 
     experiments = []
 
+    # --- Rand 30 ---
+    for hop_layers in HOP_LAYERS_QWEN25_7B:
+        experiments.append({
+            "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25_7B_instruct_w_0.100_l_12_GWPA6TMB/",
+            "exp_prefix": f"qwen25_7B_instruct_vocab30_hop_layers_{hop_layers}",
+            "fan_in_idxs": ",".join(map(str, range(28-hop_layers))),
+            "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(28-hop_layers))),
+        })
+
     # --- Vocab 80 ---
     for hop_layers in HOP_LAYERS_QWEN25_7B:
         experiments.append({
-            "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25_7B_w_1.000_l_12_HJMJVNL8/",
+            "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25_7B_instruct_w_1.000_l_12_HJMJVNL8/",
             "exp_prefix": f"qwen25_7B_instruct_vocab80_hop_layers_{hop_layers}",
             "fan_in_idxs": ",".join(map(str, range(28-hop_layers))),
             "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(28-hop_layers))),
@@ -240,6 +258,7 @@ def qwen25_7b_instruct_pruningability(**kwargs):
     run_explore_pruningability_experiments(experiments, **kwargs)
 
     return
+
 
 
 
@@ -260,10 +279,20 @@ def qwen25_7b_instruct_pruningability(**kwargs):
 # python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_llama31_8B_instruct_w_1.000_l_14_IHHIQR0I/checkpoint-90000/llama31_8B_vocab50_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,15,16}_ppl_results.csv  --output adaptive_hcg_llama31_8B_instruct_w_1.000_l_14_IHHIQR0I/checkpoint-90000/ --max_ppl 35
 
 # Qwen2.5 7B vocab 20
-# python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_qwen25-7B-init/checkpoint-1/qwen25_7B_rand20_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,14}_ppl_results.csv  --output adaptive_hcg_qwen25-7B-init/checkpoint-1/ --max_ppl 35
+# python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_qwen25_7B_w_0.100_l_12_GWPA6TMB/checkpoint-90000/qwen25_7B_vocab30_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,14}_ppl_results.csv  --output adaptive_hcg_qwen25_7B_w_0.100_l_12_GWPA6TMB/checkpoint-90000 --max_ppl 35
 
-# Qwen2.5 7B vocab 20
-# python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_qwen25-7B-instruct-init/checkpoint-1/qwen25_7B_instruct_rand20_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,14}_ppl_results.csv  --output adaptive_hcg_qwen25-7B-instruct-init/checkpoint-1/ --max_ppl 35
+# Qwen2.5 7B vocab 80
+# python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_qwen25_7B_w_1.000_l_12_HJMJVNL8/checkpoint-90000/qwen25_7B_vocab80_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,14}_ppl_results.csv  --output adaptive_hcg_qwen25_7B_w_1.000_l_12_HJMJVNL8/checkpoint-90000 --max_ppl 35
+
+# Qwen2.5 7B Instruct vocab 20
+# python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_qwen25_7B_instruct_w_0.100_l_12_GWPA6TMB/checkpoint-1/qwen25_7B_instruct_vocab30_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,14}_ppl_results.csv  --output adaptive_hcg_qwen25_7B_w_0.100_l_12_GWPA6TMB/checkpoint-90000 --max_ppl 35
+
+# Qwen2.5 7B Instruct vocab 80
+# python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_qwen25_7B_instruct_w_1.000_l_12_HJMJVNL8/checkpoint-1/qwen25_7B_instruct_vocab80_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,14}_ppl_results.csv  --output adaptive_hcg_qwen25_7B_w_1.000_l_12_HJMJVNL8/checkpoint-90000 --max_ppl 35
+
+# Qwen2.5 7B Instruct vocab 20 Forward Residuals MLP Only
+# python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_qwen25_7B_instruct_w_0.100_l_12_GWPA6TMB/checkpoint-1/qwen25_7B_instruct_vocab30_fwd_res_mlp_only_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,14}_ppl_results.csv  --output adaptive_hcg_qwen25_7B_w_0.100_l_12_GWPA6TMB/checkpoint-90000 --max_ppl 35
+
 
 if __name__ == "__main__":
 
@@ -279,5 +308,5 @@ if __name__ == "__main__":
 
     # qwen25_7b_pruningability_rand(dry=dry)
     # qwen25_7b_instruct_pruningability_rand(dry=dry)
-    qwen25_7b_pruningability(dry=dry)
+    # qwen25_7b_pruningability(dry=dry)
     qwen25_7b_instruct_pruningability(dry=dry)
