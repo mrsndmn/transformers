@@ -1,7 +1,7 @@
 import torch
 import pytest
 from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, DynamicCache
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
 from transformers.models.llama.train_adaptive_llama import freeze_lm_backbone
 
@@ -48,26 +48,80 @@ def test_build_adaptive_llama_use_cache(use_cache):
 
 def test_pretrained_checkpoint_perplexity():
     # Broken for new hcg in discrete tokens
-    return
 
     torch.set_default_device('cuda')
 
-    pretrained_checkpoint = "./adaptive_hcg_slm2_360M_pretrain_fan_out_projection_4/_no_fout_proj_checkpoint-3118/"
-    adaptive_model = AdaptiveLlamaForCausalLM.from_pretrained(pretrained_checkpoint, torch_dtype=torch.bfloat16)
+    # pretrained_checkpoint = "adaptive_hcg_slm2_1.7B_w_0.010_l_8_no_self_attn_XFLDZI8W/checkpoint-249974"
+    pretrained_checkpoint = "adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/checkpoint-90000"
+    adaptive_model = AdaptiveLlamaForCausalLM.from_pretrained(pretrained_checkpoint, torch_dtype=torch.float32)
+    # adaptive_model = AutoModelForCausalLM.from_pretrained("HuggingFaceTB/SmolLM2-1.7B", torch_dtype=torch.float32)
+
+    tokenizer = AutoTokenizer.from_pretrained(pretrained_checkpoint)
 
     adaptive_model.eval()
 
-    inputs = torch.load("prepared_batch.input_ids.pt")
+    tokenizer_output = tokenizer([ 'Question: Which Lloyd Webber musical premiered in the US on 10th December 1993?\nAnswer: Jurassic Earth', ], return_tensors='pt', padding=True)
+    input_ids = tokenizer_output['input_ids']
 
-    pretrained_outputs = adaptive_model.forward(
-        inputs.clone(),
-        labels=inputs,
-        output_hidden_states=True,
-        use_cache=False
+    past_key_values = DynamicCache()
+
+    model_kwargs = {
+        'attention_mask': tokenizer_output['attention_mask'],
+        'use_cache': True,
+        'past_key_values': past_key_values,
+    }
+
+    # Prefill
+    model_kwargs = adaptive_model._get_initial_cache_position(input_ids, model_kwargs)
+
+    model_inputs = adaptive_model.prepare_inputs_for_generation(input_ids, **model_kwargs)
+
+    pretrained_outputs = adaptive_model(
+        **model_inputs,
     )
-    print("pretrained_outputs.loss", pretrained_outputs.loss)
-    assert pretrained_outputs.loss < 3
-    assert (pretrained_outputs.fan_in_merging_maps[3] == 1).all()
+
+    model_kwargs = adaptive_model._update_model_kwargs_for_generation(
+        pretrained_outputs,
+        model_kwargs,
+        is_encoder_decoder=adaptive_model.config.is_encoder_decoder,
+    )
+
+    next_token_logits = pretrained_outputs.logits[:, -1, :].to(copy=True, dtype=torch.float32)
+    next_tokens = torch.argmax(next_token_logits, dim=-1)
+
+    input_ids_new = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
+
+    model_kwargs = adaptive_model.prepare_inputs_for_generation(input_ids_new, **model_kwargs)
+
+    # print("position_ids", model_kwargs['position_ids'])
+    # breakpoint()
+
+    # Decode step
+    next_token_forward_outputs = adaptive_model(
+        **model_kwargs,
+        output_hidden_states=True,
+    )
+
+    pretrained_outputs_no_cache = adaptive_model(
+        input_ids=input_ids_new,
+        labels=input_ids_new,
+        use_cache=False,
+        output_hidden_states=True,
+    )
+
+    for i in range(len(next_token_forward_outputs.hidden_states)):
+        i_no_cache = i
+        # if adaptive_model.model.fan_in_idx <= i_no_cache < adaptive_model.model.fan_out_idx:
+        #     i_no_cache += 16-7
+
+        print(f"{i} l1 diff norm", (next_token_forward_outputs.hidden_states[i] - pretrained_outputs_no_cache.hidden_states[i_no_cache][:, -1, :]).norm(1, dim=-1))
+        assert torch.allclose(next_token_forward_outputs.hidden_states[i], pretrained_outputs_no_cache.hidden_states[i_no_cache][:, -1, :], atol=1e-3), f'hidden state {i} match'
+
+    assert torch.allclose(next_token_forward_outputs.logits[:, -1], pretrained_outputs_no_cache.logits[:, -1], atol=1e-4), 'pretrained outputs loss match'
+
+    print("pretrained_outputs.loss", pretrained_outputs_no_cache.loss)
+    assert pretrained_outputs_no_cache.loss < 4
+    assert (pretrained_outputs_no_cache.fan_in_merging_maps[7] == 1).all()
 
 def test_finetuned_checkpoint_perplexity():
     # TODO

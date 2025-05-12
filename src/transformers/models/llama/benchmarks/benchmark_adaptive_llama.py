@@ -13,6 +13,64 @@ from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_a
 def count_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+
+def run_generate(current_model, tokenizer, max_new_tokens=100, use_cache=True):
+    model_inputs = tokenizer([ '<|begin_of_text|> Question: Which Lloyd Webber musical premiered in the US on 10th December 1993?\nAnswer: Jurassic Earth', ], return_tensors='pt', padding=True)
+    model_inputs = model_inputs.to(device)
+
+    print('model_inputs["input_ids"].shape', model_inputs['input_ids'].shape)
+
+    if isinstance(current_model, AdaptiveLlamaForCausalLM):
+        special_embeddings_mask = model_inputs['attention_mask'].cumsum(-1)
+        special_embeddings_mask[special_embeddings_mask > 1] = 0
+        model_inputs['special_embeddings_mask'] = special_embeddings_mask
+
+    max_new_tokens = 100
+    gen_params = {
+        "do_sample": False,
+        "min_new_tokens": max_new_tokens,
+        "max_new_tokens": max_new_tokens,
+        "early_stopping": True,
+        # "num_beams": 1,
+        "eos_token_id": tokenizer.eos_token_id,
+        "pad_token_id": tokenizer.eos_token_id,
+        "forced_eos_token_id": tokenizer.eos_token_id,
+        "stop_strings": [tokenizer.eos_token, '<|im_end|>', '<|end_of_text|>'],
+        "tokenizer": tokenizer,
+        "use_cache": use_cache,
+        "num_return_sequences": 1,
+    }
+
+    current_model.config.use_cache = gen_params['use_cache']
+    current_model.eval()
+
+    with torch.no_grad():
+        out = current_model.generate(
+            **model_inputs,
+            **gen_params,
+        )
+        del out
+
+        start_time = time.time()
+        start_sequence = model_inputs['input_ids'].shape[1]
+        out_orig = current_model.generate(
+            **model_inputs,
+            **gen_params,
+        )
+
+        out = out_orig[:, start_sequence:]
+
+        print("model", type(current_model))
+        print("duration:", time.time() - start_time)
+        print("generated sequence length:", out.shape[-1])
+        print("tokens per second:", out.shape[-1] / (time.time() - start_time))
+        print("generation decode:", tokenizer.batch_decode(out))
+        print("generation decode:", "\n\n".join(tokenizer.batch_decode(out, skip_special_tokens=True)))
+        print("generation decode:", "\n\n".join(tokenizer.batch_decode(out_orig, skip_special_tokens=True)))
+
+        if isinstance(current_model, AdaptiveLlamaForCausalLM):
+            print("pruned tokens")
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -30,10 +88,10 @@ if __name__ == "__main__":
         type=int,
         default=None,
     )
-    
+
     parser.add_argument(
         "--llama_checkpoint",
-        default='HuggingFaceTB/SmolLM2-1.7B',
+        default=None,  # 'HuggingFaceTB/SmolLM2-1.7B',
         # required=True,
     )
     parser.add_argument(
@@ -57,13 +115,16 @@ if __name__ == "__main__":
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+    # bench_dtype = torch.float32
     bench_dtype = torch.bfloat16
 
-    llama_model = LlamaForCausalLM.from_pretrained(
-        llama_checkpoint,
-        torch_dtype=bench_dtype,
-        # attn_implementation='flash_attention_2',
-    )
+    llama_model = None
+    if llama_checkpoint is not None:
+        llama_model = LlamaForCausalLM.from_pretrained(
+            llama_checkpoint,
+            torch_dtype=bench_dtype,
+            # attn_implementation='flash_attention_2',
+        )
 
     model = AdaptiveLlamaForCausalLM.from_pretrained( checkpoint, torch_dtype=bench_dtype )
 
@@ -82,9 +143,10 @@ if __name__ == "__main__":
 
     # model.model.adaptive_up[4] = NoopAdaptiveFanOut(model.config)
 
-    llama_model.to(device)
-    llama_model.eval()
-    print("llama model params:", count_params(llama_model))
+    if llama_checkpoint is not None:
+        llama_model.to(device)
+        llama_model.eval()
+        print("llama model params:", count_params(llama_model))
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint, padding_side='left')
 
@@ -98,57 +160,11 @@ if __name__ == "__main__":
             #     else:
             #         current_model.train()
             for current_model in tqdm([model, llama_model]):
-            # for current_model in tqdm([model]):
+                if current_model is None:
+                    continue
 
-                # model_inputs = {
-                #     "input_ids": torch.load('inputs_ids.pt').to(device),
-                #     "attention_mask": torch.load('batch.input_mask.pt').to(device),
-                # }
+                run_generate(current_model, tokenizer, use_cache=True)
 
-                model_inputs = tokenizer([ 'Question: Which Lloyd Webber musical premiered in the US on 10th December 1993?\nAnswer:', 'Question: How are you?\nAnswer:', ], return_tensors='pt', padding=True)
-                model_inputs = model_inputs.to(device)
-
-                print('model_inputs["input_ids"].shape', model_inputs['input_ids'].shape)
-
-                if isinstance(current_model, AdaptiveLlamaForCausalLM):
-                    special_embeddings_mask = model_inputs['attention_mask'].cumsum(-1)
-                    special_embeddings_mask[special_embeddings_mask > 1] = 0
-                    model_inputs['special_embeddings_mask'] = special_embeddings_mask
-
-                max_new_tokens = 10
-                gen_params = {
-                    "do_sample": False,
-                    "min_new_tokens": max_new_tokens,
-                    "max_new_tokens": max_new_tokens,
-                    # "early_stopping": True,
-                    # "num_beams": 1,
-                    "eos_token_id": tokenizer.eos_token_id,
-                    "pad_token_id": tokenizer.eos_token_id,
-                    "forced_eos_token_id": tokenizer.eos_token_id,
-                    "stop_strings": [tokenizer.eos_token, '<|im_end|>'],
-                    "tokenizer": tokenizer,
-                    "use_cache": False,
-                    "num_return_sequences": 1,
-                }
-
-                current_model.config.use_cache = gen_params['use_cache']
-                current_model.eval()
-
-                with torch.no_grad():
-                    start_time = time.time()
-                    out = current_model.generate(
-                        **model_inputs,
-                        **gen_params,
-                    )
-                    print("model", type(current_model))
-                    print("duration:", time.time() - start_time)
-                    print("generated sequence length:", out.shape[-1])
-                    print("tokens per second:", out.shape[-1] / (time.time() - start_time))
-                    print("generation decode:", tokenizer.batch_decode(out))
-                    print("generation decode:", "\n\n".join(tokenizer.batch_decode(out, skip_special_tokens=True)))
-
-                    if isinstance(current_model, AdaptiveLlamaForCausalLM):
-                        print("pruned tokens")
         else:
 
             import matplotlib.pyplot as plt
@@ -160,6 +176,9 @@ if __name__ == "__main__":
             total_tokens = []
 
             for i, current_model in enumerate([llama_model, model]):
+                if current_model is None:
+                    continue
+
             # for i, current_model in enumerate([model]):
             # for i, current_model in enumerate([llama_model]):
                 # for i, current_model in enumerate([model]):

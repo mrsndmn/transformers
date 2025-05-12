@@ -46,7 +46,7 @@ def pruning_hook(module, input, output):
     total_initial_tokens += output.merged_embeddings_counts.sum().item()
     total_pruned_tokens += output.attention_mask.sum().item()
 
-def evaluate_ppl_wikitext_103(model):
+def evaluate_lighteval_task(model, task_name, override_batch_size=1, num_fewshot_seeds=0):
     evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'" # Removed extra quotes
     evaluation_tracker = EvaluationTracker(
         output_dir=evaluation_output_dir,
@@ -58,15 +58,15 @@ def evaluate_ppl_wikitext_103(model):
         ),
         # env_config=env_config,
         custom_tasks_directory='/workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py',
-        override_batch_size=1,
-        num_fewshot_seeds=1,
+        override_batch_size=override_batch_size,
+        num_fewshot_seeds=num_fewshot_seeds,
         max_samples=None,
         use_chat_template=False,
         system_prompt=None,
         load_responses_from_details_date_id=None,
     )
 
-    tasks = "custom|wikitext_103|0|1"
+    tasks = f"custom|{task_name}|0|1"
 
     with torch.no_grad():
         pipeline = Pipeline(
@@ -80,11 +80,109 @@ def evaluate_ppl_wikitext_103(model):
         pipeline.show_results()
         results = pipeline.get_results()
 
-        ppl = results['results']["custom:wikitext_103:0"]["ppl"]
+    return results
+
+
+def evaluate_ppl_wikitext_103(model):
+    results = evaluate_lighteval_task(
+        model,
+        'wikitext_103',
+        override_batch_size=1,
+        num_fewshot_seeds=0,
+    )
+
+    ppl = results['results']["custom:wikitext_103:0"]["ppl"]
 
     return {
         "ppl": ppl,
     }
+
+# ~12 минут на один проход
+def evaluate_acc_hellaswag(model):
+    results = evaluate_lighteval_task(
+        model,
+        'hellaswag',
+        override_batch_size=512,
+        num_fewshot_seeds=0,
+    )
+
+    acc = results['results']["custom:hellaswag:0"]["acc"]
+    acc_norm = results['results']["custom:hellaswag:0"]["acc_norm"]
+
+    return {
+        "acc": acc,
+        "acc_norm": acc_norm,
+    }
+
+# ~80 секунд на один проход
+def evaluate_acc_winogrande(model):
+    results = evaluate_lighteval_task(
+        model,
+        'winogrande',
+        override_batch_size=512,
+        num_fewshot_seeds=0,
+    )
+
+    acc = results['results']["custom:winogrande:0"]["acc"]
+    acc_norm = results['results']["custom:winogrande:0"]["acc_norm"]
+
+    return {
+        "acc": acc,
+        "acc_norm": acc_norm,
+    }
+
+
+# ~100 секунд на один проход
+def evaluate_acc_piqa(model):
+    results = evaluate_lighteval_task(
+        model,
+        'piqa',
+        override_batch_size=128,
+        num_fewshot_seeds=0,
+    )
+
+    acc = results['results']["custom:piqa:0"]["acc"]
+    acc_norm = results['results']["custom:piqa:0"]["acc_norm"]
+
+    return {
+        "acc": acc,
+        "acc_norm": acc_norm,
+    }
+
+# ~90 секунд на один проход
+def evaluate_acc_siqa(model):
+    results = evaluate_lighteval_task(
+        model,
+        'siqa',
+        override_batch_size=512,
+        num_fewshot_seeds=0,
+    )
+
+    acc = results['results']["custom:siqa:0"]["acc"]
+    acc_norm = results['results']["custom:siqa:0"]["acc_norm"]
+
+    return {
+        "acc": acc,
+        "acc_norm": acc_norm,
+    }
+
+# ~80 секунд на один проход
+def evaluate_acc_openbookqa(model):
+    results = evaluate_lighteval_task(
+        model,
+        'openbookqa',
+        override_batch_size=256,
+        num_fewshot_seeds=0,
+    )
+
+    acc = results['results']["custom:openbookqa:0"]["acc"]
+    acc_norm = results['results']["custom:openbookqa:0"]["acc_norm"]
+
+    return {
+        "acc": acc,
+        "acc_norm": acc_norm,
+    }
+
 
 @torch.no_grad()
 def evaluate_different_percents(model, percent_step=10, max_percent=100, min_percent=0):
@@ -219,22 +317,41 @@ def analyze_most_confident_pruned_tokens(model, checkpoint_base_path):
 
 
 @torch.no_grad()
-def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None, exp_prefix=None):
+def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None, exp_prefix=None, task_name=None):
 
     results = []
     assert len(fan_in_idxs) == len(fan_out_idxs)
 
+    metric_name = "ppl"
+    if task_name != "wikitext_103":
+        metric_name = "acc_norm"
+
     for fan_in_idx, fan_out_idx in tqdm(zip(fan_in_idxs, fan_out_idxs), total=len(fan_in_idxs)):
         model.model.fan_in_idx = fan_in_idx
         model.model.fan_out_idx = fan_out_idx
-        ppl_results = evaluate_ppl_wikitext_103(model)
-        ppl = ppl_results['ppl']
-        print(f"PPL for fan_in_idx={fan_in_idx} and fan_out_idx={fan_out_idx}: {ppl}")
+
+        if task_name == "wikitext_103":
+            metric_results = evaluate_ppl_wikitext_103(model)
+        elif task_name == "hellaswag":
+            metric_results = evaluate_acc_hellaswag(model)
+        elif task_name == "winogrande":
+            metric_results = evaluate_acc_winogrande(model)
+        elif task_name == "piqa":
+            metric_results = evaluate_acc_piqa(model)
+        elif task_name == "siqa":
+            metric_results = evaluate_acc_siqa(model)
+        elif task_name == "openbookqa":
+            metric_results = evaluate_acc_openbookqa(model)
+        else:
+            raise ValueError(f"Unknown task name: {task_name}")
+
+        metric_value = metric_results[metric_name]
+        print(f"PPL for fan_in_idx={fan_in_idx} and fan_out_idx={fan_out_idx}: {metric_value}")
 
         results.append({
             "fan_in_idx": fan_in_idx,
             "fan_out_idx": fan_out_idx,
-            "ppl": ppl,
+            metric_name: metric_value,
         })
 
     df = pd.DataFrame(results)
@@ -242,14 +359,14 @@ def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None, exp_pr
     fan_in_idxs_str = ','.join(map(str, fan_in_idxs))
     fan_out_idxs_str = ','.join(map(str, fan_out_idxs))
     if exp_prefix is not None:
-        result_file_name = f"{exp_prefix}_ppl_results"
+        result_file_name = f"{exp_prefix}_{task_name}_ppl_results"
     else:
-        result_file_name = f"_ppl_results_fan_in_idx_{fan_in_idxs_str}_fan_out_idx_{fan_out_idxs_str}"
+        result_file_name = f"_ppl_results_fan_in_idx_{fan_in_idxs_str}_fan_out_idx_{fan_out_idxs_str}_task_{task_name}"
 
-    plt.plot(df['fan_in_idx'], df['ppl'], marker='o', label='PPL')
+    plt.plot(df['fan_in_idx'], df[metric_name], marker='o', label=metric_name)
     plt.xlabel('Fan In Index')
-    plt.ylabel('Perplexity (PPL)')
-    plt.title('Perplexity vs. Fan In Index')
+    plt.ylabel(metric_name)
+    plt.title(f'{metric_name} vs. Fan In Index')
     plt.ylim(0, 20)
     plt.legend()
     plt.show()
@@ -270,6 +387,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_base_path", type=str, required=True)
+    parser.add_argument("--task_name", type=str, default=None)
     parser.add_argument("--analyze_most_confident_pruned_tokens", action='store_true', default=False)
     parser.add_argument("--percent_step", type=int, default=0)
     parser.add_argument("--min_percent", type=int, default=70)
@@ -304,6 +422,8 @@ if __name__ == "__main__":
     print(f"Loading tokenizer and state from: {last_checkpoint_path}")
 
     tokeniser = AutoTokenizer.from_pretrained(last_checkpoint_path)
+
+    device_map = None
 
     if 'qwen' in last_checkpoint_path:
         model_class = AdaptiveQwen2ForCausalLM
@@ -399,13 +519,10 @@ if __name__ == "__main__":
                 "lm_head": 3,
             }
 
-        else:
-            device_map = None
-
     else:
         raise ValueError(f"Unknown model type: {last_checkpoint_path}")
 
-    model = model_class.from_pretrained(last_checkpoint_path, torch_dtype=torch.bfloat16, device_map=device_map)
+    model = model_class.from_pretrained(last_checkpoint_path, torch_dtype=torch.float32, device_map=device_map)
 
     model.eval()
 
@@ -430,5 +547,5 @@ if __name__ == "__main__":
     else:
         fan_in_idxs =  list(map(int, args.fan_in_idxs.split(',')))
         fan_out_idxs = list(map(int, args.fan_out_idxs.split(',')))
-        evaluate_different_layers(model, fan_in_idxs=fan_in_idxs, fan_out_idxs=fan_out_idxs, exp_prefix=args.exp_prefix)
+        evaluate_different_layers(model, fan_in_idxs=fan_in_idxs, fan_out_idxs=fan_out_idxs, exp_prefix=args.exp_prefix, task_name=args.task_name)
 

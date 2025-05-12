@@ -236,6 +236,8 @@ def eager_attention_forward(
     return attn_output, attn_weights
 
 
+# X = 0
+
 class LlamaAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
@@ -279,6 +281,10 @@ class LlamaAttention(nn.Module):
         value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
         cos, sin = position_embeddings
+        assert cos.shape[1] == query_states.shape[2] and key_states.shape[2]
+
+        # print("position_embeddings", cos.shape, sin.shape)
+
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         if past_key_value is not None:
@@ -310,7 +316,28 @@ class LlamaAttention(nn.Module):
         #     query_concrete = concrete.unsqueeze(0).repeat(query_states.shape[0], query_states.shape[1], 1, query_states.shape[3])
         #     query_states[:, :, concrete.bool(), -1] = 1
 
+        # if self.layer_idx in [ 13 ]:
+        #     print("query_states.shape", query_states.shape)
+        #     print("key_states.shape", key_states.shape)
+        #     print("value_states.shape", value_states.shape)
+        #     print("query_states", query_states[0, 0].norm(1, dim=-1))
+        #     print("cache_position", cache_position)
+        #     # breakpoint()
+
         attn_output, attn_weights = attention_interface( self, query_states, key_states, value_states, attention_mask, dropout=0.0 if not self.training else self.attention_dropout, scaling=self.scaling, **kwargs,)
+
+        # if self.layer_idx == 0:
+        #     global X
+        #     X += 1
+        #     print("attn_output.shape", attn_output[:, -1, :4, :].norm(2, dim=-1))
+        #     import torch
+        #     torch.save(attn_output, f"attn_output_{X}.pt")
+
+        #     if X == 3:
+        #         attn_output_2 = torch.load("attn_output_2.pt")
+        #         print("attn_output_2[:, -1] - attn_output_3[:, -1]", (attn_output_2[:, -1] - attn_output[:, -1]).norm(2, dim=-1))
+
+        #     print("")
 
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
@@ -347,8 +374,8 @@ class LlamaDecoderLayer(nn.Module):
 
         self.layer_idx = layer_idx
         # config._attn_implementation = 'eager'
-        # config._attn_implementation = 'sdpa'
-        config._attn_implementation = 'flash_attention_2'
+        config._attn_implementation = 'sdpa'
+        # config._attn_implementation = 'flash_attention_2'
         self.self_attn = LlamaAttention(config=config, layer_idx=layer_idx)
 
         self.mlp = LlamaMLP(config)
@@ -423,7 +450,7 @@ class LlamaDecoderLayer(nn.Module):
         # Fully Connected
         residual = hidden_states
 
-        hidden_states = self.input_layernorm(hidden_states)
+        # hidden_states = self.input_layernorm(hidden_states)
         hidden_states = self.post_attention_layernorm(hidden_states)
 
         hidden_states = self.mlp(hidden_states)
