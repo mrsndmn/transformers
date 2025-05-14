@@ -9,7 +9,7 @@ import torch
 
 from transformers import TrainerCallback
 from transformers.models.llama.configuration_llama import LlamaConfig
-from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveLlamaModelWithEachLayerPruning
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 from transformers.utils import is_sagemaker_mp_enabled
@@ -604,6 +604,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
         return (loss, logits, labels)
 
+    @torch.compiler.disable(recursive=True)
     def evaluation_loop(
         self,
         dataloader: DataLoader,
@@ -847,7 +848,7 @@ class AdaptiveLlamaTrainer(Trainer):
                 # env_config=env_config,
                 custom_tasks_directory='/workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py',
                 override_batch_size=1,
-                num_fewshot_seeds=1,
+                num_fewshot_seeds=0,
                 max_samples=None,
                 use_chat_template=False,
                 system_prompt=None,
@@ -880,6 +881,8 @@ class AdaptiveLlamaTrainer(Trainer):
                     self.log({ "lighteval/wikitext_ppl": results['results']["custom:wikitext_103:0"]["ppl"] })
         except Exception as e:
             print("Error in evaluation of PPL", e)
+            breakpoint()
+            print("Error in evaluation of PPL", e)
 
         self.model.train()
 
@@ -888,11 +891,18 @@ def freeze_lm_backbone(model: nn.Module):
     for p in model.parameters():
         p.requires_grad = False
 
-    for p in model.model.fan_in.parameters():
-        p.requires_grad = True
+    if isinstance(model.model, AdaptiveLlamaModelWithEachLayerPruning):
+        for p in model.model.fan_in_layers.parameters():
+            p.requires_grad = True
 
-    for p in model.model.fan_out.parameters():
-        p.requires_grad = True
+        for p in model.model.fan_out_layers.parameters():
+            p.requires_grad = True
+    else:
+        for p in model.model.fan_in.parameters():
+            p.requires_grad = True
+
+        for p in model.model.fan_out.parameters():
+            p.requires_grad = True
 
 
 def build_model(training_args: AdaptiveTrainingArguments):
@@ -1019,13 +1029,22 @@ def build_model(training_args: AdaptiveTrainingArguments):
     #             p.requires_grad = False
 
     if training_args.init_hcg_a is not None:
-        model.model.fan_in.hcg.hcg_log_a.data.fill_(training_args.init_hcg_a)
+        if isinstance(model.model, AdaptiveLlamaModelWithEachLayerPruning):
+            for layer_idx in range(model.model.config.num_hidden_layers):
+                model.model.fan_in_layers[layer_idx].hcg.hcg_log_a.data.fill_(training_args.init_hcg_a)
+        else:
+            model.model.fan_in.hcg.hcg_log_a.data.fill_(training_args.init_hcg_a)
         print("Initialized hcg_log_a for fan_in with value", training_args.init_hcg_a)
 
     if training_args.clip_hcg_log_a is not None:
-        model.model.fan_in.hcg.hcg_log_a.data.clamp_(min=-training_args.clip_hcg_log_a, max=training_args.clip_hcg_log_a)
+        if isinstance(model.model, AdaptiveLlamaModelWithEachLayerPruning):
+            for layer_idx in range(model.model.config.num_hidden_layers):
+                model.model.fan_in_layers[layer_idx].hcg.hcg_log_a.data.clamp_(min=-training_args.clip_hcg_log_a, max=training_args.clip_hcg_log_a)
+        else:
+            model.model.fan_in.hcg.hcg_log_a.data.clamp_(min=-training_args.clip_hcg_log_a, max=training_args.clip_hcg_log_a)
 
     if training_args.hard_hcg_log_a is not None and training_args.hard_hcg_log_a:
+        # TODO support each layer pruning
         log_a_data = model.model.fan_in.hcg.hcg_log_a.data
         log_a_data[ log_a_data >= 0.0 ] = 10000
         log_a_data[ log_a_data < 0.0 ] = -10000
@@ -1033,7 +1052,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
         sigmoid = torch.nn.functional.sigmoid(log_a_data)
         print("Harded hcg_log_a for fan_in with value", sigmoid.min(), sigmoid.max())
 
-
+    print("model", type(model))
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
 
     return model, tokenizer
