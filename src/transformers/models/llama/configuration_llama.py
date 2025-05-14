@@ -196,6 +196,7 @@ class LlamaConfig(PretrainedConfig):
         concrete_stop_word_pruning=0,
         eval_hard_concrete_percent=0.0,
         single_layer_hopping=False,
+        forward_residuals=False,
         # scale_token_frequency=False,
         distributed=False,
         pretrain_fan_out_projection=False,
@@ -234,7 +235,8 @@ class LlamaConfig(PretrainedConfig):
         self.hcg_temperature = hcg_temperature
         self.learnt_temperature = learnt_temperature
         self.distributed = distributed
-        
+        self.forward_residuals = forward_residuals
+
         self.scale_not_pruned_gradients = scale_not_pruned_gradients
 
         # self.scale_token_frequency = scale_token_frequency

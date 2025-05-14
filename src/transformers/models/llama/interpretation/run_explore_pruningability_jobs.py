@@ -30,6 +30,8 @@ def run_explore_pruningability_experiments(experiments, job_description_prefix="
     for exp in experiments:
 
         checkpoint_base_path = exp.pop('checkpoint_base_path')
+        assert os.path.exists(checkpoint_base_path), f"Checkpoint base path {checkpoint_base_path} does not exist"
+
         exp_prefix = exp.pop('exp_prefix')
         fan_in_idxs = exp.pop('fan_in_idxs')
         fan_out_idxs = exp.pop('fan_out_idxs')
@@ -75,10 +77,10 @@ def run_explore_pruningability_experiments(experiments, job_description_prefix="
     return
 
 ALL_TASK_NAMES = [
-    # "wikitext_103",
+    "wikitext_103",
     # "hellaswag",
     # "winogrande",
-    "piqa",
+    # "piqa",
     # "siqa",
     # "openbookqa",
 ]
@@ -92,25 +94,37 @@ def llama31_8b_pruningability(**kwargs):
 
     for task_name in ALL_TASK_NAMES:
 
-        # --- Vocab 20 ---
+        # # --- Vocab 20 ---
+        # for hop_layers in HOP_LAYERS_LLAMA31_8B:
+        #     experiments.append({
+        #         "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_0.100_l_14_4FMRKTX3/",
+        #         "exp_prefix": f"llama31_8B_vocab20_hop_layers_{hop_layers}_{task_name}",
+        #         "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
+        #         "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
+        #         "task_name": task_name,
+        #     })
+
+        # # --- Vocab 50 ---
+        # for hop_layers in HOP_LAYERS_LLAMA31_8B:
+        #     experiments.append({
+        #         "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/",
+        #         "exp_prefix": f"llama31_8B_vocab50_hop_layers_{hop_layers}_{task_name}",
+        #         "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
+        #         "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
+        #         "task_name": task_name,
+        #     })
+
+        # # --- Vocab 40 16_26_no_forward_residuals_9OZ9V1TC ---
         for hop_layers in HOP_LAYERS_LLAMA31_8B:
             experiments.append({
-                "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_0.100_l_14_4FMRKTX3/",
-                "exp_prefix": f"llama31_8B_vocab20_hop_layers_{hop_layers}_{task_name}",
+                "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_forward_residuals_w_1.000_l_16_26_no_forward_residuals_9OZ9V1TC_checkpoint-40000/",
+                "exp_prefix": f"llama31_8B_vocab40_16-26_hop_layers_{hop_layers}_{task_name}",
                 "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
                 "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
                 "task_name": task_name,
             })
 
-        # --- Vocab 50 ---
-        for hop_layers in HOP_LAYERS_LLAMA31_8B:
-            experiments.append({
-                "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/",
-                "exp_prefix": f"llama31_8B_vocab50_hop_layers_{hop_layers}_{task_name}",
-                "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
-                "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
-                "task_name": task_name,
-            })
+
 
     run_explore_pruningability_experiments(experiments, **kwargs)
 
@@ -335,6 +349,9 @@ def qwen25_7b_instruct_pruningability(**kwargs):
     # openbookqa
     # python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/checkpoint-90000/llama31_8B_vocab50_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,15,16}_openbookqa_openbookqa_ppl_results.csv  --output adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/checkpoint-90000/ --max_value 1 --output_prefix openbookqa --metric_name acc_norm
 
+# Llama3.1 8B L16-L26 vocab 37
+    # Wikitext
+    # python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_llama31_8B_forward_residuals_w_1.000_l_16_26_no_forward_residuals_9OZ9V1TC_checkpoint-40000/checkpoint-40000/llama31_8B_vocab40_16-26_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,15,16}_wikitext_103_wikitext_103_ppl_results.csv --output adaptive_hcg_llama31_8B_forward_residuals_w_1.000_l_16_26_no_forward_residuals_9OZ9V1TC_checkpoint-40000/checkpoint-40000/ --max_value 60  --output_prefix wikitext
 
 
 # Llama3.1 8B instruct vocab 20

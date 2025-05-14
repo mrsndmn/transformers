@@ -89,6 +89,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
     llama_checkpoint: str = field(default='')
 
+    each_layer_pruning: bool = field(default=False)
+
     weight_decay: float = field(default=0.01)
     eval_strategy: str = field(default="steps")
     eval_steps: int = field(default=10000)
@@ -109,6 +111,10 @@ class AdaptiveTrainingArguments(TrainingArguments):
     merging_type: str = field(default="next_token_merge_mlp")
     freeze_lm_backbone: bool = field(default=False)
     bf16: bool = field(default=True)
+
+    forward_residuals: bool = field(default=False)
+    fan_in_idx:  Optional[int] = field(default=None)
+    fan_out_idx: Optional[int] = field(default=None)
 
     hcg_temperature: float = field(default=0.33)
     learnt_temperature: bool = field(default=False)
@@ -962,6 +968,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
             scale_not_pruned_gradients=training_args.scale_not_pruned_gradients,
             concrete_random_mask_proba=training_args.concrete_random_mask_proba,
             pretrain_fan_out_projection=training_args.pretrain_fan_out_projection,
+            each_layer_pruning=training_args.each_layer_pruning,
         )
 
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
@@ -986,10 +993,21 @@ def build_model(training_args: AdaptiveTrainingArguments):
     model.config.concrete_random_mask_proba = training_args.concrete_random_mask_proba
     model.config.concrete_uniform_pruning = training_args.concrete_uniform_pruning
     model.config.concrete_stop_word_pruning = training_args.concrete_stop_word_pruning
+    model.config.forward_residuals = training_args.forward_residuals
+
+    if training_args.fan_in_idx is not None:
+        model.config.fan_in_idx = training_args.fan_in_idx
+    if training_args.fan_out_idx is not None:
+        model.config.fan_out_idx = training_args.fan_out_idx
+
+    model.model.recalc_fan_in_fan_out_idx()
 
     print("model.config.concrete_random_mask_proba", model.config.concrete_random_mask_proba)
     print("model.config.concrete_uniform_pruning", model.config.concrete_uniform_pruning)
     print("model.config.concrete_stop_word_pruning", model.config.concrete_stop_word_pruning)
+    print("model.config.forward_residuals", model.config.forward_residuals)
+    print("model.config.fan_in_idx", model.config.fan_in_idx)
+    print("model.config.fan_out_idx", model.config.fan_out_idx)
 
     if training_args.freeze_lm_backbone:
         freeze_lm_backbone(model)
@@ -1066,9 +1084,9 @@ if __name__ == "__main__":
 
     hf_parser = transformers.HfArgumentParser(AdaptiveTrainingArguments)
     (training_args,) = hf_parser.parse_args_into_dataclasses()
-    
+
     model, tokenizer = build_model(training_args)
-    
+
     compute_metrics = None
     data_collator = None
 

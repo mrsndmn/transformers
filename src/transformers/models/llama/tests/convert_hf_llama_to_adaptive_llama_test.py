@@ -56,6 +56,9 @@ def test_pretrained_checkpoint_perplexity():
     adaptive_model = AdaptiveLlamaForCausalLM.from_pretrained(pretrained_checkpoint, torch_dtype=torch.float32)
     # adaptive_model = AutoModelForCausalLM.from_pretrained("HuggingFaceTB/SmolLM2-1.7B", torch_dtype=torch.float32)
 
+    adaptive_model.model.fan_in_idx = 16
+    adaptive_model.model.fan_out_idx = 16
+
     tokenizer = AutoTokenizer.from_pretrained(pretrained_checkpoint)
 
     adaptive_model.eval()
@@ -115,13 +118,13 @@ def test_pretrained_checkpoint_perplexity():
         #     i_no_cache += 16-7
 
         print(f"{i} l1 diff norm", (next_token_forward_outputs.hidden_states[i] - pretrained_outputs_no_cache.hidden_states[i_no_cache][:, -1, :]).norm(1, dim=-1))
-        assert torch.allclose(next_token_forward_outputs.hidden_states[i], pretrained_outputs_no_cache.hidden_states[i_no_cache][:, -1, :], atol=1e-3), f'hidden state {i} match'
+        assert torch.allclose(next_token_forward_outputs.hidden_states[i], pretrained_outputs_no_cache.hidden_states[i_no_cache][:, -1, :], atol=1e-5), f'hidden state {i} match'
 
     assert torch.allclose(next_token_forward_outputs.logits[:, -1], pretrained_outputs_no_cache.logits[:, -1], atol=1e-4), 'pretrained outputs loss match'
 
     print("pretrained_outputs.loss", pretrained_outputs_no_cache.loss)
     assert pretrained_outputs_no_cache.loss < 4
-    assert (pretrained_outputs_no_cache.fan_in_merging_maps[7] == 1).all()
+    # assert (pretrained_outputs_no_cache.fan_in_merging_maps[7] == 1).all()
 
 def test_finetuned_checkpoint_perplexity():
     # TODO

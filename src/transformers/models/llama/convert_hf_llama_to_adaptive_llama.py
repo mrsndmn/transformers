@@ -23,7 +23,7 @@ import torch
 
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig, LlamaConfig, LlamaForCausalLM, LlamaTokenizer, PreTrainedTokenizerFast, AutoConfig
 
-from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanInHCG
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanInHCG, AdaptiveLlamaForCausalLMWithEachLayerPruning
 from transformers.models.qwen2.modeling_adaptive_qwen2 import AdaptiveQwen2ForCausalLM
 from transformers.models.qwen2.modeling_qwen2 import Qwen2Config
 
@@ -44,11 +44,15 @@ def build_adaptive_llama_from_llama_checkpoint(
         concrete_stop_word_pruning=None,
         pretrain_fan_out_projection=False,
         hcg_fan_in_from=None,
-        adaptive_model_class=None
+        adaptive_model_class=None,
+        each_layer_pruning=False
     ):
 
     if adaptive_model_class is None:
         adaptive_model_class = AdaptiveLlamaForCausalLM
+        if each_layer_pruning:
+            adaptive_model_class = AdaptiveLlamaForCausalLMWithEachLayerPruning
+
         if "qwen" in llama_checkpoint.lower():
             adaptive_model_class = AdaptiveQwen2ForCausalLM
 

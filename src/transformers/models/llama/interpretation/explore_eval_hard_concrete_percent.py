@@ -522,7 +522,7 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Unknown model type: {last_checkpoint_path}")
 
-    model = model_class.from_pretrained(last_checkpoint_path, torch_dtype=torch.float32, device_map=device_map)
+    model = model_class.from_pretrained(last_checkpoint_path, torch_dtype=torch.bfloat16, device_map=device_map)
 
     model.eval()
 

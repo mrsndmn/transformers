@@ -15,7 +15,7 @@ def count_params(model):
 
 
 def run_generate(current_model, tokenizer, max_new_tokens=100, use_cache=True):
-    model_inputs = tokenizer([ '<|begin_of_text|> Question: Which Lloyd Webber musical premiered in the US on 10th December 1993?\nAnswer: Jurassic Earth', ], return_tensors='pt', padding=True)
+    model_inputs = tokenizer([ '<|begin_of_text|> Question: Which Lloyd Webber musical premiered in the US on 10th December 1993?', ], return_tensors='pt', padding=True)
     model_inputs = model_inputs.to(device)
 
     print('model_inputs["input_ids"].shape', model_inputs['input_ids'].shape)
@@ -25,13 +25,12 @@ def run_generate(current_model, tokenizer, max_new_tokens=100, use_cache=True):
         special_embeddings_mask[special_embeddings_mask > 1] = 0
         model_inputs['special_embeddings_mask'] = special_embeddings_mask
 
-    max_new_tokens = 100
+    max_new_tokens = 1000
     gen_params = {
         "do_sample": False,
         "min_new_tokens": max_new_tokens,
         "max_new_tokens": max_new_tokens,
         "early_stopping": True,
-        # "num_beams": 1,
         "eos_token_id": tokenizer.eos_token_id,
         "pad_token_id": tokenizer.eos_token_id,
         "forced_eos_token_id": tokenizer.eos_token_id,
@@ -45,9 +44,10 @@ def run_generate(current_model, tokenizer, max_new_tokens=100, use_cache=True):
     current_model.eval()
 
     with torch.no_grad():
+        gen_params_warmup = {**gen_params, "max_new_tokens": 10}
         out = current_model.generate(
             **model_inputs,
-            **gen_params,
+            **gen_params_warmup,
         )
         del out
 
@@ -60,16 +60,20 @@ def run_generate(current_model, tokenizer, max_new_tokens=100, use_cache=True):
 
         out = out_orig[:, start_sequence:]
 
+        generation_decode ="\n\n".join(tokenizer.batch_decode(out, skip_special_tokens=True))
+
         print("model", type(current_model))
         print("duration:", time.time() - start_time)
         print("generated sequence length:", out.shape[-1])
         print("tokens per second:", out.shape[-1] / (time.time() - start_time))
         print("generation decode:", tokenizer.batch_decode(out))
-        print("generation decode:", "\n\n".join(tokenizer.batch_decode(out, skip_special_tokens=True)))
+        print("generation decode:", generation_decode)
         print("generation decode:", "\n\n".join(tokenizer.batch_decode(out_orig, skip_special_tokens=True)))
 
         if isinstance(current_model, AdaptiveLlamaForCausalLM):
             print("pruned tokens")
+
+    return generation_decode
 
 if __name__ == "__main__":
 
@@ -115,8 +119,8 @@ if __name__ == "__main__":
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # bench_dtype = torch.float32
-    bench_dtype = torch.bfloat16
+    bench_dtype = torch.float32
+    # bench_dtype = torch.bfloat16
 
     llama_model = None
     if llama_checkpoint is not None:
@@ -159,11 +163,14 @@ if __name__ == "__main__":
             #         current_model.eval()
             #     else:
             #         current_model.train()
+            # for current_model in tqdm([model, llama_model]):
             for current_model in tqdm([model, llama_model]):
                 if current_model is None:
                     continue
 
-                run_generate(current_model, tokenizer, use_cache=True)
+                generate_cache_true = run_generate(current_model, tokenizer, use_cache=True)
+                generate_cache_false = run_generate(current_model, tokenizer, use_cache=False)
+                assert generate_cache_true == generate_cache_false
 
         else:
 
