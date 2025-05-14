@@ -1485,7 +1485,7 @@ class AdaptiveLlamaModelWithEachLayerPruning(AdaptiveLlamaPreTrainedModel):
                 hidden_states_device = hidden_states.device
                 hidden_states_fan_out = hidden_states.to(loop_down_attention_mask.device)
 
-            adaptive_up_output: AdaptiveFanOutOutput = self.fan_out_layers[self.fan_out_idx](
+            adaptive_up_output: AdaptiveFanOutOutput = self.fan_out_layers[layer_idx](
                 hidden_states_fan_out,
                 loop_down_attention_mask,
                 merged_embeddings_counts,

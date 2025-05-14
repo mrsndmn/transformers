@@ -9,7 +9,7 @@ import torch
 
 from transformers import TrainerCallback
 from transformers.models.llama.configuration_llama import LlamaConfig
-from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveLlamaModelWithEachLayerPruning
+from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveLlamaModelWithEachLayerPruning, AdaptiveLlamaModel
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 from transformers.utils import is_sagemaker_mp_enabled
@@ -90,6 +90,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     llama_checkpoint: str = field(default='')
 
     each_layer_pruning: bool = field(default=False)
+    train_after_fan_out_llm_layer: bool = field(default=False)
 
     weight_decay: float = field(default=0.01)
     eval_strategy: str = field(default="steps")
@@ -140,8 +141,6 @@ class AdaptiveTrainingArguments(TrainingArguments):
     concrete_stop_word_pruning: Optional[bool] = None
     
     scale_not_pruned_gradients: float = 0.0
-
-    single_layer_hopping: bool = False
 
     generate_merges_transform_impl: str = 'cuda_kernel'
 
@@ -887,7 +886,7 @@ class AdaptiveLlamaTrainer(Trainer):
         self.model.train()
 
 
-def freeze_lm_backbone(model: nn.Module):
+def freeze_lm_backbone(model: nn.Module, train_after_fan_out_llm_layer: bool):
     for p in model.parameters():
         p.requires_grad = False
 
@@ -902,6 +901,11 @@ def freeze_lm_backbone(model: nn.Module):
             p.requires_grad = True
 
         for p in model.model.fan_out.parameters():
+            p.requires_grad = True
+
+    if train_after_fan_out_llm_layer:
+        assert isinstance(model, AdaptiveLlamaForCausalLM), 'train_after_fan_out_llm_layer is only supported for AdaptiveLlamaForCausalLM'
+        for p in model.model.layers[model.config.fan_out_idx].parameters():
             p.requires_grad = True
 
 
@@ -1020,7 +1024,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
     print("model.config.fan_out_idx", model.config.fan_out_idx)
 
     if training_args.freeze_lm_backbone:
-        freeze_lm_backbone(model)
+        freeze_lm_backbone(model, train_after_fan_out_llm_layer=training_args.train_after_fan_out_llm_layer)
 
     # if training_args.pretrain_fan_out_projection:
     #     print("Pretrain fan out projection. Freeze Fan In parameters")
