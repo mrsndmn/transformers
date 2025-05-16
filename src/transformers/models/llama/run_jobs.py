@@ -539,7 +539,7 @@ def run_hcg_llama31_8B_hcg_each_layer(**kwargs):
         "init_hcg_a": 1.0,
 
         # Data
-        "select_train_dataset_items": 100000,
+        "select_train_dataset_items": 1000000,
         "per_device_train_batch_size": 2,
 
         # Training
@@ -583,7 +583,6 @@ def run_hcg_llama31_8B_hcg_train_after_fan_out_llm_layer(**kwargs):
         # "llama_checkpoint": "unsloth/Meta-Llama-3.1-8B",
 
         "freeze_lm_backbone": "1",
-        "init_hcg_a": 1.0,
 
         # Data
         "select_train_dataset_items": 1000000,
@@ -610,13 +609,13 @@ def run_hcg_llama31_8B_hcg_train_after_fan_out_llm_layer(**kwargs):
 
     extra_params_from_scratch = [
         (
-            "adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/checkpoint-90000", # checkpoint
+            f"{workdir_prefix}/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/checkpoint-90000", # checkpoint
             "8-21",
             '8',
             '21',
         ),
         (
-            "adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/checkpoint-90000", # checkpoint
+            f"{workdir_prefix}/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/checkpoint-90000", # checkpoint
             "8-24",
             '8',
             '24',

@@ -208,7 +208,7 @@ def plot_average_layer_change(per_token_heatmaps, output_dir, metric="cos"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--heatmap_file", type=str, required=True, help="Path to the token heatmaps file (.pt)")
-    parser.add_argument("--embeddings_file", type=str, required=True, help="Path to the token embeddings file (.pt)")
+    parser.add_argument("--embeddings_file", type=str, required=False, help="Path to the token embeddings file (.pt)")
     parser.add_argument("--tokenizer_path", type=str, required=True, help="Path to the tokenizer")
     parser.add_argument("--top_n", type=int, default=100, help="Number of top tokens to visualize in heatmap")
     parser.add_argument("--visualize_tokens", type=int, default=20, help="Number of most frequent tokens to individually visualize")
@@ -222,8 +222,6 @@ if __name__ == "__main__":
     # Load heatmap data
     logger.info(f"Loading token heatmaps from {args.heatmap_file}")
     per_token_heatmaps = torch.load(args.heatmap_file)
-
-    per_token_embeddings = torch.load(args.embeddings_file)
 
     # Create output directory
     model_name = os.path.basename(args.heatmap_file).replace("token_heatmaps_", "").replace(".pt", "")
@@ -254,7 +252,11 @@ if __name__ == "__main__":
             plot_token_heatmap(token_id, per_token_heatmaps[token_id], tokenizer, output_dir, metric)
 
     # =====
-    for token_id in tqdm(most_common_tokens, desc=f"plot_token_heatmap_by_occurrence"):
-        plot_token_heatmap_by_occurrence(token_id, per_token_embeddings[token_id], tokenizer, output_dir)
+
+    if args.embeddings_file:
+        per_token_embeddings = torch.load(args.embeddings_file)
+
+        for token_id in tqdm(most_common_tokens, desc=f"plot_token_heatmap_by_occurrence"):
+            plot_token_heatmap_by_occurrence(token_id, per_token_embeddings[token_id], tokenizer, output_dir)
 
     logger.info(f"All visualizations saved to {output_dir}")

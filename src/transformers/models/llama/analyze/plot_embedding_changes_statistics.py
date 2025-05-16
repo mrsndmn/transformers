@@ -36,7 +36,10 @@ def analyze_embedding_distances_distribution(per_token_heatmaps, output_dir, met
                 label=f'Median: {np.median(all_distances):.4f}')
     plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f"distance_distribution_{metric}.png"))
+    file_name = f"distance_distribution_{metric}.png"
+    file_path = os.path.join(output_dir, file_name)
+    plt.savefig(file_path)
+    print(f"saved to {file_path}")
     plt.close()
 
     return {
@@ -70,7 +73,10 @@ def analyze_token_consistency(per_token_heatmaps, output_dir, metric="cos"):
     sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
     plt.title(f"Spearman Correlation of {metric.upper()} Distances Between Layers")
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f"layer_correlation_{metric}.png"))
+    file_name = f"layer_correlation_{metric}.png"
+    file_path = os.path.join(output_dir, file_name)
+    plt.savefig(file_path)
+    print(f"saved to {file_path}")
     plt.close()
 
     return corr_matrix
@@ -111,7 +117,10 @@ def analyze_frequency_impact(per_token_heatmaps, output_dir, metric="cos"):
     plt.xlabel("Token Frequency")
     plt.ylabel(f"Average {metric.upper()} Distance")
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f"frequency_boxplot_{metric}.png"))
+    file_name = f"frequency_boxplot_{metric}.png"
+    file_path = os.path.join(output_dir, file_name)
+    plt.savefig(file_path)
+    print(f"saved to {file_path}")
     plt.close()
 
     return {
@@ -164,7 +173,10 @@ def identify_extreme_tokens(per_token_heatmaps, tokenizer, output_dir, metric="c
     plt.title(f"Top 20 Tokens with Highest {metric.upper()} Distances")
     plt.gca().invert_yaxis()  # To have highest at the top
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f"highest_{metric}_tokens.png"))
+    file_name = f"highest_{metric}_tokens.png"
+    file_path = os.path.join(output_dir, file_name)
+    plt.savefig(file_path)
+    print(f"saved to {file_path}")
     plt.close()
 
     plt.figure(figsize=(12, 8))
@@ -174,7 +186,10 @@ def identify_extreme_tokens(per_token_heatmaps, tokenizer, output_dir, metric="c
     plt.title(f"Top 20 Tokens with Lowest {metric.upper()} Distances")
     plt.gca().invert_yaxis()  # To have lowest at the top
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f"lowest_{metric}_tokens.png"))
+    file_name = f"lowest_{metric}_tokens.png"
+    file_path = os.path.join(output_dir, file_name)
+    plt.savefig(file_path)
+    print(f"saved to {file_path}")
     plt.close()
 
     return {
@@ -196,6 +211,8 @@ if __name__ == "__main__":
     # Load heatmap data
     logger.info(f"Loading token heatmaps from {args.heatmap_file}")
     per_token_heatmaps = torch.load(args.heatmap_file)
+
+    breakpoint()
 
     # Create output directory
     model_name = os.path.basename(args.heatmap_file).replace("token_heatmaps_", "").replace(".pt", "")

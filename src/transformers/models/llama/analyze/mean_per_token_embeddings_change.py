@@ -24,14 +24,31 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-def remove_outliers(embeddings, quantile=0.0):
+def remove_outliers(embeddings, quantile=0.0, trim_mode="both"):
     embeddings_float = embeddings.float()
-    lower_bound = torch.quantile(embeddings_float, quantile, dim=-1)
-    upper_bound = torch.quantile(embeddings_float, 1.0 - quantile, dim=-1)
+    lower_bound = torch.quantile(embeddings_float, quantile, dim=-1, keepdim=True)
+    upper_bound = torch.quantile(embeddings_float, 1.0 - quantile, dim=-1, keepdim=True)
 
-    embeddings_float[embeddings_float < lower_bound] = 0
-    embeddings_float[embeddings_float > upper_bound] = 0
+    if trim_mode == "both":
+        embeddings_float[embeddings_float < lower_bound] = 0
+        embeddings_float[embeddings_float > upper_bound] = 0
+    elif trim_mode == "middle":
+        embeddings_float[((embeddings_float > lower_bound) & (embeddings_float < upper_bound))] = 0
+    else:
+        raise ValueError(f"Invalid trim mode: {trim_mode}")
+
     return embeddings_float
+
+
+# Llama 3.1 8B q20 middle
+# python -m pdb -c continue src/transformers/models/llama/analyze/mean_per_token_embeddings_change.py --llama_checkpoint unsloth/Meta-Llama-3.1-8B  --save_embeddings --max_tokens 1000 --trim_quantile 0.2 --trim_mode middle
+
+# Llama 3.1 8B q20 both
+# python -m pdb -c continue src/transformers/models/llama/analyze/mean_per_token_embeddings_change.py --llama_checkpoint unsloth/Meta-Llama-3.1-8B  --save_embeddings --max_tokens 1000 --trim_quantile 0.2 --trim_mode both
+
+# Llama 3.1 8B q0 none
+# python -m pdb -c continue src/transformers/models/llama/analyze/mean_per_token_embeddings_change.py --llama_checkpoint unsloth/Meta-Llama-3.1-8B  --save_embeddings --max_tokens 1000 --trim_quantile 0.0 --trim_mode none
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -42,6 +59,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size for processing")
     parser.add_argument("--save_interval", type=int, default=100, help="Save intermediate results every N batches")
     parser.add_argument("--trim_quantile", type=float, default=0.0, help="Trim this quantile of outliers from each embedding before computing distances")
+    parser.add_argument("--trim_mode", type=str, default="both", help="Trim mode: both, middle")
 
     args = parser.parse_args()
     skip_layers = args.skip_layers
@@ -80,13 +98,13 @@ if __name__ == "__main__":
     checkpoint_path = os.path.join(output_dir, f"token_heatmaps_{args.llama_checkpoint.split('/')[-1]}_checkpoint.pt")
 
     # Function to trim outliers from embeddings
-    def trim_embeddings(h_i, hs_j, quantile):
+    def trim_embeddings(h_i, hs_j, quantile, trim_mode="both"):
         # if quantile <= 0 or quantile >= 0.5:
         #     return h_i, hs_j
 
         # Create a copy to avoid modifying the original tensors
-        h_i_trimmed = remove_outliers(h_i, quantile)
-        hs_j_trimmed = remove_outliers(hs_j, quantile)
+        h_i_trimmed = remove_outliers(h_i, quantile, trim_mode=trim_mode)
+        hs_j_trimmed = remove_outliers(hs_j, quantile, trim_mode=trim_mode)
 
         return h_i_trimmed, hs_j_trimmed
 
@@ -119,8 +137,6 @@ if __name__ == "__main__":
         for i, h_i in enumerate(outputs_vanilla.hidden_states[:-1]):
             h_i = h_i[:, :seq_len]
 
-            position_ids = torch.arange(0, seq_len, device=device).unsqueeze(0)
-
             if i + skip_layers >= len(outputs_vanilla.hidden_states):
                 break
 
@@ -129,7 +145,7 @@ if __name__ == "__main__":
 
             # Trim outliers from embeddings if requested
             if args.trim_quantile > 0:
-                h_i_trimmed, hs_j_trimmed = trim_embeddings(h_i, hs_j, args.trim_quantile)
+                h_i_trimmed, hs_j_trimmed = trim_embeddings(h_i, hs_j, args.trim_quantile, trim_mode=args.trim_mode)
             else:
                 h_i_trimmed, hs_j_trimmed = h_i, hs_j
 
@@ -276,7 +292,7 @@ if __name__ == "__main__":
     logger.info(f"Processed {len(per_token_heatmaps)} unique token ids")
 
     # Save the results to disk
-    output_path = os.path.join(output_dir, f"token_heatmaps_{args.llama_checkpoint.split('/')[-1]}.pt")
+    output_path = os.path.join(output_dir, f"token_heatmaps_{args.trim_mode}_q{args.trim_quantile}_{args.llama_checkpoint.split('/')[-1]}.pt")
     torch.save(per_token_heatmaps, output_path)
     logger.info(f"Saved heatmaps to {output_path}")
 
