@@ -40,6 +40,18 @@ def remove_outliers(embeddings, quantile=0.0, trim_mode="both"):
     return embeddings_float
 
 
+# Function to trim outliers from embeddings
+def trim_embeddings(h_i, hs_j, quantile, trim_mode="both"):
+    # if quantile <= 0 or quantile >= 0.5:
+    #     return h_i, hs_j
+
+    # Create a copy to avoid modifying the original tensors
+    h_i_trimmed = remove_outliers(h_i, quantile, trim_mode=trim_mode)
+    hs_j_trimmed = remove_outliers(hs_j, quantile, trim_mode=trim_mode)
+
+    return h_i_trimmed, hs_j_trimmed
+
+
 # Llama 3.1 8B q20 middle
 # python  src/transformers/models/llama/analyze/mean_per_token_embeddings_change.py --llama_checkpoint unsloth/Meta-Llama-3.1-8B  --save_embeddings --max_tokens 1000 --trim_quantile 0.2 --trim_mode middle
 
@@ -107,16 +119,6 @@ if __name__ == "__main__":
     # For intermediate savings
     checkpoint_path = os.path.join(output_dir, f"token_heatmaps_{args.llama_checkpoint.split('/')[-1]}_checkpoint.pt")
 
-    # Function to trim outliers from embeddings
-    def trim_embeddings(h_i, hs_j, quantile, trim_mode="both"):
-        # if quantile <= 0 or quantile >= 0.5:
-        #     return h_i, hs_j
-
-        # Create a copy to avoid modifying the original tensors
-        h_i_trimmed = remove_outliers(h_i, quantile, trim_mode=trim_mode)
-        hs_j_trimmed = remove_outliers(hs_j, quantile, trim_mode=trim_mode)
-
-        return h_i_trimmed, hs_j_trimmed
 
     batch_count = 0
     for batch in tqdm(wikitext_103.iter(batch_size=batch_size), total=total_batches):
