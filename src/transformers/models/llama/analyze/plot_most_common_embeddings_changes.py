@@ -26,9 +26,11 @@ if __name__ == "__main__":
     parser.add_argument("--tokenizer_path", type=str, required=True, help="Path to the tokenizer")
     parser.add_argument("--tok_k_tokens", type=int, default=10)
     parser.add_argument("--num_hop_layers", type=int, default=1)
+    parser.add_argument("--min_occurrencies", type=int, default=10)
     parser.add_argument("--max_process_occurrences", type=int, default=100)
     parser.add_argument("--suffix", type=str, default="", help="Suffix to add to the file name")
     parser.add_argument("--output_dir", type=str, default="results/most_common_tokens_occurrences", help="Output directory")
+    parser.add_argument("--least_common", type=bool, default=False, help="Least common tokens")
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -41,8 +43,9 @@ if __name__ == "__main__":
     logger.info(f"Loading embeddings from {args.embeddings_file}")
     per_token_embeddings = torch.load(args.embeddings_file, map_location=torch.device('cpu'))
 
-    most_common_tokens = sorted(per_token_embeddings.items(), key=lambda x: x[1]["count"], reverse=True)
-    most_common_tokens = [ x[0] for x in most_common_tokens[:args.tok_k_tokens]]
+    most_common_tokens = sorted(per_token_embeddings.items(), key=lambda x: x[1]["count"], reverse=not args.least_common)
+    most_common_tokens = [ x[0] for x in most_common_tokens if x[1]["count"] >= args.min_occurrencies ]
+    most_common_tokens = most_common_tokens[:args.tok_k_tokens]
 
     tokens_chars = list(map(tokenizer.decode, most_common_tokens))
     print(f"most_common_tokens: {most_common_tokens}: {tokens_chars}")
@@ -57,61 +60,65 @@ if __name__ == "__main__":
 
     metric = 'cos'
 
-    for token_id in most_common_tokens:
-        token_str = tokenizer.decode(token_id)
-        print(f"token: {token_id} ({token_str})")
+    for suffix in [ '1', '2', '3', '4' ]:
+        suffix = f"_{suffix}"
 
-        token_data = per_token_embeddings[token_id]
+        # suffix = args.suffix
+        for token_id in most_common_tokens:
+            token_str = tokenizer.decode(token_id)
+            print(f"token: {token_id} ({token_str})")
 
-        # [ num samples, num layers, embedding ]
-        random_token_embeddings = random.sample(
-            token_data["layer_embeddings"],
-            min(args.max_process_occurrences, len(token_data["layer_embeddings"]))
-        )
+            token_data = per_token_embeddings[token_id]
 
-        # Calculate correlation matrix between layers
-        layer_data = {}
-        for i in range(num_layers-1):
-            layer_data[f"Layer_{i}"] = []
+            # [ num samples, num layers, embedding ]
+            random_token_embeddings = random.sample(
+                token_data["layer_embeddings"],
+                min(args.max_process_occurrences, len(token_data["layer_embeddings"]))
+            )
 
-        for occurence_idx in range(len(random_token_embeddings)):
-            for layer_idx in range(num_layers - 1):
-                hs_i = random_token_embeddings[occurence_idx][layer_idx]
+            # Calculate correlation matrix between layers
+            layer_data = {}
+            for i in range(num_layers-1):
+                layer_data[f"Layer_{i}"] = []
 
-                hs_j = random_token_embeddings[occurence_idx][layer_idx + args.num_hop_layers]
+            for occurence_idx in range(len(random_token_embeddings)):
+                for layer_idx in range(num_layers - 1):
+                    hs_i = random_token_embeddings[occurence_idx][layer_idx]
 
-                cos_distance = norm_compute_cosine_distance(hs_i, hs_j)
-                assert metric == 'cos'
+                    hs_j = random_token_embeddings[occurence_idx][layer_idx + args.num_hop_layers]
 
-                cos_distance = cos_distance.cpu().float().numpy().item()
-                layer_data[f"Layer_{layer_idx}"].append(cos_distance)
+                    cos_distance = norm_compute_cosine_distance(hs_i, hs_j)
+                    assert metric == 'cos'
 
-        df = pd.DataFrame(layer_data)
+                    cos_distance = cos_distance.cpu().float().numpy().item()
+                    layer_data[f"Layer_{layer_idx}"].append(cos_distance)
 
-        corr_method = 'pearson'
-        corr_matrix = df.corr(method=corr_method)
+            df = pd.DataFrame(layer_data)
 
-        # Plot correlation heatmap
-        plt.figure(figsize=(12, 10))
-        sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
-        plt.title(f"{corr_method.upper()} Correlation of {metric.upper()} Distances Between Layers")
-        plt.tight_layout()
-        file_name = f"layer_correlation_{metric}_token_{token_id}{args.suffix}.png"
-        file_path = os.path.join(args.output_dir, file_name)
-        plt.savefig(file_path)
-        print(f"saved to {file_path}")
-        plt.close()
+            corr_method = 'pearson'
+            corr_matrix = df.corr(method=corr_method)
 
-        # Plot distances heatmap
-        plt.figure(figsize=(12, 10))
-        sns.heatmap(df, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
-        plt.title(f"{metric.upper()} Distances Between Layers")
-        plt.tight_layout()
-        file_name = f"layer_distances_{metric}_token_{token_id}{args.suffix}.png"
-        file_path = os.path.join(args.output_dir, file_name)
-        plt.savefig(file_path)
-        print(f"saved to {file_path}")
-        plt.close()
+            # Plot correlation heatmap
+            plt.figure(figsize=(12, 10))
+            sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
+            plt.title(f"{corr_method.upper()} Correlation of {metric.upper()} Distances Between Layers for token {token_id} ({token_str})")
+            plt.tight_layout()
+            file_name = f"layer_correlation_{metric}_token_{token_id}{suffix}.png"
+            file_path = os.path.join(args.output_dir, file_name)
+            plt.savefig(file_path)
+            print(f"saved to {file_path}")
+            plt.close()
+
+            # Plot distances heatmap
+            plt.figure(figsize=(12, 10))
+            sns.heatmap(df, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
+            plt.title(f"{metric.upper()} Distances Between Layers for token {token_id} ({token_str})")
+            plt.tight_layout()
+            file_name = f"layer_distances_{metric}_token_{token_id}{suffix}.png"
+            file_path = os.path.join(args.output_dir, file_name)
+            plt.savefig(file_path)
+            print(f"saved to {file_path}")
+            plt.close()
 
 
 
