@@ -42,6 +42,8 @@ def compute_distances(h_i, hs_j, seq_len):
     cosine_distance = norm_compute_cosine_distance(h_i, hs_j)
     cosine_distance = cosine_distance[0, :seq_len]
 
+    assert cosine_distance.shape[0] == 1
+
     l1_diff = compute_l1_distance(h_i, hs_j)
     l1_diff = l1_diff[0, :seq_len] * 10
 

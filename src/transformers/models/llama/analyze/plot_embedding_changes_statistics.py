@@ -50,30 +50,62 @@ def analyze_embedding_distances_distribution(per_token_heatmaps, output_dir, met
         "max": np.max(all_distances),
     }
 
-def analyze_token_consistency(per_token_heatmaps, output_dir, metric="cos"):
+def analyze_token_consistency(per_token_heatmaps, output_dir, metric="cos", suffix="", top_k_tokens=10, tokenizer=None):
     """Analyze the consistency of changes across tokens."""
     num_layers = len(next(iter(per_token_heatmaps.values()))[f"mean_{metric}"])
+
+    print(f"num_layers: {num_layers}")
+
+    if suffix != "":
+        suffix = "_" + suffix
 
     # Calculate correlation matrix between layers
     layer_data = {}
     for i in range(num_layers):
         layer_data[f"Layer_{i}"] = []
 
-    for token_id, data in per_token_heatmaps.items():
-        if data["count"] > 10:  # Only consider tokens with sufficient occurrences
-            distances = data[f"mean_{metric}"].cpu().numpy()
-            for i in range(num_layers):
-                layer_data[f"Layer_{i}"].append(distances[i])
+    sorted_by_counts_tokens = sorted(per_token_heatmaps.items(), key=lambda x: x[1]["count"], reverse=True)
+
+    for i, (token_id, data) in enumerate(sorted_by_counts_tokens):
+        if data["count"] < 10:  # Only consider tokens with sufficient occurrences
+            break
+
+        distances = data[f"mean_{metric}"].cpu().numpy()
+        for layer_idx in range(num_layers):
+            layer_data[f"Layer_{layer_idx}"].append(distances[layer_idx])
+
+        # if top_k_tokens > 0 and i < top_k_tokens:
+        #     current_token_layer_data = {}
+        #     for layer_idx in range(num_layers):
+        #         current_token_layer_data[f"Layer_{layer_idx}"] = [distances[layer_idx]]
+
+        #     df = pd.DataFrame(current_token_layer_data)
+        #     corr_matrix = df.corr(method='spearman')
+        #     plt.figure(figsize=(12, 10))
+        #     sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
+        #     token_str = ""
+        #     if tokenizer is not None:
+        #         token_str = tokenizer.decode([token_id])
+
+        #     plt.title(f"Spearman Correlation of {metric.upper()} Distances Between Layers for Token {token_id} [{token_str}]")
+        #     plt.tight_layout()
+        #     file_name = f"layer_correlation_{metric}_token_{token_id}{suffix}.png"
+        #     file_path = os.path.join(output_dir, file_name)
+        #     plt.savefig(file_path)
+        #     print(f"saved to {file_path}")
+        #     plt.close()
+
 
     df = pd.DataFrame(layer_data)
     corr_matrix = df.corr(method='spearman')
+    breakpoint()
 
     # Plot correlation heatmap
     plt.figure(figsize=(12, 10))
     sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
     plt.title(f"Spearman Correlation of {metric.upper()} Distances Between Layers")
     plt.tight_layout()
-    file_name = f"layer_correlation_{metric}.png"
+    file_name = f"layer_correlation_{metric}{suffix}.png"
     file_path = os.path.join(output_dir, file_name)
     plt.savefig(file_path)
     print(f"saved to {file_path}")
@@ -201,6 +233,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--heatmap_file", type=str, required=True, help="Path to the token heatmaps file (.pt)")
     parser.add_argument("--tokenizer_path", type=str, required=True, help="Path to the tokenizer")
+    parser.add_argument("--suffix", type=str, default="", help="Suffix to add to the file name")
 
     args = parser.parse_args()
 
@@ -211,8 +244,6 @@ if __name__ == "__main__":
     # Load heatmap data
     logger.info(f"Loading token heatmaps from {args.heatmap_file}")
     per_token_heatmaps = torch.load(args.heatmap_file)
-
-    breakpoint()
 
     # Create output directory
     model_name = os.path.basename(args.heatmap_file).replace("token_heatmaps_", "").replace(".pt", "")
@@ -232,7 +263,7 @@ if __name__ == "__main__":
         results[metric]["distribution"] = analyze_embedding_distances_distribution(per_token_heatmaps, output_dir, metric)
 
         # Analyze layer correlations
-        results[metric]["correlations"] = analyze_token_consistency(per_token_heatmaps, output_dir, metric)
+        results[metric]["correlations"] = analyze_token_consistency(per_token_heatmaps, output_dir, metric, suffix=args.suffix, tokenizer=tokenizer)
 
         # Analyze frequency impact
         results[metric]["frequency_impact"] = analyze_frequency_impact(per_token_heatmaps, output_dir, metric)

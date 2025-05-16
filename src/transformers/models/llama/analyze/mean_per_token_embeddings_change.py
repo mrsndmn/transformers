@@ -41,13 +41,23 @@ def remove_outliers(embeddings, quantile=0.0, trim_mode="both"):
 
 
 # Llama 3.1 8B q20 middle
-# python -m pdb -c continue src/transformers/models/llama/analyze/mean_per_token_embeddings_change.py --llama_checkpoint unsloth/Meta-Llama-3.1-8B  --save_embeddings --max_tokens 1000 --trim_quantile 0.2 --trim_mode middle
+# python  src/transformers/models/llama/analyze/mean_per_token_embeddings_change.py --llama_checkpoint unsloth/Meta-Llama-3.1-8B  --save_embeddings --max_tokens 1000 --trim_quantile 0.2 --trim_mode middle
 
 # Llama 3.1 8B q20 both
-# python -m pdb -c continue src/transformers/models/llama/analyze/mean_per_token_embeddings_change.py --llama_checkpoint unsloth/Meta-Llama-3.1-8B  --save_embeddings --max_tokens 1000 --trim_quantile 0.2 --trim_mode both
+# python  src/transformers/models/llama/analyze/mean_per_token_embeddings_change.py --llama_checkpoint unsloth/Meta-Llama-3.1-8B  --save_embeddings --max_tokens 1000 --trim_quantile 0.2 --trim_mode both
 
 # Llama 3.1 8B q0 none
-# python -m pdb -c continue src/transformers/models/llama/analyze/mean_per_token_embeddings_change.py --llama_checkpoint unsloth/Meta-Llama-3.1-8B  --save_embeddings --max_tokens 1000 --trim_quantile 0.0 --trim_mode none
+# python  src/transformers/models/llama/analyze/mean_per_token_embeddings_change.py --llama_checkpoint unsloth/Meta-Llama-3.1-8B  --save_embeddings --max_tokens 1000 --trim_quantile 0.0 --trim_mode none
+
+# Analyze
+# Llama 3.1 8B q20 middle
+# python src/transformers/models/llama/analyze/plot_embedding_changes_statistics.py --heatmap_file results/token_embeddings_change/token_heatmaps_middle_q0.2_Meta-Llama-3.1-8B.pt --tokenizer_path unsloth/Meta-Llama-3.1-8B --suffix trim_middle_q0.2_Meta-Llama-3.1-8B
+
+# Llama 3.1 8B q20 both
+# python src/transformers/models/llama/analyze/plot_embedding_changes_statistics.py --heatmap_file results/token_embeddings_change/token_heatmaps_both_q0.2_Meta-Llama-3.1-8B.pt --tokenizer_path unsloth/Meta-Llama-3.1-8B --suffix trim_both_q0.2_Meta-Llama-3.1-8B
+
+# Llama 3.1 8B q0 none
+# python src/transformers/models/llama/analyze/plot_embedding_changes_statistics.py --heatmap_file results/token_embeddings_change/token_heatmaps_none_q0.0_Meta-Llama-3.1-8B.pt --tokenizer_path unsloth/Meta-Llama-3.1-8B --suffix trim_none_q0.0_Meta-Llama-3.1-8B
 
 
 if __name__ == "__main__":
@@ -212,15 +222,6 @@ if __name__ == "__main__":
                     per_token_embeddings[token_id]["layer_embeddings"].append(token_embeddings)
                     per_token_embeddings[token_id]["count"] += 1
 
-        # Free memory
-        if args.save_embeddings:
-            del cpu_hidden_states
-        else:
-            del outputs_vanilla
-
-        model_inputs = model_inputs.to("cpu")
-        gc.collect()
-        torch.cuda.empty_cache()
 
         # Save intermediate results every N batches
         if args.save_interval > 0 and batch_count % args.save_interval == 0:
