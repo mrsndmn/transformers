@@ -60,6 +60,8 @@ if __name__ == "__main__":
 
     metric = 'cos'
 
+    assert args.suffix == ""
+
     for suffix in [ '1', '2', '3', '4' ]:
         suffix = f"_{suffix}"
 
