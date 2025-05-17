@@ -122,6 +122,8 @@ if __name__ == "__main__":
             cosine_frames = []
             l1_frames = []
 
+            occurence_frames = []
+
             for occurence_idx in range(num_occurrences):
                 occurence_diffs = []
                 for layer_idx in range(num_layers - 1):
@@ -154,6 +156,12 @@ if __name__ == "__main__":
                     sns.heatmap(occurence_diffs_cosine, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
                     plt.title(f"Pairwise Cosine Similarity Between Embeddings from different Layers. Occurence {occurence_idx}. Token {token_id} ({token_str})")
                     plt.tight_layout()
+                    
+                    # Save frame for occurrence GIF
+                    occurence_frame_path = os.path.join(temp_dir, f"occurence_frame_{occurence_idx}.png")
+                    plt.savefig(occurence_frame_path)
+                    occurence_frames.append(imageio.imread(occurence_frame_path))
+                    
                     plt.savefig(os.path.join(plots_dir, f"occurence_diffs_{occurence_idx}_{token_id}_{token_str}{suffix}.png"))
                     plt.close()
 
@@ -206,6 +214,12 @@ if __name__ == "__main__":
                 l1_gif_path = os.path.join(args.output_dir, f"layer_diff_pairwise_l1_token_{token_id}{suffix}.gif")
                 imageio.mimsave(l1_gif_path, l1_frames, duration=1.0, loop=1000)
                 print(f"Saved L1 GIF to {l1_gif_path}")
+
+            # Save occurrence GIF if frames were collected
+            if len(occurence_frames) > 0:
+                occurence_gif_path = os.path.join(args.output_dir, f"occurence_pairwise_cosine_similarity_token_{token_id}{suffix}.gif")
+                imageio.mimsave(occurence_gif_path, occurence_frames, duration=1.0, loop=1000)
+                print(f"Saved occurrence GIF to {occurence_gif_path}")
 
         # 0. Histogram of all differences
         all_diffs_v = torch.stack(all_diffs).flatten()
