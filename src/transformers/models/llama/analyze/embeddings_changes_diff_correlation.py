@@ -286,7 +286,7 @@ if __name__ == "__main__":
 
                         # Plot pairwise l1 similarity heatmap
                         plt.figure(figsize=(12, 10))
-                        sns.heatmap(occurence_diffs_l1, annot=True, cmap='coolwarm', vmax=100, fmt=".0f")
+                        sns.heatmap(occurence_diffs_l1, annot=True, cmap='coolwarm', vmin=0, vmax=100, fmt=".0f")
                         plt.title(f"Pairwise Normalized L1 Distance Between Layers Differences. Layer {layer_idx}. Token {token_id} ({token_str})")
                         plt.tight_layout()
 
