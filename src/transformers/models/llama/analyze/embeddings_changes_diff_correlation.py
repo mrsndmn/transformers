@@ -53,14 +53,19 @@ if __name__ == "__main__":
     parser.add_argument("--trim_quantile", type=float, default=0.0, help="Trim quantile")
     parser.add_argument("--trim_mode", type=str, default="both", help="Trim mode")
     parser.add_argument("--normalize_embeddings", type=bool, default=False, help="Normalize embeddings")
-    parser.add_argument("--plot_per_layer_distances", type=int, default=1, help="Plot per layer distances")
-    parser.add_argument("--plot_per_occurence_distances", type=int, default=1, help="Plot per occurence distances")
+    parser.add_argument("--plot_per_layer_distances", type=int, default=0, help="Plot per layer distances")
+    parser.add_argument("--plot_per_occurence_distances", type=int, default=0, help="Plot per occurence distances")
+    parser.add_argument("--diff_analyse", type=int, default=0, help="Analyse diffs")
+    parser.add_argument("--analyze_outliers_indices_and_per_layer_overlap", type=int, default=0, help="Analyze outliers indices and per layer overlap")
 
     args = parser.parse_args()
     plot_per_layer_distances = bool(args.plot_per_layer_distances)
     plot_per_occurence_distances = bool(args.plot_per_occurence_distances)
+    diff_analyse = bool(args.diff_analyse)
+    analyze_outliers_indices_and_per_layer_overlap = bool(args.analyze_outliers_indices_and_per_layer_overlap)
     print("plot_per_layer_distances", plot_per_layer_distances)
     print("plot_per_occurence_distances", plot_per_occurence_distances)
+    print("diff_analyse", diff_analyse)
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -139,8 +144,10 @@ if __name__ == "__main__":
                         hs_i = hs_i - hs_i.mean()
                         hs_j = hs_j - hs_j.mean()
 
-                    # hs_diff = (hs_j - hs_i).float()
-                    hs_diff = hs_j.float()
+                    if diff_analyse:
+                        hs_diff = (hs_j - hs_i).float()
+                    else:
+                        hs_diff = hs_j.float()
 
                     all_diffs.append(hs_diff)
                     layer_diffs[layer_idx].append(hs_diff)
@@ -156,53 +163,72 @@ if __name__ == "__main__":
                     sns.heatmap(occurence_diffs_cosine, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
                     plt.title(f"Pairwise Cosine Similarity Between Embeddings from different Layers. Occurence {occurence_idx}. Token {token_id} ({token_str})")
                     plt.tight_layout()
-                    
+
                     # Save frame for occurrence GIF
                     occurence_frame_path = os.path.join(temp_dir, f"occurence_frame_{occurence_idx}.png")
                     plt.savefig(occurence_frame_path)
                     occurence_frames.append(imageio.imread(occurence_frame_path))
-                    
+
                     plt.savefig(os.path.join(plots_dir, f"occurence_diffs_{occurence_idx}_{token_id}_{token_str}{suffix}.png"))
                     plt.close()
 
-            if plot_per_layer_distances:
-                for layer_idx in range(num_layers - 1):
+            if plot_per_layer_distances or analyze_outliers_indices_and_per_layer_overlap:
+
+                prev_outliers = set()
+                for layer_idx in range(num_layers-1):
                     current_layer_diffs = layer_diffs[layer_idx]
-                    # Heatmap of pairwise distances of layers differences
+                    # [ num_occurrences, hidden_size ]
                     layer_diffs_t = torch.stack(current_layer_diffs).to(torch.float64)
-                    print("occurence_diffs_t min max mean", layer_diffs_t.min(), layer_diffs_t.max(), layer_diffs_t.mean())
 
-                    print("occurence_diffs_t", layer_diffs_t.shape)
-                    occurence_diffs_cosine = pairwise_cosine_similarity(layer_diffs_t, layer_diffs_t)
-                    occurence_diffs_cosine = occurence_diffs_cosine.numpy()
+                    if analyze_outliers_indices_and_per_layer_overlap:
+                        # [ hidden_size ]
+                        layer_diffs_t_mean = layer_diffs_t.mean(dim=0)
+                        quantile = 0.1
+                        lower_bound = torch.quantile(layer_diffs_t_mean, quantile, dim=-1, keepdim=True)
+                        upper_bound = torch.quantile(layer_diffs_t_mean, 1.0 - quantile, dim=-1, keepdim=True)
 
-                    # Plot pairwise cosine similarity heatmap
-                    plt.figure(figsize=(12, 10))
-                    sns.heatmap(occurence_diffs_cosine, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
-                    plt.title(f"Pairwise Cosine Similarity Between Layers Differences. Layer {layer_idx}. Token {token_id} ({token_str})")
-                    plt.tight_layout()
+                        current_outliers = set(torch.where((layer_diffs_t_mean < lower_bound) | (layer_diffs_t_mean > upper_bound))[0].numpy().tolist())
+                        outliers_overlap = prev_outliers.intersection(current_outliers)
 
-                    # Save frame for cosine GIF
-                    cosine_frame_path = os.path.join(temp_dir, f"cosine_frame_{layer_idx}.png")
-                    plt.savefig(cosine_frame_path)
-                    cosine_frames.append(imageio.imread(cosine_frame_path))
-                    plt.close()
+                        print(f"Layer {layer_idx} outliers_overlap% {len(outliers_overlap) / len(current_outliers):.2f}")
 
-                    layer_diffs_t_norm = layer_diffs_t / layer_diffs_t.norm(2, dim=1, keepdim=True)
-                    occurence_diffs_l1 = torch.cdist(layer_diffs_t_norm, layer_diffs_t_norm, p=1)
-                    occurence_diffs_l1 = occurence_diffs_l1.numpy()
+                        prev_outliers = current_outliers
 
-                    # Plot pairwise l1 similarity heatmap
-                    plt.figure(figsize=(12, 10))
-                    sns.heatmap(occurence_diffs_l1, annot=True, cmap='coolwarm', vmax=100, fmt=".0f")
-                    plt.title(f"Pairwise Normalized L1 Distance Between Layers Differences. Layer {layer_idx}. Token {token_id} ({token_str})")
-                    plt.tight_layout()
+                    if plot_per_layer_distances:
+                        # Heatmap of pairwise distances of layers differences
+                        print("occurence_diffs_t min max mean", layer_diffs_t.min(), layer_diffs_t.max(), layer_diffs_t.mean())
 
-                    # Save frame for L1 GIF
-                    l1_frame_path = os.path.join(temp_dir, f"l1_frame_{layer_idx}.png")
-                    plt.savefig(l1_frame_path)
-                    l1_frames.append(imageio.imread(l1_frame_path))
-                    plt.close()
+                        print("occurence_diffs_t", layer_diffs_t.shape)
+                        occurence_diffs_cosine = pairwise_cosine_similarity(layer_diffs_t, layer_diffs_t)
+                        occurence_diffs_cosine = occurence_diffs_cosine.numpy()
+
+                        # Plot pairwise cosine similarity heatmap
+                        plt.figure(figsize=(12, 10))
+                        sns.heatmap(occurence_diffs_cosine, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
+                        plt.title(f"Pairwise Cosine Similarity Between Layers Differences. Layer {layer_idx}. Token {token_id} ({token_str})")
+                        plt.tight_layout()
+
+                        # Save frame for cosine GIF
+                        cosine_frame_path = os.path.join(temp_dir, f"cosine_frame_{layer_idx}.png")
+                        plt.savefig(cosine_frame_path)
+                        cosine_frames.append(imageio.imread(cosine_frame_path))
+                        plt.close()
+
+                        layer_diffs_t_norm = layer_diffs_t / layer_diffs_t.norm(2, dim=1, keepdim=True)
+                        occurence_diffs_l1 = torch.cdist(layer_diffs_t_norm, layer_diffs_t_norm, p=1)
+                        occurence_diffs_l1 = occurence_diffs_l1.numpy()
+
+                        # Plot pairwise l1 similarity heatmap
+                        plt.figure(figsize=(12, 10))
+                        sns.heatmap(occurence_diffs_l1, annot=True, cmap='coolwarm', vmax=100, fmt=".0f")
+                        plt.title(f"Pairwise Normalized L1 Distance Between Layers Differences. Layer {layer_idx}. Token {token_id} ({token_str})")
+                        plt.tight_layout()
+
+                        # Save frame for L1 GIF
+                        l1_frame_path = os.path.join(temp_dir, f"l1_frame_{layer_idx}.png")
+                        plt.savefig(l1_frame_path)
+                        l1_frames.append(imageio.imread(l1_frame_path))
+                        plt.close()
 
             # Save GIFs
 
