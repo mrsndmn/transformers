@@ -694,9 +694,27 @@ class LlamaModel(LlamaPreTrainedModel):
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
 
-        for decoder_layer in self.layers[: self.config.num_hidden_layers]:
+        for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
+
+            # print("trim embeddings!")
+            # # if True:
+            # if 12 <= layer_idx < 20:
+            #     print("trim embeddings!")
+            #     quantile = 0.05
+            #     hidden_states_q = hidden_states.float().cpu()
+            #     lower_bound = torch.quantile(hidden_states_q, quantile, dim=-1, keepdim=True)
+            #     upper_bound = torch.quantile(hidden_states_q, 1.0 - quantile, dim=-1, keepdim=True)
+            #     lower_bound = lower_bound.to(hidden_states.device)
+            #     upper_bound = upper_bound.to(hidden_states.device)
+
+            #     # middle
+            #     # hidden_states[(hidden_states > lower_bound) & (hidden_states < upper_bound)] = 0
+
+            #     # both
+            #     hidden_states[(hidden_states < lower_bound) | (hidden_states > upper_bound)] = 0
+
 
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
