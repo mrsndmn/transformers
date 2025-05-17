@@ -61,7 +61,7 @@ if __name__ == "__main__":
     logger.info(f"Loading embeddings from {args.embeddings_file}")
     per_token_embeddings = torch.load(args.embeddings_file, map_location=torch.device('cpu'))
 
-    most_common_tokens = sorted(per_token_embeddings.items(), key=lambda x: x[1]["count"])
+    most_common_tokens = sorted(per_token_embeddings.items(), key=lambda x: x[1]["count"], reverse=False)
     most_common_tokens = [ x[0] for x in most_common_tokens if x[1]["count"] >= args.min_occurrencies ]
     most_common_tokens = most_common_tokens[:args.tok_k_tokens]
 
@@ -109,6 +109,13 @@ if __name__ == "__main__":
 
         num_occurrences = len(random_token_embeddings)
 
+        overall_additive_l1_dist = []
+        overall_additive_cosine_sim = []
+        overall_noop_l1_dist = []
+        overall_noop_cosine_sim = []
+        overall_scale_l1_dist = []
+        overall_scale_cosine_sim = []
+
         # Create temporary directory for storing frames
         with tempfile.TemporaryDirectory() as temp_dir:
             cosine_frames = []
@@ -122,10 +129,28 @@ if __name__ == "__main__":
                 hs_is = torch.stack([ x[layer_idx] for x in random_token_embeddings]).float()
                 hs_js = torch.stack([ x[layer_idx + args.num_hop_layers] for x in random_token_embeddings]).float()
 
+
+                #
+                # Noop
+                #
+                # [num_occurrences, num_occurrences]
+                noop_cosine_sim = pairwise_cosine_similarity(hs_js, hs_is)
+                noop_l1_dist = torch.cdist(hs_js, hs_is, p=1)
+
+                # plot heatmaps
+                # file_name = f"noop_cosine_sim_layer_{token_id}_{layer_idx}.png"
+                # file_path = os.path.join(plots_dir, file_name)
+                # plot_heatmap(noop_cosine_sim, file_path, f"Cosine Similarity Between Layers Differences. Noop. Layer {layer_idx}. Token {token_id} ({token_str})")
+
+                # file_name = f"noop_l1_dist_layer_{token_id}_{layer_idx}.png"
+                # file_path = os.path.join(plots_dir, file_name)
+                # plot_heatmap(noop_l1_dist, file_path, f"L1 Distance Between Layers Differences. Noop. Layer {layer_idx}. Token {token_id} ({token_str})", vmax=5000)
+
+
                 #
                 # Mean additive approximation
                 #
-                diff_mean_approx = hs_js.mean(dim=0) - hs_is.mean(dim=0)
+                diff_mean_approx = (hs_js - hs_is).mean(dim=0)
                 hs_js_hat = hs_is + diff_mean_approx
 
                 # [num_occurrences, num_occurrences]
@@ -133,49 +158,56 @@ if __name__ == "__main__":
                 l1_dist = torch.cdist(hs_js_hat, hs_js, p=1)
 
                 # plot heatmaps
-                file_name = f"cosine_sim_layer_{token_id}_{layer_idx}.png"
-                file_path = os.path.join(plots_dir, file_name)
-                plot_heatmap(cosine_sim, file_path, f"Cosine Similarity Between Layers Differences. Layer {layer_idx}. Token {token_id} ({token_str})")
+                # file_name = f"cosine_sim_layer_{token_id}_{layer_idx}.png"
+                # file_path = os.path.join(plots_dir, file_name)
+                # plot_heatmap(cosine_sim, file_path, f"Cosine Similarity Between Layers Differences. Layer {layer_idx}. Token {token_id} ({token_str})")
 
-                file_name = f"l1_dist_layer_{token_id}_{layer_idx}.png"
-                file_path = os.path.join(plots_dir, file_name)
-                plot_heatmap(l1_dist, file_path, f"L1 Distance Between Layers Differences. Layer {layer_idx}. Token {token_id} ({token_str})")
+                # file_name = f"l1_dist_layer_{token_id}_{layer_idx}.png"
+                # file_path = os.path.join(plots_dir, file_name)
+                # plot_heatmap(l1_dist, file_path, f"L1 Distance Between Layers Differences. Layer {layer_idx}. Token {token_id} ({token_str})", vmax=5000)
 
                 #
                 # Scale multiplicative approximation
                 #
-                scale_approx =  hs_js.mean(dim=0) / hs_is.mean(dim=0)
-                hs_js_hat = hs_is * scale_approx
+                scale_approx =  ((hs_js - hs_is) / hs_is).mean(dim=0).nan_to_num(0, 0, 0)
+                hs_js_hat = hs_is + (hs_is * scale_approx)
 
                 # [num_occurrences, num_occurrences]
                 scale_cosine_sim = pairwise_cosine_similarity(hs_js_hat, hs_js)
                 scale_l1_dist = torch.cdist(hs_js_hat, hs_js, p=1)
 
                 # plot heatmaps
-                file_name = f"cosine_sim_layer_{token_id}_{layer_idx}_scale_multiplicative.png"
-                file_path = os.path.join(plots_dir, file_name)
-                plot_heatmap(scale_cosine_sim, file_path, f"Cosine Similarity Between Layers Differences. Scale Multiplicative Approximation. Layer {layer_idx}. Token {token_id} ({token_str})")
+                # file_name = f"cosine_sim_layer_{token_id}_{layer_idx}_scale_multiplicative.png"
+                # file_path = os.path.join(plots_dir, file_name)
+                # plot_heatmap(scale_cosine_sim, file_path, f"Cosine Similarity Between Layers Differences. Scale Multiplicative Approximation. Layer {layer_idx}. Token {token_id} ({token_str})")
 
-                file_name = f"l1_dist_layer_{token_id}_{layer_idx}_scale_multiplicative.png"
-                file_path = os.path.join(plots_dir, file_name)
-                plot_heatmap(scale_l1_dist, file_path, f"L1 Distance Between Layers Differences. Scale Multiplicative Approximation. Layer {layer_idx}. Token {token_id} ({token_str})")
+                # file_name = f"l1_dist_layer_{token_id}_{layer_idx}_scale_multiplicative.png"
+                # file_path = os.path.join(plots_dir, file_name)
+                # plot_heatmap(scale_l1_dist, file_path, f"L1 Distance Between Layers Differences. Scale Multiplicative Approximation. Layer {layer_idx}. Token {token_id} ({token_str})", vmax=5000)
 
                 # ================================
-                # Overall L1 distance
+                # Overall
                 # ================================
-                plt.plot(scale_l1_dist.mean(-1), label="Scale L1 Distance")
-                plt.plot(l1_dist.mean(-1), label="Additive L1 Distance")
-                plt.legend()
-                file_path = os.path.join(plots_dir, f"l1_dist_layer_{token_id}_{layer_idx}_scale_multiplicative.png")
-                plt.savefig(file_path)
-                print(f"saved {file_path}")
-                plt.close()
 
-                # Overall cosine similarity
-                plt.plot(scale_cosine_sim.mean(-1), label="Scale Cosine Similarity")
-                plt.plot(cosine_sim.mean(-1), label="Additive Cosine Similarity")
-                plt.legend()
-                file_path = os.path.join(plots_dir, f"cosine_sim_layer_{token_id}_{layer_idx}_scale_multiplicative.png")
-                plt.savefig(file_path)
-                print(f"saved {file_path}")
-                plt.close()
+                overall_additive_l1_dist.append(l1_dist.mean(-1))
+                overall_additive_cosine_sim.append(cosine_sim.mean(-1))
+                overall_noop_l1_dist.append(noop_l1_dist.mean(-1))
+                overall_noop_cosine_sim.append(noop_cosine_sim.mean(-1))
+                overall_scale_l1_dist.append(scale_l1_dist.mean(-1))
+                overall_scale_cosine_sim.append(scale_cosine_sim.mean(-1))
+
+        # ================================
+        # Plot overall
+        # ================================
+        file_path = os.path.join(plots_dir, f"overall_additive_l1_dist_layer_{token_id}.png")
+        plot_heatmap(overall_additive_l1_dist, file_path, f"Overall L1 Distance. Additive Approximation. Token {token_id} ({token_str})", vmax=5000)
+        file_path = os.path.join(plots_dir, f"overall_additive_cosine_sim_layer_{token_id}.png")
+        plot_heatmap(overall_additive_cosine_sim, file_path, f"Overall Cosine Similarity. Additive Approximation. Token {token_id} ({token_str})", vmin=0, vmax=2)
+        file_path = os.path.join(plots_dir, f"overall_noop_l1_dist_layer_{token_id}.png")
+        plot_heatmap(overall_noop_l1_dist, file_path, f"Overall L1 Distance. Noop. Token {token_id} ({token_str})", vmax=5000)
+        file_path = os.path.join(plots_dir, f"overall_noop_cosine_sim_layer_{token_id}.png")
+        plot_heatmap(overall_noop_cosine_sim, file_path, f"Overall Cosine Similarity. Noop. Token {token_id} ({token_str})", vmin=0, vmax=2)
+        file_path = os.path.join(plots_dir, f"overall_scale_l1_dist_layer_{token_id}.png")
+        plot_heatmap(overall_scale_l1_dist, file_path, f"Overall L1 Distance. Scale Multiplicative Approximation. Token {token_id} ({token_str})", vmax=5000)
+        file_path = os.path.join(plots_dir, f"overall_scale_cosine_sim_layer_{token_id}.png")
+        plot_heatmap(overall_scale_cosine_sim, file_path, f"Overall Cosine Similarity. Scale Multiplicative Approximation. Token {token_id} ({token_str})", vmin=0, vmax=2)
