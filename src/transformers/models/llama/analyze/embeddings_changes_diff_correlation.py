@@ -57,6 +57,7 @@ if __name__ == "__main__":
     parser.add_argument("--plot_per_occurence_distances", type=int, default=0, help="Plot per occurence distances")
     parser.add_argument("--diff_analyse", type=int, default=0, help="Analyse diffs")
     parser.add_argument("--analyze_outliers_indices_and_per_layer_overlap", type=int, default=0, help="Analyze outliers indices and per layer overlap")
+    parser.add_argument("--analyze_outliers_indices_and_per_layer_overlap_quantile", type=float, default=0.1, help="Analyze outliers indices and per layer overlap quantile")
 
     args = parser.parse_args()
     plot_per_layer_distances = bool(args.plot_per_layer_distances)
@@ -98,6 +99,9 @@ if __name__ == "__main__":
     # Create output directory for plots
     plots_dir = os.path.join(args.output_dir, "plots")
     os.makedirs(plots_dir, exist_ok=True)
+
+    # Dictionary to store outliers overlap data for plotting
+    outliers_overlap_data = {}
 
     for token_id in most_common_tokens:
         token_str = tokenizer.decode(token_id)
@@ -183,14 +187,23 @@ if __name__ == "__main__":
                     if analyze_outliers_indices_and_per_layer_overlap:
                         # [ hidden_size ]
                         layer_diffs_t_mean = layer_diffs_t.mean(dim=0)
-                        quantile = 0.1
+                        quantile = args.analyze_outliers_indices_and_per_layer_overlap_quantile
+                        assert quantile > 0 and quantile < 0.5
+
                         lower_bound = torch.quantile(layer_diffs_t_mean, quantile, dim=-1, keepdim=True)
                         upper_bound = torch.quantile(layer_diffs_t_mean, 1.0 - quantile, dim=-1, keepdim=True)
+                        print(f"Layer {layer_idx} lower_bound {lower_bound} upper_bound {upper_bound}")
 
                         current_outliers = set(torch.where((layer_diffs_t_mean < lower_bound) | (layer_diffs_t_mean > upper_bound))[0].numpy().tolist())
                         outliers_overlap = prev_outliers.intersection(current_outliers)
 
-                        print(f"Layer {layer_idx} outliers_overlap% {len(outliers_overlap) / len(current_outliers):.2f}")
+                        outliers_overlap_percent = len(outliers_overlap) / len(current_outliers)
+                        print(f"Layer {layer_idx} outliers_overlap% {outliers_overlap_percent:.2f}")
+
+                        # Store data for plotting
+                        if token_str not in outliers_overlap_data:
+                            outliers_overlap_data[token_str] = []
+                        outliers_overlap_data[token_str].append(outliers_overlap_percent)
 
                         prev_outliers = current_outliers
 
@@ -354,3 +367,22 @@ if __name__ == "__main__":
         file_name = f'analysis_results_{token_str}{suffix}.pt'
         torch.save(results, os.path.join(args.output_dir, file_name))
         print(f"saved to {os.path.join(args.output_dir, file_name)}")
+
+    # Plot outliers overlap percentage for all tokens
+    if analyze_outliers_indices_and_per_layer_overlap and outliers_overlap_data:
+        plt.figure(figsize=(12, 8))
+        for token_str, overlap_percents in outliers_overlap_data.items():
+            plt.plot(range(len(overlap_percents)), overlap_percents, marker='o', label=token_str)
+        
+        plt.title(f'Outliers Overlap Percentage Across Layers. Quantile {args.analyze_outliers_indices_and_per_layer_overlap_quantile}')
+        plt.xlabel('Layer Index')
+        plt.ylabel('Outliers Overlap Percentage')
+        plt.grid(True)
+        plt.ylim(0, 1)
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.tight_layout()
+        
+        file_name = f'outliers_overlap_percentage_quantile_q{args.analyze_outliers_indices_and_per_layer_overlap_quantile}{suffix}.png'
+        plt.savefig(os.path.join(plots_dir, file_name))
+        print(f"saved to {os.path.join(plots_dir, file_name)}")
+        plt.close()
