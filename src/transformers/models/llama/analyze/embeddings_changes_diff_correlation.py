@@ -58,12 +58,14 @@ if __name__ == "__main__":
     parser.add_argument("--diff_analyse", type=int, default=0, help="Analyse diffs")
     parser.add_argument("--analyze_outliers_indices_and_per_layer_overlap", type=int, default=0, help="Analyze outliers indices and per layer overlap")
     parser.add_argument("--analyze_outliers_indices_and_per_layer_overlap_quantile", type=float, default=0.1, help="Analyze outliers indices and per layer overlap quantile")
+    parser.add_argument("--analyze_outliers_between_occurrences", type=int, default=0, help="Analyze outliers overlap between different occurrences")
 
     args = parser.parse_args()
     plot_per_layer_distances = bool(args.plot_per_layer_distances)
     plot_per_occurence_distances = bool(args.plot_per_occurence_distances)
     diff_analyse = bool(args.diff_analyse)
     analyze_outliers_indices_and_per_layer_overlap = bool(args.analyze_outliers_indices_and_per_layer_overlap)
+    analyze_outliers_between_occurrences = bool(args.analyze_outliers_between_occurrences)
     print("plot_per_layer_distances", plot_per_layer_distances)
     print("plot_per_occurence_distances", plot_per_occurence_distances)
     print("diff_analyse", diff_analyse)
@@ -156,6 +158,57 @@ if __name__ == "__main__":
                     all_diffs.append(hs_diff)
                     layer_diffs[layer_idx].append(hs_diff)
                     occurence_diffs.append(hs_diff)
+
+                if analyze_outliers_between_occurrences:
+                    # For each layer, compute outliers for current occurrence
+
+                    plt.figure(figsize=(12, 8))
+
+                    for layer_idx in range(num_layers):
+                        current_embeddings = random_token_embeddings[occurence_idx][layer_idx].float()
+
+                        quantile = args.analyze_outliers_indices_and_per_layer_overlap_quantile
+                        lower_bound = torch.quantile(current_embeddings, quantile, dim=-1, keepdim=True)
+                        upper_bound = torch.quantile(current_embeddings, 1.0 - quantile, dim=-1, keepdim=True)
+
+
+                        # Find outliers for current occurrence
+                        current_outliers = set(torch.where((current_embeddings < lower_bound) |
+                                                         (current_embeddings > upper_bound))[0].numpy().tolist())
+
+                        # Compute overlap with all other occurrences
+                        overlaps = []
+                        layers_indexes = list(range(occurence_idx+1, num_occurrences))
+                        for other_occurence_idx in layers_indexes:
+
+                            other_embeddings = random_token_embeddings[other_occurence_idx][layer_idx].float()
+                            other_lower_bound = torch.quantile(other_embeddings, quantile, dim=-1, keepdim=True)
+                            other_upper_bound = torch.quantile(other_embeddings, 1.0 - quantile, dim=-1, keepdim=True)
+
+                            other_outliers = set(torch.where((other_embeddings < other_lower_bound) |
+                                                            (other_embeddings > other_upper_bound))[0].numpy().tolist())
+
+                            overlap = len(current_outliers.intersection(other_outliers)) / len(current_outliers)
+                            overlaps.append(overlap)
+
+                        plt.plot(layers_indexes,
+                                overlaps,
+                                marker='o',
+                                label=f'Layer {layer_idx}')
+
+                    plt.title(f'Outliers Overlap Between Occurrences for Token "{token_str}". Quantile {args.analyze_outliers_indices_and_per_layer_overlap_quantile}')
+                    plt.xlabel('Occurrence Index')
+                    plt.ylabel('Average Outliers Overlap with Other Occurrences')
+                    plt.grid(True)
+                    plt.ylim(0, 1)
+                    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+                    plt.tight_layout()
+
+                    file_name = f'occurrence_outliers_overlap_token_occurence_{occurence_idx}_tok_{token_id}_{token_str}_quantile_q{args.analyze_outliers_indices_and_per_layer_overlap_quantile}{suffix}.png'
+                    plt.savefig(os.path.join(plots_dir, file_name))
+                    print(f"saved to {os.path.join(plots_dir, file_name)}")
+                    plt.close()
+
 
                 if plot_per_occurence_distances:
                     occurence_diffs_t = torch.stack(occurence_diffs).to(torch.float64)
@@ -340,7 +393,7 @@ if __name__ == "__main__":
         plt.figure(figsize=(12, 8))
         x = range(num_layers-1)
         plt.plot(x, layer_stats['mean_magnitude'], 'b-', label='Mean')
-        plt.fill_between(x, 
+        plt.fill_between(x,
                         np.array(layer_stats['mean_magnitude']) - np.array(layer_stats['std_magnitude']),
                         np.array(layer_stats['mean_magnitude']) + np.array(layer_stats['std_magnitude']),
                         alpha=0.2)
@@ -363,7 +416,7 @@ if __name__ == "__main__":
             'layer_stats': layer_stats,
             'pca_explained_variance': pca.explained_variance_ratio_
         }
-        
+
         file_name = f'analysis_results_{token_str}{suffix}.pt'
         torch.save(results, os.path.join(args.output_dir, file_name))
         print(f"saved to {os.path.join(args.output_dir, file_name)}")
@@ -373,7 +426,7 @@ if __name__ == "__main__":
         plt.figure(figsize=(12, 8))
         for token_str, overlap_percents in outliers_overlap_data.items():
             plt.plot(range(len(overlap_percents)), overlap_percents, marker='o', label=token_str)
-        
+
         plt.title(f'Outliers Overlap Percentage Across Layers. Quantile {args.analyze_outliers_indices_and_per_layer_overlap_quantile}')
         plt.xlabel('Layer Index')
         plt.ylabel('Outliers Overlap Percentage')
@@ -381,7 +434,7 @@ if __name__ == "__main__":
         plt.ylim(0, 1)
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.tight_layout()
-        
+
         file_name = f'outliers_overlap_percentage_quantile_q{args.analyze_outliers_indices_and_per_layer_overlap_quantile}{suffix}.png'
         plt.savefig(os.path.join(plots_dir, file_name))
         print(f"saved to {os.path.join(plots_dir, file_name)}")
