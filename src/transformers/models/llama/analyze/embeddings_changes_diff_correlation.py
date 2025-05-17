@@ -7,7 +7,7 @@ import logging
 from scipy.stats import spearmanr
 import pandas as pd
 import seaborn as sns
-import imageio
+import imageio.v2 as imageio
 import tempfile
 
 import random
@@ -53,8 +53,11 @@ if __name__ == "__main__":
     parser.add_argument("--trim_quantile", type=float, default=0.0, help="Trim quantile")
     parser.add_argument("--trim_mode", type=str, default="both", help="Trim mode")
     parser.add_argument("--normalize_embeddings", type=bool, default=False, help="Normalize embeddings")
+    parser.add_argument("--plot_per_layer_distances", type=int, default=1, help="Plot per layer distances")
 
     args = parser.parse_args()
+    plot_per_layer_distances = bool(args.plot_per_layer_distances)
+    print("plot_per_layer_distances", plot_per_layer_distances)
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -136,52 +139,69 @@ if __name__ == "__main__":
                     all_diffs.append(hs_diff)
                     layer_diffs[layer_idx].append(hs_diff)
                     occurence_diffs.append(hs_diff)
-            
-            for layer_idx in range(num_layers - 1):
-                current_layer_diffs = layer_diffs[layer_idx]
-                # Heatmap of pairwise distances of layers differences
-                layer_diffs_t = torch.stack(current_layer_diffs).to(torch.float64)
-                print("occurence_diffs_t min max mean", layer_diffs_t.min(), layer_diffs_t.max(), layer_diffs_t.mean())
 
-                print("occurence_diffs_t", layer_diffs_t.shape)
-                occurence_diffs_cosine = pairwise_cosine_similarity(layer_diffs_t, layer_diffs_t)
-                occurence_diffs_cosine = occurence_diffs_cosine.numpy()
+            if plot_per_layer_distances:
+                for layer_idx in range(num_layers - 1):
+                    current_layer_diffs = layer_diffs[layer_idx]
+                    # Heatmap of pairwise distances of layers differences
+                    layer_diffs_t = torch.stack(current_layer_diffs).to(torch.float64)
+                    print("occurence_diffs_t min max mean", layer_diffs_t.min(), layer_diffs_t.max(), layer_diffs_t.mean())
 
-                # Plot pairwise cosine similarity heatmap
-                plt.figure(figsize=(12, 10))
-                sns.heatmap(occurence_diffs_cosine, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
-                plt.title(f"Pairwise Cosine Similarity Between Layers Differences. Layer {layer_idx}. Token {token_id} ({token_str})")
-                plt.tight_layout()
-                
-                # Save frame for cosine GIF
-                cosine_frame_path = os.path.join(temp_dir, f"cosine_frame_{layer_idx}.png")
-                plt.savefig(cosine_frame_path)
-                cosine_frames.append(imageio.imread(cosine_frame_path))
-                plt.close()
+                    print("occurence_diffs_t", layer_diffs_t.shape)
+                    occurence_diffs_cosine = pairwise_cosine_similarity(layer_diffs_t, layer_diffs_t)
+                    occurence_diffs_cosine = occurence_diffs_cosine.numpy()
 
-                occurence_diffs_l1 = torch.cdist(layer_diffs_t, layer_diffs_t, p=1)
-                occurence_diffs_l1 = occurence_diffs_l1.numpy()
+                    # Plot pairwise cosine similarity heatmap
+                    plt.figure(figsize=(12, 10))
+                    sns.heatmap(occurence_diffs_cosine, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
+                    plt.title(f"Pairwise Cosine Similarity Between Layers Differences. Layer {layer_idx}. Token {token_id} ({token_str})")
+                    plt.tight_layout()
 
-                # Plot pairwise l1 similarity heatmap
-                plt.figure(figsize=(12, 10))
-                sns.heatmap(occurence_diffs_l1, annot=True, cmap='coolwarm', vmax=100, fmt=".0f")
-                plt.title(f"Pairwise L1 Distance Between Layers Differences. Layer {layer_idx}. Token {token_id} ({token_str})")
-                plt.tight_layout()
-                
-                # Save frame for L1 GIF
-                l1_frame_path = os.path.join(temp_dir, f"l1_frame_{layer_idx}.png")
-                plt.savefig(l1_frame_path)
-                l1_frames.append(imageio.imread(l1_frame_path))
-                plt.close()
+                    # Save frame for cosine GIF
+                    cosine_frame_path = os.path.join(temp_dir, f"cosine_frame_{layer_idx}.png")
+                    plt.savefig(cosine_frame_path)
+                    cosine_frames.append(imageio.imread(cosine_frame_path))
+                    plt.close()
+
+                    layer_diffs_t_norm = layer_diffs_t / layer_diffs_t.norm(2, dim=1, keepdim=True)
+                    occurence_diffs_l1 = torch.cdist(layer_diffs_t_norm, layer_diffs_t_norm, p=1)
+                    occurence_diffs_l1 = occurence_diffs_l1.numpy()
+
+                    # Plot pairwise l1 similarity heatmap
+                    plt.figure(figsize=(12, 10))
+                    sns.heatmap(occurence_diffs_l1, annot=True, cmap='coolwarm', vmax=100, fmt=".0f")
+                    plt.title(f"Pairwise Normalized L1 Distance Between Layers Differences. Layer {layer_idx}. Token {token_id} ({token_str})")
+                    plt.tight_layout()
+
+                    # Save frame for L1 GIF
+                    l1_frame_path = os.path.join(temp_dir, f"l1_frame_{layer_idx}.png")
+                    plt.savefig(l1_frame_path)
+                    l1_frames.append(imageio.imread(l1_frame_path))
+                    plt.close()
 
             # Save GIFs
-            cosine_gif_path = os.path.join(args.output_dir, f"layer_diff_pairwise_cosine_similarity_token_{token_id}{suffix}.gif")
-            l1_gif_path = os.path.join(args.output_dir, f"layer_diff_pairwise_l1_token_{token_id}{suffix}.gif")
-            
-            imageio.mimsave(cosine_gif_path, cosine_frames, duration=1.0)
-            imageio.mimsave(l1_gif_path, l1_frames, duration=1.0)
-            print(f"Saved cosine GIF to {cosine_gif_path}")
-            print(f"Saved L1 GIF to {l1_gif_path}")
+
+            if len(cosine_frames) > 0:
+                cosine_gif_path = os.path.join(args.output_dir, f"layer_diff_pairwise_cosine_similarity_token_{token_id}{suffix}.gif")
+                imageio.mimsave(cosine_gif_path, cosine_frames, duration=1.0, loop=1000)
+                print(f"Saved cosine GIF to {cosine_gif_path}")
+            if len(l1_frames) > 0:
+                l1_gif_path = os.path.join(args.output_dir, f"layer_diff_pairwise_l1_token_{token_id}{suffix}.gif")
+                imageio.mimsave(l1_gif_path, l1_frames, duration=1.0, loop=1000)
+                print(f"Saved L1 GIF to {l1_gif_path}")
+
+        # 0. Histogram of all differences
+        all_diffs_v = torch.stack(all_diffs).flatten()
+        plt.figure(figsize=(10, 6))
+        plt.hist(all_diffs_v, bins=100)
+        plt.title(f'Distribution of All Differences for token "{token_str}"')
+        plt.xlabel('Difference')
+        plt.ylabel('Frequency')
+        file_name = f'all_diffs_hist_{token_id}_{token_str}{suffix}.png'
+        plt.savefig(os.path.join(plots_dir, file_name))
+        print(f"saved to {os.path.join(plots_dir, file_name)}")
+        plt.close()
+
 
         # Convert to numpy arrays for analysis
         all_diffs = torch.stack(all_diffs).numpy()
