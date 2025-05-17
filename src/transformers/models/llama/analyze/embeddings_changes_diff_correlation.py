@@ -54,10 +54,13 @@ if __name__ == "__main__":
     parser.add_argument("--trim_mode", type=str, default="both", help="Trim mode")
     parser.add_argument("--normalize_embeddings", type=bool, default=False, help="Normalize embeddings")
     parser.add_argument("--plot_per_layer_distances", type=int, default=1, help="Plot per layer distances")
+    parser.add_argument("--plot_per_occurence_distances", type=int, default=1, help="Plot per occurence distances")
 
     args = parser.parse_args()
     plot_per_layer_distances = bool(args.plot_per_layer_distances)
+    plot_per_occurence_distances = bool(args.plot_per_occurence_distances)
     print("plot_per_layer_distances", plot_per_layer_distances)
+    print("plot_per_occurence_distances", plot_per_occurence_distances)
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -134,11 +137,25 @@ if __name__ == "__main__":
                         hs_i = hs_i - hs_i.mean()
                         hs_j = hs_j - hs_j.mean()
 
-                    hs_diff = (hs_j - hs_i).float()
+                    # hs_diff = (hs_j - hs_i).float()
+                    hs_diff = hs_j.float()
 
                     all_diffs.append(hs_diff)
                     layer_diffs[layer_idx].append(hs_diff)
                     occurence_diffs.append(hs_diff)
+
+                if plot_per_occurence_distances:
+                    occurence_diffs_t = torch.stack(occurence_diffs).to(torch.float64)
+
+                    occurence_diffs_cosine = pairwise_cosine_similarity(occurence_diffs_t, occurence_diffs_t)
+                    occurence_diffs_cosine = occurence_diffs_cosine.numpy()
+
+                    plt.figure(figsize=(12, 10))
+                    sns.heatmap(occurence_diffs_cosine, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
+                    plt.title(f"Pairwise Cosine Similarity Between Embeddings from different Layers. Occurence {occurence_idx}. Token {token_id} ({token_str})")
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(plots_dir, f"occurence_diffs_{occurence_idx}_{token_id}_{token_str}{suffix}.png"))
+                    plt.close()
 
             if plot_per_layer_distances:
                 for layer_idx in range(num_layers - 1):
