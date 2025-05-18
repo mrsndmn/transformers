@@ -537,12 +537,15 @@ class NoopAdaptiveFanOut(nn.Module):
 
 
 class AdaptiveFanOutHCG(nn.Module):
-    def __init__(self, config: LlamaConfig):
+    def __init__(self, config: LlamaConfig, mlp_class=LlamaMLP):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
         new_mlp_hidden_size = config.hidden_size // 16
-        self.fan_out_mlp = LlamaMLP(config, intermediate_size=new_mlp_hidden_size)
+        self.fan_out_mlp = mlp_class(config, intermediate_size=new_mlp_hidden_size)
+
+        # if config.fan_out_embeddings:
+        #     self.additive_embeddings = nn.Embedding(config.vocab_size, config.hidden_size)
 
         print("Fan out projection", config.fan_out_projection)
 

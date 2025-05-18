@@ -971,6 +971,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
             dummy_adaptive_fan_in = list(reversed(dummy_adaptive_fan_in))
 
         print("dummy_adaptive_fan_in", dummy_adaptive_fan_in)
+        print("training_args.fan_out_projection", training_args.fan_out_projection)
 
         assert len(dummy_adaptive_fan_in) == num_layers_half
         model = build_adaptive_llama_from_llama_checkpoint(
@@ -1017,6 +1018,11 @@ def build_model(training_args: AdaptiveTrainingArguments):
         model.config.fan_out_idx = training_args.fan_out_idx
 
     model.model.recalc_fan_in_fan_out_idx()
+
+    print("model.config.fan_in_idx", model.config.fan_in_idx)
+    print("model.config.fan_out_idx", model.config.fan_out_idx)
+    print("\n\n")
+
 
     print("model.config.concrete_random_mask_proba", model.config.concrete_random_mask_proba)
     print("model.config.concrete_uniform_pruning", model.config.concrete_uniform_pruning)

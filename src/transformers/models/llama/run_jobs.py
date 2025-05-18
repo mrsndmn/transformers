@@ -399,43 +399,53 @@ def run_hcg_llama31_8B_hcg(**kwargs):
         "init_hcg_a": 1.0,
 
         # Data
-        "select_train_dataset_items": 1000000,
+        "select_train_dataset_items": 500000,
         "per_device_train_batch_size": 4,
 
         # Training
-        "learning_rate": 0.04,
-        "hcg_learning_rate": 0.04,
+        "learning_rate": 0.08,
+        "hcg_learning_rate": 0.08,
         "lr_scheduler_type": "constant_with_warmup",
 
         # "hcg_loss_weight": # will be overriden in cycle later,
         "max_grad_norm": 0,
 
-        'instance_type': 'a100.2gpu',
+        'instance_type': 'a100.1gpu',
         'num_train_epochs': 1,
-        "hcg_loss_weight": '1.0',
 
         # Training type
         "pretrain_fan_out_projection": "0",
+        "fan_out_projection": "0",
     }
 
     hcg_experiments = []
 
     extra_params_from_scratch = [
         (
-            "14",
-            "1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1",
+            "6-21",
+            "6",
+            "21",
         ),
     ]
 
-    for suffix, in_layers_str in extra_params_from_scratch:
-        exp_config = {
-            "dummy_adaptive_fan_in_layers_str": in_layers_str,
-            **common_params,
-        }
-        weight = exp_config['hcg_loss_weight']
-        exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{float(weight):.3f}_l_{suffix}"
+    for hcg_loss_weight in [ 1.0 ]:
+    # for hcg_loss_weight in [ 0.1, 1.0 ]:
+        for suffix, fan_in_idx, fan_out_idx in extra_params_from_scratch:
+            in_layers_str = "1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1"
+            exp_config = {
+                "model_type": "pretrained_checkpoint",
+                "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_llama31_8B_w_1.000_l_6-21_CC6MEIWZ/checkpoint-10000/",
 
-        hcg_experiments.append(exp_config)
+
+                "dummy_adaptive_fan_in_layers_str": in_layers_str,
+                "fan_in_idx": fan_in_idx,
+                "fan_out_idx": fan_out_idx,
+                "hcg_loss_weight": hcg_loss_weight,
+                **common_params,
+            }
+            exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{float(hcg_loss_weight):.3f}_l_{suffix}"
+
+            hcg_experiments.append(exp_config)
 
 
     run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
@@ -658,12 +668,13 @@ def run_hcg_llama31_8B_hcg_fan_out_mlp(**kwargs):
         "freeze_hcg": "1",
 
         # Data
-        "select_train_dataset_items": 200000,
+        "select_train_dataset_items": 150000,
+        "warmup_steps": 1000,
         "per_device_train_batch_size": 4,
 
         # Training
-        "learning_rate": 0.01,
-        "hcg_learning_rate": 0.01,
+        "learning_rate": 0.002,
+        "hcg_learning_rate": 0.002,
         "lr_scheduler_type": "cosine",
 
         # "hcg_loss_weight": # will be overriden in cycle later,
@@ -673,25 +684,27 @@ def run_hcg_llama31_8B_hcg_fan_out_mlp(**kwargs):
         'num_train_epochs': 1,
         "hcg_loss_weight": '1.0',
 
-        "save_steps": 5000,
-        "eval_steps": 5000,
+        "save_steps": 2000,
+        "eval_steps": 2000,
 
         # Training type
         "pretrain_fan_out_projection": "0",
-        "init_fan_out_mlp": 1,
+        "init_fan_out_mlp": 0,
     }
 
     hcg_experiments = []
 
     extra_params_from_scratch = [
         (
-            f"{workdir_prefix}/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/checkpoint-90000", # checkpoint
+            # f"{workdir_prefix}/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/checkpoint-90000", # checkpoint
+            f"{workdir_prefix}/adaptive_hcg_llama31_8B_fan_out_mlp_w_1.000_l_8-21_L305L6W0/checkpoint-10000", # checkpoint
             "8-21",
             '8',
             '21',
         ),
         (
-            f"{workdir_prefix}/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/checkpoint-90000", # checkpoint
+            # f"{workdir_prefix}/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/checkpoint-90000", # checkpoint
+            f"{workdir_prefix}/adaptive_hcg_llama31_8B_fan_out_mlp_w_1.000_l_6-21_XVU9ZFGZ/checkpoint-10000", # checkpoint
             "6-21",
             '6',
             '21',
@@ -732,37 +745,41 @@ def run_hcg_qwen25_7B_hcg(**kwargs):
         "init_hcg_a": 1.0,
 
         # Data
-        "select_train_dataset_items": 1000000,
+        "select_train_dataset_items": 500000,
         "per_device_train_batch_size": 4,
 
         # Training
-        "learning_rate": 0.04,
-        "hcg_learning_rate": 0.04,
+        "learning_rate": 0.08,
+        "hcg_learning_rate": 0.08,
         "lr_scheduler_type": "constant_with_warmup",
 
         "max_grad_norm": 0,
 
-        'instance_type': 'a100.2gpu',
+        'instance_type': 'a100.1gpu',
         'num_train_epochs': 1,
 
         # Training type
         "pretrain_fan_out_projection": "0",
-        "single_layer_hopping": 0,
+        "fan_out_projection": "0",
     }
 
     hcg_experiments = []
 
     extra_params_from_scratch = [
         (
-            "12",
-            "1,1,1,1,1,1,1,1,1,1,1,0,1,1",
+            "5-19",
+            "5",
+            "19"
         ),
     ]
 
     for hcg_loss_weight in [ 0.1, 1.0 ]:
-        for suffix, in_layers_str in extra_params_from_scratch:
+        for suffix, fan_in_idx, fan_out_idx in extra_params_from_scratch:
+            in_layers_str = "1,1,1,1,1,1,1,1,1,1,1,0,1,1"
             exp_config = {
                 "dummy_adaptive_fan_in_layers_str": in_layers_str,
+                "fan_in_idx": fan_in_idx,
+                "fan_out_idx": fan_out_idx,
                 **common_params,
             }
             exp_config['hcg_loss_weight'] = hcg_loss_weight
@@ -865,17 +882,19 @@ if __name__ == "__main__":
     # run_hcg_smollm2_360M_hcg(dry=dry)
 
     # run_hcg_smollm2_1_7B_hcg(dry=dry)
-    # run_hcg_llama31_8B_hcg(dry=dry)
     # run_hcg_llama31_8B_hcg_forward_residuals(dry=dry)
     # run_hcg_llama31_8B_hcg_each_layer(dry=dry)
 
     # run_hcg_llama31_8B_hcg_train_after_fan_out_llm_layer(dry=dry)
-    run_hcg_llama31_8B_hcg_fan_out_mlp(dry=dry)
-
-    # run_hcg_qwen25_7B_hcg(dry=dry)
 
     # run_hcg_smollm2_360M_hcg_post_training(dry=dry)
 
     # Rule based
     # run_hcg_smollm2_360M_hcg_rule_based(dry=dry)
+
+    # OK
+
+    run_hcg_llama31_8B_hcg(dry=dry)
+    # run_hcg_qwen25_7B_hcg(dry=dry)
+    # run_hcg_llama31_8B_hcg_fan_out_mlp(dry=dry)
 

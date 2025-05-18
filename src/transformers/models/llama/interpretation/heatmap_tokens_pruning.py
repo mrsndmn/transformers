@@ -34,7 +34,7 @@ if __name__ == "__main__":
 
     # Combine all data
     combined_df = pd.concat(data_frames, ignore_index=True)
-    combined_df[args.metric_name][combined_df[args.metric_name] > args.max_value] = args.max_value
+    # combined_df[args.metric_name][combined_df[args.metric_name] > args.max_value] = args.max_value
 
     # Create a pivot table for the heatmap
     pivot_df = combined_df.pivot_table(
@@ -58,6 +58,7 @@ if __name__ == "__main__":
         cmap=cmap,
         fmt=".2f",
         vmin=vmin,
+        vmax=args.max_value,
         linewidths=0.5,
         robust=True  # Use robust estimation for color scale
     )

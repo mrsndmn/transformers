@@ -95,7 +95,7 @@ from .configuration_qwen2 import Qwen2Config
 
 from transformers.models.llama.merges_transform.generate_merges import fan_out_restore_residuals, prune_tokens_concrete
 
-from transformers.models.qwen2.modeling_qwen2 import Qwen2Model, Qwen2DecoderLayer, Qwen2RotaryEmbedding, Qwen2RMSNorm, KwargsForCausalLM
+from transformers.models.qwen2.modeling_qwen2 import Qwen2Model, Qwen2DecoderLayer, Qwen2RotaryEmbedding, Qwen2RMSNorm, KwargsForCausalLM, Qwen2MLP
 
 logger = logging.get_logger(__name__)
 
@@ -196,7 +196,7 @@ class AdaptiveQwen2Model(AdaptiveQwen2PreTrainedModel):
             if is_dummy:
                 return NoopAdaptiveFanOut(config)
 
-            return AdaptiveFanOutHCG(config)
+            return AdaptiveFanOutHCG(config, mlp_class=Qwen2MLP)
 
         self.fan_out = get_fan_out_module(False)
 

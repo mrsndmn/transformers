@@ -46,7 +46,7 @@ def pruning_hook(module, input, output):
     total_initial_tokens += output.merged_embeddings_counts.sum().item()
     total_pruned_tokens += output.attention_mask.sum().item()
 
-def evaluate_lighteval_task(model, task_name, override_batch_size=1, num_fewshot_seeds=0):
+def evaluate_lighteval_task(model, task_name, override_batch_size=1, num_fewshot_seeds=0, max_samples=None):
     evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'" # Removed extra quotes
     evaluation_tracker = EvaluationTracker(
         output_dir=evaluation_output_dir,
@@ -60,7 +60,7 @@ def evaluate_lighteval_task(model, task_name, override_batch_size=1, num_fewshot
         custom_tasks_directory='/workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py',
         override_batch_size=override_batch_size,
         num_fewshot_seeds=num_fewshot_seeds,
-        max_samples=None,
+        max_samples=max_samples,
         use_chat_template=False,
         system_prompt=None,
         load_responses_from_details_date_id=None,
@@ -83,12 +83,13 @@ def evaluate_lighteval_task(model, task_name, override_batch_size=1, num_fewshot
     return results
 
 
-def evaluate_ppl_wikitext_103(model):
+def evaluate_ppl_wikitext_103(model, max_samples=None):
     results = evaluate_lighteval_task(
         model,
         'wikitext_103',
         override_batch_size=1,
         num_fewshot_seeds=0,
+        max_samples=max_samples,
     )
 
     ppl = results['results']["custom:wikitext_103:0"]["ppl"]
@@ -317,7 +318,7 @@ def analyze_most_confident_pruned_tokens(model, checkpoint_base_path):
 
 
 @torch.no_grad()
-def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None, exp_prefix=None, task_name=None):
+def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None, exp_prefix=None, task_name=None, max_samples=None):
 
     results = []
     assert len(fan_in_idxs) == len(fan_out_idxs)
@@ -331,7 +332,7 @@ def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None, exp_pr
         model.model.fan_out_idx = fan_out_idx
 
         if task_name == "wikitext_103":
-            metric_results = evaluate_ppl_wikitext_103(model)
+            metric_results = evaluate_ppl_wikitext_103(model, max_samples=max_samples)
         elif task_name == "hellaswag":
             metric_results = evaluate_acc_hellaswag(model)
         elif task_name == "winogrande":
@@ -397,7 +398,11 @@ if __name__ == "__main__":
     parser.add_argument("--fan_out_idxs", default=None)
     parser.add_argument("--concrete_random_mask_proba", default=None, type=float)
     parser.add_argument("--exp_prefix", default=None, type=str)
+    parser.add_argument("--max_samples", default=None, type=int)
+    parser.add_argument("--fan_out_projection", default=None, type=int)
+
     args = parser.parse_args()
+
 
     normalize_hcg_log_a = args.normalize_hcg_log_a
     checkpoint_base_path = args.checkpoint_base_path
@@ -526,6 +531,13 @@ if __name__ == "__main__":
 
     model.eval()
 
+    fan_out_projection = None
+    if args.fan_out_projection is not None:
+        print("\n\nsetting fan_out_projection to", args.fan_out_projection)
+        fan_out_projection = args.fan_out_projection > 0
+        print("\n\nsetting fan_out_projection to", fan_out_projection)
+        model.config.fan_out_projection = fan_out_projection
+
     print("Model fan in idx  ", model.model.fan_in_idx)
     print("Model fan out idx ", model.model.fan_out_idx)
 
@@ -547,5 +559,5 @@ if __name__ == "__main__":
     else:
         fan_in_idxs =  list(map(int, args.fan_in_idxs.split(',')))
         fan_out_idxs = list(map(int, args.fan_out_idxs.split(',')))
-        evaluate_different_layers(model, fan_in_idxs=fan_in_idxs, fan_out_idxs=fan_out_idxs, exp_prefix=args.exp_prefix, task_name=args.task_name)
+        evaluate_different_layers(model, fan_in_idxs=fan_in_idxs, fan_out_idxs=fan_out_idxs, exp_prefix=args.exp_prefix, task_name=args.task_name, max_samples=args.max_samples)
 

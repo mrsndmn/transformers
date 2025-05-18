@@ -37,6 +37,18 @@ def run_explore_pruningability_experiments(experiments, job_description_prefix="
         fan_out_idxs = exp.pop('fan_out_idxs')
         task_name = exp.pop('task_name', 'wikitext_103')
         concrete_random_mask_proba = exp.pop('concrete_random_mask_proba', '')
+        fan_out_projection = exp.pop('fan_out_projection', None)
+        if fan_out_projection is not None:
+            assert fan_out_projection in ["0", "1"], f"Invalid fan_out_projection: {fan_out_projection}"
+            fan_out_projection = f"--fan_out_projection {fan_out_projection}"
+        else:
+            fan_out_projection = ""
+
+        max_samples = exp.pop('max_samples', None)
+        if max_samples is not None:
+            max_samples = f"--max_samples {max_samples}"
+        else:
+            max_samples = ""
 
         if concrete_random_mask_proba != '':
             concrete_random_mask_proba = f"--concrete_random_mask_proba {concrete_random_mask_proba}"
@@ -44,7 +56,7 @@ def run_explore_pruningability_experiments(experiments, job_description_prefix="
         if len(exp.keys()) > 0:
             raise ValueError("Invalid exp values:" + ",".join(exp.keys()))
 
-        script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python src/transformers/models/llama/interpretation/explore_eval_hard_concrete_percent.py --checkpoint_base_path {checkpoint_base_path} --exp_prefix {exp_prefix} --fan_in_idxs {fan_in_idxs} --fan_out_idxs {fan_out_idxs} {concrete_random_mask_proba} --task_name {task_name} \''
+        script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python src/transformers/models/llama/interpretation/explore_eval_hard_concrete_percent.py --checkpoint_base_path {checkpoint_base_path} --exp_prefix {exp_prefix} --fan_in_idxs {fan_in_idxs} --fan_out_idxs {fan_out_idxs} {concrete_random_mask_proba} --task_name {task_name} {fan_out_projection} {max_samples} \''
 
         print(f"\n\n{script_str}\n\n")
 
@@ -87,6 +99,31 @@ ALL_TASK_NAMES = [
 
 
 HOP_LAYERS_LLAMA31_8B = list(range(1, 17))
+
+def llama31_8b_pruningability_rand(**kwargs):
+
+    experiments = []
+
+    # --- Rand 40 ---
+    # for rand_percent in [  20, 10, 50 ]:
+    for rand_percent in [  20, 10, ]:
+        rand_percent_str = f"{rand_percent/100:.1f}"
+        for hop_layers in HOP_LAYERS_LLAMA31_8B:
+            experiments.append({
+                "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/no_projection_checkpoint-90000",
+                "exp_prefix": f"llama31_8B_rand{rand_percent}_hop_layers_{hop_layers}",
+                "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
+                "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
+                "concrete_random_mask_proba": rand_percent_str,
+                "fan_out_projection": "0",
+                "max_samples": 15,
+            })
+
+    run_explore_pruningability_experiments(experiments, **kwargs)
+
+    return
+
+
 
 def llama31_8b_pruningability(**kwargs):
 
@@ -319,6 +356,20 @@ def qwen25_7b_instruct_pruningability(**kwargs):
 # Generate heatmaps
 #
 
+# Llama3.1 8B rand 10
+    # wikitext
+    # python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/no_projection_checkpoint-90000/llama31_8B_rand10_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,15,16}_wikitext_103_ppl_results.csv  --output adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/no_projection_checkpoint-90000 --max_value 60 --output_prefix wikitext_rand10
+
+# Llama3.1 8B rand 20
+    # wikitext
+    # python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/no_projection_checkpoint-90000/llama31_8B_rand20_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,15,16}_wikitext_103_ppl_results.csv  --output adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/no_projection_checkpoint-90000 --max_value 60 --output_prefix wikitext_rand20
+
+# Llama3.1 8B rand 50
+    # wikitext
+    # python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/no_projection_checkpoint-90000/llama31_8B_rand50_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,15,16}_wikitext_103_ppl_results.csv  --output adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/no_projection_checkpoint-90000 --max_value 60 --output_prefix wikitext_rand50
+
+
+
 # Llama3.1 8B vocab 20
     # Wikitext
     # python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_llama31_8B_w_0.100_l_14_4FMRKTX3/checkpoint-124987/llama31_8B_vocab20_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,15,16}_ppl_results.csv  --output adaptive_hcg_llama31_8B_w_0.100_l_14_4FMRKTX3/checkpoint-124987/ --max_value 60 --output_prefix wikitext
@@ -390,7 +441,8 @@ if __name__ == "__main__":
 
     print("dry", dry)
 
-    llama31_8b_pruningability(dry=dry)
+    # llama31_8b_pruningability(dry=dry)
+    llama31_8b_pruningability_rand(dry=dry)
     # llama31_8b_instruct_pruningability(dry=dry)
     # llama31_70b_instruct_pruningability(dry=dry)
     # llama31_8b_instruct_pruningability_fwd_res_mlp_only(dry=dry)
