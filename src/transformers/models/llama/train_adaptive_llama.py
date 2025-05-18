@@ -111,6 +111,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
     dataloader_num_workers: int = field(default=0)
     merging_type: str = field(default="next_token_merge_mlp")
     freeze_lm_backbone: bool = field(default=False)
+    freeze_hcg: bool = field(default=False)
+    init_fan_out_mlp: bool = field(default=False)
     bf16: bool = field(default=True)
 
     forward_residuals: bool = field(default=False)
@@ -1025,6 +1027,32 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
     if training_args.freeze_lm_backbone:
         freeze_lm_backbone(model, train_after_fan_out_llm_layer=training_args.train_after_fan_out_llm_layer)
+
+    if training_args.freeze_hcg:
+        for p in model.model.fan_in.parameters():
+            p.requires_grad = False
+
+    if training_args.init_fan_out_mlp:
+        print("\n\nInit fan out mlp!\n\n")
+        def _init_weights(module):
+            std = 0.02
+            if isinstance(module, nn.Linear):
+                module.weight.data.normal_(mean=0.0, std=std)
+                if module.bias is not None:
+                    module.bias.data.zero_()
+            elif isinstance(module, nn.Embedding):
+                module.weight.data.normal_(mean=0.0, std=std)
+                if module.padding_idx is not None:
+                    module.weight.data[module.padding_idx].zero_()
+
+        model.model.fan_out.apply(_init_weights)
+
+        for p in model.model.fan_out.parameters():
+            if p.isnan().any():
+                print("p.isnan().any()", p.isnan().any())
+                breakpoint()
+
+
 
     # if training_args.pretrain_fan_out_projection:
     #     print("Pretrain fan out projection. Freeze Fan In parameters")

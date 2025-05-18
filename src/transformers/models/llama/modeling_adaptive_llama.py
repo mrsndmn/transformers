@@ -22,6 +22,8 @@ from typing import List, Optional, Tuple, Union
 
 import os
 
+import copy
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -537,7 +539,13 @@ class NoopAdaptiveFanOut(nn.Module):
 class AdaptiveFanOutHCG(nn.Module):
     def __init__(self, config: LlamaConfig):
         super().__init__()
+        self.config = config
         self.hidden_size = config.hidden_size
+        new_mlp_hidden_size = config.hidden_size // 16
+        self.fan_out_mlp = LlamaMLP(config, intermediate_size=new_mlp_hidden_size)
+
+        print("Fan out projection", config.fan_out_projection)
+
 
     def forward(self, hidden_states, attention_mask, merged_embeddings_counts, residual_hidden_states, residual_attention_mask, past_key_values: Optional[DynamicCache] = None) -> AdaptiveFanOutOutput:
         """Returns base hidden states
@@ -554,7 +562,10 @@ class AdaptiveFanOutHCG(nn.Module):
         """
 
         # No projection
-        residual_hidden_states_projection = residual_hidden_states
+        if self.config.fan_out_projection:
+            residual_hidden_states_projection = self.fan_out_mlp(residual_hidden_states)
+        else:
+            residual_hidden_states_projection = residual_hidden_states
 
         if self.training:
             hidden_states = hidden_states + residual_hidden_states_projection

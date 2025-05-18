@@ -185,7 +185,7 @@ class LlamaConfig(PretrainedConfig):
         fan_in_idx=None,
         fan_out_idx=None,
         generate_merges_transform_impl='python',
-        fan_out_projection=True,
+        fan_out_projection=False,
         merging_type='hcg',
         hcg_temperature=1.0,
         hcg_log_a=1.0,
