@@ -181,6 +181,11 @@ def main():
 
     filtered_df = token_potential_min_df[ token_potential_min_df['H19'] == num_hop_layers ]
 
+    vocab_q25 = filtered_df.sort_values(by='weighted_H19', ascending=False).head(int(0.25 * len(filtered_df)))
+    file_path = os.path.join(args.output_dir, "pruning_vocab_q25.csv")
+    vocab_q25['token_id'].to_csv(file_path, index=False)
+    print(f"Saved pruning vocab q25 to {file_path}. Vocab size: {len(vocab_q25)}")
+
     vocab_q50 = filtered_df.sort_values(by='weighted_H19', ascending=False).head(int(0.5 * len(filtered_df)))
     file_path = os.path.join(args.output_dir, "pruning_vocab_q50.csv")
     vocab_q50['token_id'].to_csv(file_path, index=False)

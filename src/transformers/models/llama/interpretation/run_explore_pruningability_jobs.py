@@ -124,6 +124,25 @@ def llama31_8b_pruningability_rand(**kwargs):
     return
 
 
+def llama31_8b_pruningability_analytical(**kwargs):
+
+    experiments = []
+
+    for hop_layers in HOP_LAYERS_LLAMA31_8B:
+        experiments.append({
+            "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_l_18-20_q25_analytical_pruning",
+            "exp_prefix": f"llama31_8B_analytical_hop_layers_{hop_layers}",
+            "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
+            "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
+            "fan_out_projection": "0",
+            "max_samples": 15,
+        })
+
+    run_explore_pruningability_experiments(experiments, **kwargs)
+
+    return
+
+
 
 def llama31_8b_pruningability(**kwargs):
 
@@ -442,7 +461,8 @@ if __name__ == "__main__":
     print("dry", dry)
 
     # llama31_8b_pruningability(dry=dry)
-    llama31_8b_pruningability_rand(dry=dry)
+    # llama31_8b_pruningability_rand(dry=dry)
+    llama31_8b_pruningability_analytical(dry=dry)
     # llama31_8b_instruct_pruningability(dry=dry)
     # llama31_70b_instruct_pruningability(dry=dry)
     # llama31_8b_instruct_pruningability_fwd_res_mlp_only(dry=dry)
