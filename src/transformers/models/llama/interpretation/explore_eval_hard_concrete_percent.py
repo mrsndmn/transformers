@@ -30,6 +30,16 @@ pruned_input_ids_counts = None
 total_initial_tokens = 0
 total_pruned_tokens = 0
 
+def reset_counters():
+    global total_initial_tokens, total_pruned_tokens, pruned_input_ids_counts
+    total_initial_tokens = 0
+    total_pruned_tokens = 0
+    pruned_input_ids_counts = None
+
+def get_counters():
+    global total_initial_tokens, total_pruned_tokens, pruned_input_ids_counts
+    return total_initial_tokens, total_pruned_tokens, pruned_input_ids_counts
+
 # --- Hook function ---
 def pruning_hook(module, input, output):
     global total_initial_tokens, total_pruned_tokens, pruned_input_ids_counts
@@ -38,7 +48,8 @@ def pruning_hook(module, input, output):
     attention_mask = output.input_ids_attention_mask
     pruned_input_ids = input_ids.flatten()[(((~output.full_merging_map.bool().flatten(1)) & attention_mask.bool()).flatten().bool())]
 
-    pruned_input_ids_counts += torch.bincount(pruned_input_ids, minlength=module.config.vocab_size)
+    if pruned_input_ids_counts is not None:
+        pruned_input_ids_counts += torch.bincount(pruned_input_ids, minlength=module.config.vocab_size)
 
     # Assuming the first element of input tuple is hidden_states
     # and the second is the attention_mask we need. Adjust if structure differs.

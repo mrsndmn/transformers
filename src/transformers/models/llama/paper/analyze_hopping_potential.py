@@ -181,12 +181,20 @@ def main():
 
     filtered_df = token_potential_min_df[ token_potential_min_df['H19'] == num_hop_layers ]
 
-    vocab_q50 = filtered_df.sort_values(by='weighted_H19', ascending=False).head(int(0.5 * len(token_potential_min_df)))
-    vocab_q50['token_id'].to_csv(os.path.join(args.output_dir, "pruning_vocab_q50.csv"), index=False)
-    vocab_q75 = filtered_df.sort_values(by='weighted_H19', ascending=False).head(int(0.75 * len(token_potential_min_df)))
-    vocab_q75['token_id'].to_csv(os.path.join(args.output_dir, "pruning_vocab_q75.csv"), index=False)
+    vocab_q50 = filtered_df.sort_values(by='weighted_H19', ascending=False).head(int(0.5 * len(filtered_df)))
+    file_path = os.path.join(args.output_dir, "pruning_vocab_q50.csv")
+    vocab_q50['token_id'].to_csv(file_path, index=False)
+    print(f"Saved pruning vocab q50 to {file_path}. Vocab size: {len(vocab_q50)}")
+
+    vocab_q75 = filtered_df.sort_values(by='weighted_H19', ascending=False).head(int(0.75 * len(filtered_df)))
+    file_path = os.path.join(args.output_dir, "pruning_vocab_q75.csv")
+    vocab_q75['token_id'].to_csv(file_path, index=False)
+    print(f"Saved pruning vocab q75 to {file_path}. Vocab size: {len(vocab_q75)}")
+
     vocab_q100 = filtered_df = filtered_df
-    vocab_q100['token_id'].to_csv(os.path.join(args.output_dir, "pruning_vocab_q100.csv"), index=False)
+    file_path = os.path.join(args.output_dir, "pruning_vocab_q100.csv")
+    vocab_q100['token_id'].to_csv(file_path, index=False)
+    print(f"Saved pruning vocab q100 to {file_path}. Vocab size: {len(vocab_q100)}")
 
     breakpoint()
 

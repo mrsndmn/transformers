@@ -68,6 +68,9 @@ def build_adaptive_llama_from_llama_checkpoint(
 
     if dummy_adaptive_fan_in is not None:
         assert len(dummy_adaptive_fan_in) == config.num_hidden_layers // 2
+    else:
+        dummy_adaptive_fan_in = [ True ] * (config.num_hidden_layers // 2)
+        dummy_adaptive_fan_in[-1] = False
 
     config.dummy_adaptive_fan_in = dummy_adaptive_fan_in
     config.generate_merges_transform_impl = generate_merges_transform_impl
