@@ -59,11 +59,11 @@ python src/transformers/models/llama/paper/adaptive_llama_from_vocab.py --checkp
 
 # Qwen2.5-7B
 QWEN25_7B_FAN_IN_INDEX=12
-QWEN25_7B_FAN_OUT_INDEX=5
-python src/transformers/models/llama/paper/adaptive_llama_from_vocab.py --checkpoint_base_path Qwen/Qwen2.5-7B --fan_in_idx $QWEN25_7B_FAN_IN_INDEX --fan_out_idx $QWEN25_7B_FAN_OUT_INDEX --vocab_csv_path results/token_embeddings_hopping_potential/pruning_vocab_q25.csv --output_dir ./adaptive_hcg_qwen25_7B_l${QWEN25_7B_FAN_IN_INDEX}-${QWEN25_7B_FAN_OUT_INDEX}_analytical_pruning
+QWEN25_7B_FAN_OUT_INDEX=17
+python src/transformers/models/llama/paper/adaptive_llama_from_vocab.py --checkpoint_base_path Qwen/Qwen2.5-7B --fan_in_idx $QWEN25_7B_FAN_IN_INDEX --fan_out_idx $QWEN25_7B_FAN_OUT_INDEX --vocab_csv_path results/token_embeddings_hopping_potential/pruning_vocab_q1_Qwen2.5-7B.csv --output_dir ./adaptive_hcg_qwen25_7B_l${QWEN25_7B_FAN_IN_INDEX}-${QWEN25_7B_FAN_OUT_INDEX}_analytical_pruning
 ```
 
-# Training
+# Learnable Pruning Vocabulary
 
 llama31 hcg loss weight 0.1
 ```

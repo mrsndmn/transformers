@@ -68,7 +68,7 @@ if __name__ == "__main__":
 
     print("Vocab", args.vocab_csv_path)
     vocab_df = pd.read_csv(args.vocab_csv_path)
-    vocab_t = torch.tensor(vocab_df['token_id'].tolist())
+    vocab_t = torch.tensor(vocab_df['token_id'].tolist(), dtype=torch.long)
     print("Vocab_t", vocab_t.shape)
 
     model.model.fan_in.hcg.hcg_log_a.data[:] = 10.0

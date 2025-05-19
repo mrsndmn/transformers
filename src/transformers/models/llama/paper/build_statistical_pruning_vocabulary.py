@@ -57,7 +57,11 @@ def main():
     print(f"Pruning hidden state index: {weighted_H_to_start_pruning}")
     print(f"Recommended number of hop layers: {num_hop_layers}")
 
-    filtered_df = token_potential_min_df[ token_potential_min_df[weighted_H_to_start_pruning] == num_hop_layers ]
+    filtered_df = token_potential_min_df[ token_potential_min_df[H_to_start_pruning] >= num_hop_layers ]
+
+    assert len(filtered_df) > 0, "No tokens in vocabulary to prune"
+
+    print("Statistical pruning vocabulary max size", len(filtered_df), "of total tokens analyzed", len(token_potential_min_df))
 
     for quantile in [0.25, 0.5, 0.75, 1]:
         vocab_quantile = filtered_df.sort_values(by=weighted_H_to_start_pruning, ascending=False).head(int(quantile * len(filtered_df)))

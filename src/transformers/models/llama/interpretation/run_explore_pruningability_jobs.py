@@ -97,9 +97,9 @@ ALL_TASK_NAMES = [
     # "openbookqa",
 ]
 
-
+LLAMA31_8B_NUM_LAYERS = 32
 HOP_LAYERS_LLAMA31_8B = list(range(1, 17))
-HOP_LAYERS_LLAMA31_8B = list(range(8, 17))
+# HOP_LAYERS_LLAMA31_8B = list(range(8, 17))
 
 def llama31_8b_pruningability_rand(**kwargs):
 
@@ -131,10 +131,10 @@ def llama31_8b_pruningability_analytical(**kwargs):
 
     for hop_layers in HOP_LAYERS_LLAMA31_8B:
         experiments.append({
-            "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_l_18-20_q25_analytical_pruning",
+            "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_l22-26_analytical_pruning",
             "exp_prefix": f"llama31_8B_analytical_hop_layers_{hop_layers}",
-            "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
-            "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
+            "fan_in_idxs": ",".join(map(str, range(LLAMA31_8B_NUM_LAYERS-hop_layers))),
+            "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(LLAMA31_8B_NUM_LAYERS-hop_layers))),
             "fan_out_projection": "0",
             # "max_samples": 15,
         })
@@ -274,8 +274,28 @@ def llama31_70b_instruct_pruningability(**kwargs):
 
     return
 
-HOP_LAYERS_QWEN25_7B = [ 1, 2, 4, 6, 8, 10, 12, 14 ]
-HOP_LAYERS_QWEN25_7B += [ 3, 5, 7, 9, 11, 13 ]
+HOP_LAYERS_QWEN25_7B = list(range(1, 15))
+
+QWEN25_7B_NUM_LAYERS = 28
+
+def qwen25_7b_pruningability_analytical(**kwargs):
+
+    experiments = []
+
+    for hop_layers in HOP_LAYERS_QWEN25_7B:
+        experiments.append({
+            "checkpoint_base_path": f"/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25_7B_l12-17_analytical_pruning",
+            "exp_prefix": f"qwen25_7B_analytical_hop_layers_{hop_layers}",
+            "fan_in_idxs": ",".join(map(str, range(QWEN25_7B_NUM_LAYERS-hop_layers))),
+            "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(QWEN25_7B_NUM_LAYERS-hop_layers))),
+            "fan_out_projection": "0",
+        })
+
+    run_explore_pruningability_experiments(experiments, **kwargs)
+
+    return
+
+
 
 def qwen25_7b_pruningability_rand(**kwargs):
 
@@ -391,7 +411,11 @@ def qwen25_7b_instruct_pruningability(**kwargs):
 
 # Analytical
 
-# Llama3.1 8B analyrical 25%
+# Llama3.1 8B
+    # wikitext
+    # python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_llama31_8B_l_18-20_q25_analytical_pruning/llama31_8B_analytical_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}_wikitext_103_ppl_results.csv  --output adaptive_hcg_llama31_8B_l_18-20_q25_analytical_pruning/ --max_value 60 --output_prefix wikitext_analytical25
+
+# Qwen2.5 7B
     # wikitext
     # python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_llama31_8B_l_18-20_q25_analytical_pruning/llama31_8B_analytical_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}_wikitext_103_ppl_results.csv  --output adaptive_hcg_llama31_8B_l_18-20_q25_analytical_pruning/ --max_value 60 --output_prefix wikitext_analytical25
 
@@ -468,13 +492,14 @@ if __name__ == "__main__":
 
     print("dry", dry)
 
+    llama31_8b_pruningability_analytical(dry=dry)
     # llama31_8b_pruningability(dry=dry)
     # llama31_8b_pruningability_rand(dry=dry)
-    llama31_8b_pruningability_analytical(dry=dry)
     # llama31_8b_instruct_pruningability(dry=dry)
     # llama31_70b_instruct_pruningability(dry=dry)
     # llama31_8b_instruct_pruningability_fwd_res_mlp_only(dry=dry)
 
+    qwen25_7b_pruningability_analytical(dry=dry)
     # qwen25_7b_pruningability_rand(dry=dry)
     # qwen25_7b_instruct_pruningability_rand(dry=dry)
     # qwen25_7b_pruningability(dry=dry)
