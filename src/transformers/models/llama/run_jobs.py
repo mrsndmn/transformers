@@ -422,9 +422,9 @@ def run_hcg_llama31_8B_hcg(**kwargs):
 
     extra_params_from_scratch = [
         (
-            "18-20",
-            "18",
-            "20",
+            "12-17",
+            "12",
+            "17",
         ),
     ]
 
@@ -433,10 +433,6 @@ def run_hcg_llama31_8B_hcg(**kwargs):
         for suffix, fan_in_idx, fan_out_idx in extra_params_from_scratch:
             in_layers_str = "1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1"
             exp_config = {
-                "model_type": "pretrained_checkpoint",
-                "llama_checkpoint": f"{workdir_prefix}/adaptive_hcg_llama31_8B_w_1.000_l_6-21_CC6MEIWZ/checkpoint-10000/",
-
-
                 "dummy_adaptive_fan_in_layers_str": in_layers_str,
                 "fan_in_idx": fan_in_idx,
                 "fan_out_idx": fan_out_idx,
@@ -897,6 +893,6 @@ if __name__ == "__main__":
     # OK
 
     run_hcg_llama31_8B_hcg(dry=dry)
-    # run_hcg_qwen25_7B_hcg(dry=dry)
+    run_hcg_qwen25_7B_hcg(dry=dry)
     # run_hcg_llama31_8B_hcg_fan_out_mlp(dry=dry)
 
