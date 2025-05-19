@@ -59,7 +59,7 @@ def analyze_token_potentials(tokenizer, per_token_hopping_potentials, token_occu
         hopping_potential_min = hopping_potentials_t_min.numpy().tolist()
 
         token_freq = token_occurences[token_id]
-        hopping_potentials_t_min_weighted = (hopping_potentials_t_min.numpy() * token_freq).tolist()
+        hopping_potentials_t_min_weighted = (np.log10(hopping_potentials_t_min.numpy() * token_freq)).tolist()
 
         token_potential_min.append({
             "token_id": token_id,
@@ -72,6 +72,9 @@ def analyze_token_potentials(tokenizer, per_token_hopping_potentials, token_occu
     token_potential_min_df = pd.DataFrame(token_potential_min)
     H_cols = [col for col in token_potential_min_df.columns if col.startswith("H")]
     token_potential_min_df['mean_hopping_potential'] = token_potential_min_df[H_cols].mean(axis=1)
+
+    weighted_H_cols = [col for col in token_potential_min_df.columns if col.startswith("weighted_H")]
+    token_potential_min_df['mean_weighted_hopping_potential'] = token_potential_min_df[weighted_H_cols].mean(axis=1)
 
     return token_potential_min_df
 
@@ -107,6 +110,20 @@ def plot_hopping_potential_distribution(token_potential_min_df, output_dir):
     plt.grid(True)
     plt.tight_layout()
     file_path = os.path.join(output_dir, "hopping_potential_min_boxplot.png")
+    plt.savefig(file_path)
+    print(f"Saved boxplot to {file_path}")
+    plt.close()
+    return file_path
+
+def plot_weighted_hopping_potential_distribution(token_potential_min_df, output_dir):
+    weighted_H_cols = [col for col in token_potential_min_df.columns if col.startswith("weighted_H")]
+    token_potential_min_df[weighted_H_cols].plot(kind='box', figsize=(15, 6))
+    plt.xticks(rotation=90)
+    plt.ylabel('Log Hopping Potential')
+    plt.xlabel('Hidden states to hop from')
+    plt.grid(True)
+    plt.tight_layout()
+    file_path = os.path.join(output_dir, "weighted_hopping_potential_min_boxplot.png")
     plt.savefig(file_path)
     print(f"Saved boxplot to {file_path}")
     plt.close()
@@ -151,10 +168,27 @@ def main():
     print("Ранжирование H* по количеству максимумов:")
     print(ranked_h)
     print(f"mean_hopping_potential and log freq corr: {mean_hopping_potential_corr}")
-    
+
     plot_log_freq_vs_hopping_potential(token_potential_min_df, args.output_dir)
+
     plot_hopping_potential_distribution(token_potential_min_df, args.output_dir)
+    plot_weighted_hopping_potential_distribution(token_potential_min_df, args.output_dir)
+
     plot_token_occurrences_distribution(token_occurences, args.output_dir)
+
+    num_hop_layers = token_potential_min_df['H19'].value_counts().reset_index().iloc[0]['index']
+    print(f"\n\nnum_hop_layers: {num_hop_layers}")
+
+    filtered_df = token_potential_min_df[ token_potential_min_df['H19'] == num_hop_layers ]
+
+    vocab_q50 = filtered_df.sort_values(by='weighted_H19', ascending=False).head(int(0.5 * len(token_potential_min_df)))
+    vocab_q50['token_id'].to_csv(os.path.join(args.output_dir, "pruning_vocab_q50.csv"), index=False)
+    vocab_q75 = filtered_df.sort_values(by='weighted_H19', ascending=False).head(int(0.75 * len(token_potential_min_df)))
+    vocab_q75['token_id'].to_csv(os.path.join(args.output_dir, "pruning_vocab_q75.csv"), index=False)
+    vocab_q100 = filtered_df = filtered_df
+    vocab_q100['token_id'].to_csv(os.path.join(args.output_dir, "pruning_vocab_q100.csv"), index=False)
+
+    breakpoint()
 
 if __name__ == "__main__":
     main()
