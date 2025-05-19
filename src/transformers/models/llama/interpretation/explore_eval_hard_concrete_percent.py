@@ -375,6 +375,11 @@ def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None, exp_pr
     else:
         result_file_name = f"_ppl_results_fan_in_idx_{fan_in_idxs_str}_fan_out_idx_{fan_out_idxs_str}_task_{task_name}"
 
+    output_file = os.path.join(model.name_or_path, result_file_name + ".csv")
+    df.to_csv(output_file, index=False)
+    print("Saved PPL results to", output_file)
+    print("df", df)
+
     plt.plot(df['fan_in_idx'], df[metric_name], marker='o', label=metric_name)
     plt.xlabel('Fan In Index')
     plt.ylabel(metric_name)
@@ -386,11 +391,6 @@ def evaluate_different_layers(model, fan_in_idxs=None, fan_out_idxs=None, exp_pr
     plot_file_path = os.path.join(checkpoint_base_path, result_file_name + ".png")
     plt.savefig(plot_file_path)
     print("Saved PPL results to", plot_file_path)
-
-    output_file = os.path.join(model.name_or_path, result_file_name + ".csv")
-    df.to_csv(output_file, index=False)
-    print("Saved PPL results to", output_file)
-    print("df", df)
 
     return df
 

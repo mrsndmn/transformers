@@ -20,11 +20,15 @@ cd src/transformers/models/llama/merges_transform/
 python setup.py build_ext --inplace
 ```
 
-# Pretraining
+# Statistival Pruning Vocabulary
 
+Compute pairwise hidden states similarities
 ```
-python ./src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps 1000 --generate_merges_transform_impl cuda_kernel --per_device_train_batch_size 16 --learning_rate 0.0001 --num_train_epochs 1 --seed 1008 --training_dataset smollm-corpus --model_type pretrained --llama_checkpoint HuggingFaceTB/SmolLM2-1.7B --dummy_adaptive_fan_in_layers_str 1,1,1,1,1,1,1,0,1,1,1,1 --full_unmerge_str 0,0,0,0,0,0,0,0,0,0,0,0 --full_unmerge_loss_weight 0.0 --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type cosine --merging_type hcg --temperature_schedule 0 --freeze_lm_backbone 1 --fan_out_projection 1 --logging_steps 50 --warmup_steps 100 --output_dir ./adaptive_hcg_slm2_1.7B_pretrain_8  --learnt_temperature 0 --select_train_dataset_items 80000 --eval_steps 250 --gumbel_tau 1.0 --weight_decay 0.1 --scale_not_pruned_gradients 0.0 --hcg_loss_weight 10 --ce_merging_loss_weight 0.0 --gumbel_loss_weight_dynamic 0 --hcg_loss_weight_dynamic 1 --dataloader_num_workers 0 --bf16 1 --torch_compile 1 --sparsity_level 0.0 --concrete_random_mask_proba 0 --lm_loss_max_value 1.0 --hcg_loss_max_value 0.0
+python src/transformers/models/llama/paper/calculate_hopping_potential.py --llama_checkpoint Qwen/Qwen2.5-7B --batch_size 4 --num_samples 1024
+python src/transformers/models/llama/paper/calculate_hopping_potential.py --llama_checkpoint unsloth/Meta-Llama-3.1-8B --batch_size 4 --num_samples 1024
 ```
+
+
 
 
 # Training

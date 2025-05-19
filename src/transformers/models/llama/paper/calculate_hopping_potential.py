@@ -17,6 +17,8 @@ import imageio.v2 as imageio
 import tempfile
 from collections import Counter
 
+import torch
+
 import random
 
 from transformers.models.llama.analyze.embeddings_change import compute_distances, norm_compute_cosine_distance, compute_l1_distance
@@ -50,9 +52,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--llama_checkpoint", type=str, required=True)
-    parser.add_argument("--num_samples", type=int, default=None)
+    parser.add_argument("--num_samples", type=int, default=128)
     parser.add_argument("--hop_threshold", type=float, default=0.8)
-    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--batch_size", type=int, default=16)
+    # parser.add_argument("--torch_compile", type=bool, action="store_true", default=True)
 
     args = parser.parse_args()
 
@@ -63,18 +66,29 @@ if __name__ == "__main__":
     model_vanilla = AutoModelForCausalLM.from_pretrained(args.llama_checkpoint, torch_dtype=torch.bfloat16)
     model_vanilla.to(device)
     model_vanilla.requires_grad_(False)
+    # if args.torch_compile:
+    #     print("Torch compile model")
+    #     model_vanilla = torch.compile(model_vanilla)
 
     tokenizer = AutoTokenizer.from_pretrained(args.llama_checkpoint)
     tokenizer.pad_token = tokenizer.eos_token
 
-    wikitext_103: datasets.Dataset = datasets.load_dataset("lighteval/wikitext_103", split="test")
+    data_files = [ f"data/CC-MAIN-2024-10/000_{i:05}.parquet" for i in range(1) ]
+    text_dataset = datasets.load_dataset("HuggingFaceFW/fineweb", split="train", data_files=data_files, num_proc=16)
 
-    print("len wikitext_103", len(wikitext_103), "args.num_samples", args.num_samples)
+    def tokenize_function(examples):
+        tokenized_inputs = tokenizer(examples['text'], truncation=True, padding='max_length', max_length=1024, return_tensors='pt')
+
+        return tokenized_inputs
+
+    print("len text_dataset", len(text_dataset), "args.num_samples", args.num_samples)
     if args.num_samples is not None:
-        wikitext_103 = wikitext_103.select(range(args.num_samples))
+        text_dataset = text_dataset.select(range(args.num_samples))
+
+    text_dataset = text_dataset.map(tokenize_function, batched=True, num_proc=32)
 
     batch_size = args.batch_size
-    total_batches = len(wikitext_103) // batch_size
+    total_batches = len(text_dataset) // batch_size
 
     # Create output directories
     output_dir = os.path.join("results", "token_embeddings_hopping_potential")
@@ -85,7 +99,7 @@ if __name__ == "__main__":
     token_occurencies = Counter()
 
     batch_count = 0
-    for batch in tqdm(wikitext_103.iter(batch_size=batch_size), total=total_batches):
+    for batch in tqdm(text_dataset.iter(batch_size=batch_size), total=total_batches):
         batch_count += 1
         texts = batch['text']
 
@@ -147,13 +161,15 @@ if __name__ == "__main__":
     # end iteration over dataset
 
     # Save per_token_hopping_potentials to file
-    file_path = os.path.join(output_dir, "per_token_hopping_potentials.pkl")
+    model_name = args.llama_checkpoint.split("/")[-1]
+
+    file_path = os.path.join(output_dir, f"per_token_hopping_potentials_{model_name}.pkl")
     with open(file_path, "wb") as f:
         pickle.dump(per_token_hopping_potentials, f)
     print(f"Saved per_token_hopping_potentials to {file_path}")
 
     # Save token_occurencies to file
-    file_path = os.path.join(output_dir, "token_occurencies.pkl")
+    file_path = os.path.join(output_dir, f"token_occurencies_{model_name}.pkl")
     with open(file_path, "wb") as f:
         pickle.dump(token_occurencies, f)
     print(f"Saved token_occurencies to {file_path}")

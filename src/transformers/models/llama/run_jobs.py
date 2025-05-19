@@ -422,14 +422,14 @@ def run_hcg_llama31_8B_hcg(**kwargs):
 
     extra_params_from_scratch = [
         (
-            "6-21",
-            "6",
-            "21",
+            "18-20",
+            "18",
+            "20",
         ),
     ]
 
-    for hcg_loss_weight in [ 1.0 ]:
-    # for hcg_loss_weight in [ 0.1, 1.0 ]:
+    # for hcg_loss_weight in [ 1.0 ]:
+    for hcg_loss_weight in [ 0.1, 1.0 ]:
         for suffix, fan_in_idx, fan_out_idx in extra_params_from_scratch:
             in_layers_str = "1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1"
             exp_config = {
@@ -880,8 +880,10 @@ if __name__ == "__main__":
     # SLM360M
     # run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
     # run_hcg_smollm2_360M_hcg(dry=dry)
-
     # run_hcg_smollm2_1_7B_hcg(dry=dry)
+
+
+
     # run_hcg_llama31_8B_hcg_forward_residuals(dry=dry)
     # run_hcg_llama31_8B_hcg_each_layer(dry=dry)
 
