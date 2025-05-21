@@ -174,8 +174,8 @@ def llama31_8b_pruningability(**kwargs):
         # # --- Vocab 40 16_26_no_forward_residuals_9OZ9V1TC ---
         for hop_layers in HOP_LAYERS_LLAMA31_8B:
             experiments.append({
-                "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_forward_residuals_w_1.000_l_16_26_no_forward_residuals_9OZ9V1TC_checkpoint-40000/",
-                "exp_prefix": f"llama31_8B_vocab40_16-26_hop_layers_{hop_layers}_{task_name}",
+                "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_1.000_l_22-26_NTWKRP0G/calibr60_checkpoint-5000",
+                "exp_prefix": f"llama31_8B_calib60_hop_layers_{hop_layers}_{task_name}",
                 "fan_in_idxs": ",".join(map(str, range(32-hop_layers))),
                 "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(32-hop_layers))),
                 "task_name": task_name,
@@ -343,20 +343,20 @@ def qwen25_7b_pruningability(**kwargs):
     # --- Rand 30 ---
     for hop_layers in HOP_LAYERS_QWEN25_7B:
         experiments.append({
-            "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25_7B_w_0.100_l_12_GWPA6TMB/",
-            "exp_prefix": f"qwen25_7B_vocab30_hop_layers_{hop_layers}",
+            "checkpoint_base_path": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25_7B_w_1.000_l_12-17_HXIGMJTI/calib40_checkpoint-5000",
+            "exp_prefix": f"qwen25_7B_calib40_hop_layers_{hop_layers}",
             "fan_in_idxs": ",".join(map(str, range(28-hop_layers))),
             "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(28-hop_layers))),
         })
 
-    # --- Vocab 80 ---
-    for hop_layers in HOP_LAYERS_QWEN25_7B:
-        experiments.append({
-            "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25_7B_w_1.000_l_12_HJMJVNL8/",
-            "exp_prefix": f"qwen25_7B_vocab80_hop_layers_{hop_layers}",
-            "fan_in_idxs": ",".join(map(str, range(28-hop_layers))),
-            "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(28-hop_layers))),
-        })
+    # # --- Vocab 80 ---
+    # for hop_layers in HOP_LAYERS_QWEN25_7B:
+    #     experiments.append({
+    #         "checkpoint_base_path":  "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25_7B_w_1.000_l_12_HJMJVNL8/",
+    #         "exp_prefix": f"qwen25_7B_vocab80_hop_layers_{hop_layers}",
+    #         "fan_in_idxs": ",".join(map(str, range(28-hop_layers))),
+    #         "fan_out_idxs": ",".join(map(lambda x: str(x+hop_layers), range(28-hop_layers))),
+    #     })
 
     run_explore_pruningability_experiments(experiments, **kwargs)
 
@@ -418,6 +418,17 @@ def qwen25_7b_instruct_pruningability(**kwargs):
 # Qwen2.5 7B
     # wikitext
     # python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_llama31_8B_l_18-20_q25_analytical_pruning/llama31_8B_analytical_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}_wikitext_103_ppl_results.csv  --output adaptive_hcg_llama31_8B_l_18-20_q25_analytical_pruning/ --max_value 60 --output_prefix wikitext_analytical25
+
+
+# Calibrated
+
+# Llama3.1 8B
+    # wikitext
+    # python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_llama31_8B_w_1.000_l_22-26_NTWKRP0G/calibr60_checkpoint-5000/llama31_8B_calib60_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}_wikitext_103_wikitext_103_ppl_results.csv  --output adaptive_hcg_llama31_8B_w_1.000_l_22-26_NTWKRP0G/calibr60_checkpoint-5000/ --max_value 60 --output_prefix wikitext_calibr60
+
+# Qwen2.5 7B
+    # wikitext
+    # python src/transformers/models/llama/interpretation/heatmap_tokens_pruning.py  --input adaptive_hcg_qwen25_7B_w_1.000_l_12-17_HXIGMJTI/calib40_checkpoint-5000/qwen25_7B_calib40_hop_layers_{1,2,3,4,5,6,7,8,9,10,11,12,13,14}_wikitext_103_ppl_results.csv  --output adaptive_hcg_qwen25_7B_w_1.000_l_12-17_HXIGMJTI/calib40_checkpoint-5000/ --max_value 60 --output_prefix wikitext_calibr40
 
 
 
@@ -492,14 +503,14 @@ if __name__ == "__main__":
 
     print("dry", dry)
 
-    llama31_8b_pruningability_analytical(dry=dry)
-    # llama31_8b_pruningability(dry=dry)
+    # llama31_8b_pruningability_analytical(dry=dry)
+    llama31_8b_pruningability(dry=dry)
     # llama31_8b_pruningability_rand(dry=dry)
     # llama31_8b_instruct_pruningability(dry=dry)
     # llama31_70b_instruct_pruningability(dry=dry)
     # llama31_8b_instruct_pruningability_fwd_res_mlp_only(dry=dry)
 
-    qwen25_7b_pruningability_analytical(dry=dry)
+    # qwen25_7b_pruningability_analytical(dry=dry)
     # qwen25_7b_pruningability_rand(dry=dry)
     # qwen25_7b_instruct_pruningability_rand(dry=dry)
     # qwen25_7b_pruningability(dry=dry)

@@ -1,3 +1,4 @@
+import time
 import sys
 import argparse
 import torch.nn as nn
@@ -103,10 +104,14 @@ def evaluate_ppl_wikitext_103(model, max_samples=None):
         max_samples=max_samples,
     )
 
+    print('results[results]["custom:wikitext_103:0"]', results['results']["custom:wikitext_103:0"])
+
     ppl = results['results']["custom:wikitext_103:0"]["ppl"]
+    ppl_stderr = results['results']["custom:wikitext_103:0"]["ppl_stderr"]
 
     return {
         "ppl": ppl,
+        "ppl_stderr": ppl_stderr,
     }
 
 # ~12 минут на один проход
@@ -197,7 +202,7 @@ def evaluate_acc_openbookqa(model):
 
 
 @torch.no_grad()
-def evaluate_different_percents(model, percent_step=10, max_percent=100, min_percent=0):
+def evaluate_different_percents(model, percent_step=10, max_percent=100, min_percent=0, count_pruned_percent=True):
     global total_initial_tokens, total_pruned_tokens, pruned_input_ids_counts
 
     assert percent_step > 0
@@ -218,12 +223,16 @@ def evaluate_different_percents(model, percent_step=10, max_percent=100, min_per
         total_pruned_tokens = 0
 
         # Ensure the target layer exists
-        target_layer = model.model.fan_in
-        hook_handle = target_layer.register_forward_hook(pruning_hook)
+        if count_pruned_percent:
+            target_layer = model.model.fan_in
+            hook_handle = target_layer.register_forward_hook(pruning_hook)
         print("Registered forward hook on model.model.fan_in")
 
+        start_time = time.time()
         ppl_results = evaluate_ppl_wikitext_103(model)
         ppl = ppl_results['ppl']
+        end_time = time.time()
+        print(f"Time taken for PPL evaluation: {end_time - start_time} seconds")
 
         # Calculate pruned percentage
         if total_initial_tokens > 0:
@@ -250,6 +259,8 @@ def evaluate_different_percents(model, percent_step=10, max_percent=100, min_per
         if ppl > 100: # Threshold increased slightly as per original code comment intent
             print(f"PPL ({ppl}) exceeded threshold, stopping evaluation early.")
             break
+
+    return
 
     df = pd.DataFrame(all_results)
     df = df.sort_values(by='eval_hard_concrete_percent')
@@ -411,17 +422,22 @@ if __name__ == "__main__":
     parser.add_argument("--exp_prefix", default=None, type=str)
     parser.add_argument("--max_samples", default=None, type=int)
     parser.add_argument("--fan_out_projection", default=None, type=int)
+    parser.add_argument("--count_pruned_percent", default=False, action='store_true')
 
     args = parser.parse_args()
+
+    print("count_pruned_percent", args.count_pruned_percent)
 
 
     normalize_hcg_log_a = args.normalize_hcg_log_a
     checkpoint_base_path = args.checkpoint_base_path
 
     print("checkpoint_base_path", checkpoint_base_path)
-    checkpoints = os.listdir(checkpoint_base_path)
-    checkpoints = [x for x in checkpoints if x.startswith('checkpoint')]
-    checkpoints = sorted(checkpoints, key=lambda x: int(x.split('-')[1]))
+    checkpoints = []
+    if os.path.isdir(checkpoint_base_path):
+        checkpoints = os.listdir(checkpoint_base_path)
+        checkpoints = [x for x in checkpoints if x.startswith('checkpoint')]
+        checkpoints = sorted(checkpoints, key=lambda x: int(x.split('-')[1]))
 
     if len(checkpoints) == 0:
         print("No checkpoints found. Assuming the checkpoint_base_path is a single checkpoint.")
@@ -440,8 +456,12 @@ if __name__ == "__main__":
     tokeniser = AutoTokenizer.from_pretrained(last_checkpoint_path)
 
     device_map = None
+    is_adaptive = True
 
-    if 'qwen' in last_checkpoint_path:
+    if last_checkpoint_path.startswith('Qwen/') or last_checkpoint_path.startswith('unsloth/'):
+        is_adaptive = False
+        model_class = AutoModelForCausalLM
+    elif 'qwen' in last_checkpoint_path:
         model_class = AdaptiveQwen2ForCausalLM
     elif 'llama' in last_checkpoint_path:
         model_class = AdaptiveLlamaForCausalLM
@@ -542,29 +562,32 @@ if __name__ == "__main__":
 
     model.eval()
 
-    fan_out_projection = None
-    if args.fan_out_projection is not None:
-        print("\n\nsetting fan_out_projection to", args.fan_out_projection)
-        fan_out_projection = args.fan_out_projection > 0
-        print("\n\nsetting fan_out_projection to", fan_out_projection)
-        model.config.fan_out_projection = fan_out_projection
+    if is_adaptive:
+        fan_out_projection = None
+        if args.fan_out_projection is not None:
+            print("\n\nsetting fan_out_projection to", args.fan_out_projection)
+            fan_out_projection = args.fan_out_projection > 0
+            print("\n\nsetting fan_out_projection to", fan_out_projection)
+            model.config.fan_out_projection = fan_out_projection
 
-    print("Model fan in idx  ", model.model.fan_in_idx)
-    print("Model fan out idx ", model.model.fan_out_idx)
+        model.model.fan_in_idx = 5
+        model.model.fan_out_idx = 19
+        print("Model fan in idx  ", model.model.fan_in_idx)
+        print("Model fan out idx ", model.model.fan_out_idx)
 
-    if args.concrete_random_mask_proba is not None:
-        model.config.concrete_random_mask_proba = float(args.concrete_random_mask_proba)
-        print(f"Setting concrete_random_mask_proba to {args.concrete_random_mask_proba}")
+        if args.concrete_random_mask_proba is not None:
+            model.config.concrete_random_mask_proba = float(args.concrete_random_mask_proba)
+            print(f"Setting concrete_random_mask_proba to {args.concrete_random_mask_proba}")
 
-    if normalize_hcg_log_a:
-        print("Normalizing hcg log a")
-        log_a = model.model.fan_in.hcg.hcg_log_a.data
-        log_a = log_a / log_a.abs().max() * 5 # 5 is for sigmoid at least 0 or at least 1
-        model.model.fan_in.hcg.hcg_log_a.data = log_a
+        if normalize_hcg_log_a:
+            print("Normalizing hcg log a")
+            log_a = model.model.fan_in.hcg.hcg_log_a.data
+            log_a = log_a / log_a.abs().max() * 5 # 5 is for sigmoid at least 0 or at least 1
+            model.model.fan_in.hcg.hcg_log_a.data = log_a
 
     if args.percent_step > 0:
         print(f"Evaluating different percents with percent_step={args.percent_step} and max_percent={args.max_percent}")
-        evaluate_different_percents(model, percent_step=args.percent_step, max_percent=args.max_percent, min_percent=args.min_percent)
+        evaluate_different_percents(model, percent_step=args.percent_step, max_percent=args.max_percent, min_percent=args.min_percent, count_pruned_percent=args.count_pruned_percent)
     elif args.analyze_most_confident_pruned_tokens:
         most_confident_pruned_tokens = analyze_most_confident_pruned_tokens(model, checkpoint_base_path=checkpoint_base_path)
     else:

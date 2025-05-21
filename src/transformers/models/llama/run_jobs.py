@@ -35,7 +35,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
 
         freeze_lm_backbone = exp.pop('freeze_lm_backbone')
 
-        warmup_steps = exp.pop('warmup_steps', 5000)
+        warmup_steps = exp.pop('warmup_steps', 2000)
         num_train_epochs = exp.pop('num_train_epochs', 1)
         generate_merges_transform_impl = exp.pop('generate_merges_transform_impl', 'cuda_kernel')
         select_train_dataset_items = exp.pop('select_train_dataset_items', 150000)
@@ -62,7 +62,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         per_device_train_batch_size = exp.pop('per_device_train_batch_size', 32)
         gradient_accumulation_steps = exp.pop('gradient_accumulation_steps', 1)
 
-        save_steps = exp.pop('save_steps', 10000)
+        save_steps = exp.pop('save_steps', 2500)
         torch_compile = exp.pop('torch_compile', 1)
 
         concrete_random_mask_proba = exp.pop('concrete_random_mask_proba', '0')
@@ -422,9 +422,9 @@ def run_hcg_llama31_8B_hcg(**kwargs):
 
     extra_params_from_scratch = [
         (
-            "12-17",
-            "12",
-            "17",
+            "22-26",
+            "22",
+            "26",
         ),
     ]
 
@@ -763,9 +763,9 @@ def run_hcg_qwen25_7B_hcg(**kwargs):
 
     extra_params_from_scratch = [
         (
-            "5-19",
-            "5",
-            "19"
+            "12-17",
+            "12",
+            "17"
         ),
     ]
 

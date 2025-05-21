@@ -179,6 +179,8 @@ def main():
 
     plot_token_occurrences_distribution(token_occurences, args.output_dir, model_name=model_name)
 
+    breakpoint()
+
 
 if __name__ == "__main__":
     main()

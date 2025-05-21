@@ -135,6 +135,17 @@ def main():
         default=None,
     )
     parser.add_argument(
+        "--override_fan_in_layer_idx",
+        help="Override fan in layer index",
+        default=None,
+    )
+    parser.add_argument(
+        "--override_fan_out_layer_idx",
+        help="Override fan in layer index",
+        default=None,
+    )
+
+    parser.add_argument(
         "--output_dir",
         help="Location to write HF model and tokenizer",
     )
@@ -142,7 +153,6 @@ def main():
         "--fan_in_layer_idx",
         help="Fan in layer index",
         type=int,
-        required=True,
     )
     parser.add_argument(
         "--safe_serialization", default=True, type=bool, help="Whether or not to save using `safetensors`."
@@ -164,7 +174,11 @@ def main():
     assert num_layers % 2 == 0
 
     dummy_adaptive_fan_in = [ True ] * (num_layers // 2)
-    dummy_adaptive_fan_in[args.fan_in_layer_idx] = False
+
+    if args.fan_in_layer_idx is not None:
+        dummy_adaptive_fan_in[args.fan_in_layer_idx] = False
+    else:
+        dummy_adaptive_fan_in[-1] = False
 
     print("dummy_adaptive_fan_in", dummy_adaptive_fan_in)
     model = build_adaptive_llama_from_llama_checkpoint(
@@ -178,12 +192,17 @@ def main():
 
     # assert (llama_model.model.layers[0].mlp.gate_proj.weight == model.model.layers_down[0].mlp.gate_proj.weight).all()
 
+    if args.override_fan_in_layer_idx is not None:
+        model.config.fan_in_idx = args.override_fan_in_layer_idx
+
+    if args.override_fan_out_layer_idx is not None:
+        model.config.fan_out_idx = args.override_fan_out_layer_idx
+
     print(model)
     model.save_pretrained(args.output_dir)
 
     tokenizer = AutoTokenizer.from_pretrained(args.from_llama)
     tokenizer.save_pretrained(args.output_dir)
-
 
     breakpoint()
 

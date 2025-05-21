@@ -216,9 +216,17 @@ if __name__ == "__main__":
                     occurence_diffs_cosine = pairwise_cosine_similarity(occurence_diffs_t, occurence_diffs_t)
                     occurence_diffs_cosine = occurence_diffs_cosine.numpy()
 
+                    font = {
+                        'size'   : 30
+                    }
+                    import matplotlib
+                    matplotlib.rc('font', **font)
+
                     plt.figure(figsize=(12, 10))
-                    sns.heatmap(occurence_diffs_cosine, annot=True, cmap='coolwarm', vmin=-1, vmax=1, fmt=".2f")
-                    plt.title(f"Pairwise Cosine Similarity Between Embeddings from different Layers. Occurence {occurence_idx}. Token {token_id} ({token_str})")
+                    sns.heatmap(occurence_diffs_cosine, annot=False, cmap='coolwarm', vmin=-1, vmax=1, fmt="")
+                    plt.title(f"Pairwise Cosine Similarity")
+                    plt.xlabel("Layer Index")  # X-axis label
+                    plt.ylabel("Layer Index")  # Y-axis label
                     plt.tight_layout()
 
                     # Save frame for occurrence GIF
@@ -226,8 +234,11 @@ if __name__ == "__main__":
                     plt.savefig(occurence_frame_path)
                     occurence_frames.append(imageio.imread(occurence_frame_path))
 
-                    plt.savefig(os.path.join(plots_dir, f"occurence_diffs_{occurence_idx}_{token_id}_{token_str}{suffix}.png"))
+                    file_path = os.path.join(plots_dir, f"occurence_diffs_{occurence_idx}_{token_id}_{token_str}{suffix}.png")
+                    plt.savefig(file_path)
+                    print(f"saved to {file_path}")
                     plt.close()
+                    breakpoint()
 
             if plot_per_layer_distances or analyze_outliers_indices_and_per_layer_overlap:
 

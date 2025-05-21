@@ -90,21 +90,15 @@ python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch
 
 llama31 8b
 ```
-LLAMA31_CHECKPOINT=./adaptive_hcg_llama31_8B_w_1.000_l_18-20_4K7LKR38/checkpoint-20000
-LLAMA31_OUTPUT=./adaptive_hcg_llama31_8B_w_1.000_l_18-20_4K7LKR38/checkpoint-20000-calibrated15
-EXPECTED_SPARSITY=15
-TOKENS_FREQUENCY_CSV_PATH=./results/token_embeddings_hopping_potential/token_occurencies_Meta-Llama-3.1-8B.pkl
-python -m pdb -c continue src/transformers/models/llama/paper/calibrate_learned_vocabulary.py --llama_checkpoint "$LLAMA31_CHECKPOINT" --tokens_frequency_csv_path $TOKENS_FREQUENCY_CSV_PATH  --output_dir "$LLAMA31_OUTPUT" --expected_sparsity "$EXPECTED_SPARSITY"
+python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./adaptive_hcg_llama31_8B_w_1.000_l_22-26_NTWKRP0G/checkpoint-5000 --output_dir results/calibrate_ppl/ --output_suffix hcg_llama31_8B_w_1.000
+python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./adaptive_hcg_llama31_8B_w_0.100_l_22-26_HEHE7U06/checkpoint-5000 --output_dir results/calibrate_ppl/ --output_suffix hcg_llama31_8B_w_0.100
+```
+
+qwen25
+```
+python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./adaptive_hcg_qwen25_7B_w_1.000_l_12-17_HXIGMJTI/checkpoint-5000 --output_dir results/calibrate_ppl/ --output_suffix hcg_qwen25_7B_w_1.000
+python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./adaptive_hcg_qwen25_7B_w_0.100_l_12-17_GQZARPC9/checkpoint-5000 --output_dir results/calibrate_ppl/ --output_suffix hcg_qwen25_7B_w_0.100
 ```
 
 
-# Evaluation
-
-# TODO commit lighteval
-
-For evaluations lighteval should be installed from local `./lighteval` distribution.
-
-```
-lighteval accelerate --override-batch-size 32 --output-dir ./exps_evaluation --custom-tasks ./cosmopedia/evaluation/lighteval_tasks.py "pretrained=./adaptive_hcg_slm2_1.7B_nofoutproj_8/checkpoint-18743,dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|arc|0|1,custom|piqa|0|1"
-```
 
