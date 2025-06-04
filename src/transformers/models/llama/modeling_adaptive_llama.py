@@ -972,11 +972,49 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         if not self.fan_in.training:
             # Prefill
             if hidden_states is not None:
-                new_seq_len = hidden_states.shape[1]
 
+                # Batch size = 1 make position embeddings trick
+                # assert hidden_states.shape[0] == 1
+                # if hidden_states.shape[0] == 1:
+                #     full_current_concrete_bool = full_current_concrete.bool().squeeze(0).squeeze(-1)
+                #     loop_down_cache_position = cache_position[full_current_concrete_bool]
+                #     loop_down_position_ids = position_ids[:, full_current_concrete_bool]
+                #     loop_down_position_embeddings = (position_embeddings[0][:, full_current_concrete_bool], position_embeddings[1][:, full_current_concrete_bool])
+                #     # breakpoint()
+                # else:
+                new_seq_len = hidden_states.shape[1]
+                # Do not care actually about cache position and position ids
                 loop_down_cache_position = cache_position[:new_seq_len]
                 loop_down_position_ids = position_ids[:, :new_seq_len]
                 loop_down_position_embeddings = (position_embeddings[0][:, :new_seq_len], position_embeddings[1][:, :new_seq_len])
+                # loop_down_position_embeddings = (new_cos_pos_emb[:, :new_seq_len], new_sin_pos_emb[:, :new_seq_len] )
+
+                    # full_current_concrete_bool = full_current_concrete.bool().squeeze(0).squeeze(-1)
+                    # loop_down_cache_position = cache_position[full_current_concrete_bool]
+                    # loop_down_position_ids = position_ids[:, full_current_concrete_bool]
+                if os.environ.get('POSITIONAL_ENCODING_TYPE', '') == "mask":
+                    old_seq_len = position_embeddings[0].shape[1]
+
+                    # TODO optimize?
+                    # [bs, old_seq_len]
+                    full_current_concrete_bool = full_current_concrete.bool().squeeze(-1).cpu()
+
+                    batch_size = hidden_states.shape[0]
+
+                    new_cos_pos_emb = position_embeddings[0].clone().repeat(batch_size, 1, 1)
+                    new_sin_pos_emb = position_embeddings[1].clone().repeat(batch_size, 1, 1)
+                    for batch_idx in range(0, batch_size):
+                        current_idx = 0
+                        first_true_idx = -1
+                        for i in range(0, old_seq_len):
+                            if full_current_concrete_bool[batch_idx, i].item():
+                                if first_true_idx == -1:
+                                    first_true_idx = i
+                                new_cos_pos_emb[batch_idx, first_true_idx + current_idx] = position_embeddings[0][0, i-first_true_idx]
+                                new_sin_pos_emb[batch_idx, first_true_idx + current_idx] = position_embeddings[1][0, i-first_true_idx]
+                                current_idx += 1
+
+                    loop_down_position_embeddings = (new_cos_pos_emb[:, :new_seq_len], new_sin_pos_emb[:, :new_seq_len] )
 
             # Decode
             if past_key_values is not None and len(past_key_values.key_cache) > self.fan_in_idx+1:
