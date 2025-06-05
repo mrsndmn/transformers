@@ -45,7 +45,7 @@ def build_adaptive_llama_from_llama_checkpoint(
         pretrain_fan_out_projection=False,
         hcg_fan_in_from=None,
         adaptive_model_class=None,
-        each_layer_pruning=False
+        each_layer_pruning=False,
     ):
 
     if adaptive_model_class is None:

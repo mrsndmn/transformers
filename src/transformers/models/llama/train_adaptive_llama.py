@@ -92,6 +92,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
     each_layer_pruning: bool = field(default=False)
     train_after_fan_out_llm_layer: bool = field(default=False)
 
+    train_hcg: bool = field(default=True)
+
     weight_decay: float = field(default=0.01)
     eval_strategy: str = field(default="steps")
     eval_steps: int = field(default=10000)
@@ -111,6 +113,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     dataloader_num_workers: int = field(default=0)
     merging_type: str = field(default="next_token_merge_mlp")
     freeze_lm_backbone: bool = field(default=False)
+    unfreeze_inner_layers: bool = field(default=False)
     freeze_hcg: bool = field(default=False)
     init_fan_out_mlp: bool = field(default=False)
     bf16: bool = field(default=True)
@@ -253,8 +256,9 @@ class AdaptiveLlamaTrainer(Trainer):
             print("optim params shape:", [ " ".join( str(p.shape) for p in  pg['params']) for pg in self.optimizer.param_groups ])
 
             if not opt_model.config.fan_out_projection:
-                assert self.optimizer.param_groups[2]['lr'] == hcg_lr
-                assert self.optimizer.param_groups[2]['params'][0].shape == torch.Size([ opt_model.config.vocab_size ])
+                if self.args.train_hcg:
+                    assert self.optimizer.param_groups[2]['lr'] == hcg_lr
+                    assert self.optimizer.param_groups[2]['params'][0].shape == torch.Size([ opt_model.config.vocab_size ])
 
         return self.optimizer
 
@@ -1005,6 +1009,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
     print("model.config.distributed", model.config.distributed)
 
+    model.config.fan_out_projection = training_args.fan_out_projection
     model.config.pretrain_fan_out_projection = training_args.pretrain_fan_out_projection
 
     model.config.concrete_random_mask_proba = training_args.concrete_random_mask_proba
@@ -1033,6 +1038,11 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
     if training_args.freeze_lm_backbone:
         freeze_lm_backbone(model, train_after_fan_out_llm_layer=training_args.train_after_fan_out_llm_layer)
+
+    if training_args.unfreeze_inner_layers:
+        for layer in model.model.layers[model.config.fan_in_idx:model.config.fan_out_idx+1]:
+            for p in layer.parameters():
+                p.requires_grad = True
 
     if training_args.freeze_hcg:
         for p in model.model.fan_in.parameters():
@@ -1089,6 +1099,11 @@ def build_model(training_args: AdaptiveTrainingArguments):
         model.model.fan_in.hcg.hcg_log_a.data = log_a_data
         sigmoid = torch.nn.functional.sigmoid(log_a_data)
         print("Harded hcg_log_a for fan_in with value", sigmoid.min(), sigmoid.max())
+
+    if not training_args.train_hcg:
+        model.model.fan_in.eval()
+        for p in model.model.fan_in.parameters():
+            p.requires_grad = False
 
     print("model", type(model))
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
