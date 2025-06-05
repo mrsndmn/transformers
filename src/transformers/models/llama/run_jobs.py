@@ -386,7 +386,7 @@ def run_hcg_smollm2_1_7B_hcg(**kwargs):
     return
 
 
-def run_hcg_llama31_8B_hcg(**kwargs):
+def run_hcg_llama31_8B_hcg(fan_out_projection=False, select_train_dataset_items=500000, lr_scheduler_type="constant_with_warmup", **kwargs):
 
     experiment_prefix_base_name = "adaptive_hcg_llama31_8B"
 
@@ -399,13 +399,13 @@ def run_hcg_llama31_8B_hcg(**kwargs):
         "init_hcg_a": 1.0,
 
         # Data
-        "select_train_dataset_items": 500000,
+        "select_train_dataset_items": select_train_dataset_items,
         "per_device_train_batch_size": 4,
 
         # Training
         "learning_rate": 0.08,
         "hcg_learning_rate": 0.08,
-        "lr_scheduler_type": "constant_with_warmup",
+        "lr_scheduler_type": lr_scheduler_type,
 
         # "hcg_loss_weight": # will be overriden in cycle later,
         "max_grad_norm": 0,
@@ -415,7 +415,7 @@ def run_hcg_llama31_8B_hcg(**kwargs):
 
         # Training type
         "pretrain_fan_out_projection": "0",
-        "fan_out_projection": "0",
+        "fan_out_projection": "0" if fan_out_projection else "1",
     }
 
     hcg_experiments = []
@@ -428,8 +428,8 @@ def run_hcg_llama31_8B_hcg(**kwargs):
         ),
     ]
 
-    # for hcg_loss_weight in [ 1.0 ]:
-    for hcg_loss_weight in [ 0.1, 1.0 ]:
+    for hcg_loss_weight in [ 1.0 ]:
+    # for hcg_loss_weight in [ 0.1, 1.0 ]:
         for suffix, fan_in_idx, fan_out_idx in extra_params_from_scratch:
             in_layers_str = "1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1"
             exp_config = {
@@ -728,7 +728,7 @@ def run_hcg_llama31_8B_hcg_fan_out_mlp(**kwargs):
 
 
 
-def run_hcg_qwen25_7B_hcg(**kwargs):
+def run_hcg_qwen25_7B_hcg(fan_out_projection=False, select_train_dataset_items=500000, lr_scheduler_type="constant_with_warmup", **kwargs):
 
     experiment_prefix_base_name = "adaptive_hcg_qwen25_7B"
 
@@ -741,13 +741,13 @@ def run_hcg_qwen25_7B_hcg(**kwargs):
         "init_hcg_a": 1.0,
 
         # Data
-        "select_train_dataset_items": 500000,
+        "select_train_dataset_items": select_train_dataset_items,
         "per_device_train_batch_size": 4,
 
         # Training
         "learning_rate": 0.08,
         "hcg_learning_rate": 0.08,
-        "lr_scheduler_type": "constant_with_warmup",
+        "lr_scheduler_type": lr_scheduler_type,
 
         "max_grad_norm": 0,
 
@@ -756,7 +756,7 @@ def run_hcg_qwen25_7B_hcg(**kwargs):
 
         # Training type
         "pretrain_fan_out_projection": "0",
-        "fan_out_projection": "0",
+        "fan_out_projection": "0" if fan_out_projection else "1",
     }
 
     hcg_experiments = []
@@ -769,7 +769,8 @@ def run_hcg_qwen25_7B_hcg(**kwargs):
         ),
     ]
 
-    for hcg_loss_weight in [ 0.1, 1.0 ]:
+    for hcg_loss_weight in [ 1.0 ]:
+    # for hcg_loss_weight in [ 0.1, 1.0 ]:
         for suffix, fan_in_idx, fan_out_idx in extra_params_from_scratch:
             in_layers_str = "1,1,1,1,1,1,1,1,1,1,1,0,1,1"
             exp_config = {
@@ -892,7 +893,10 @@ if __name__ == "__main__":
 
     # OK
 
-    run_hcg_llama31_8B_hcg(dry=dry)
-    run_hcg_qwen25_7B_hcg(dry=dry)
+    run_hcg_llama31_8B_hcg(fan_out_projection=True, select_train_dataset_items=1500000, lr_scheduler_type="cosine", dry=dry)
+    run_hcg_qwen25_7B_hcg(fan_out_projection=True,  select_train_dataset_items=1500000, lr_scheduler_type="cosine", dry=dry)
+
+    # run_hcg_llama31_8B_hcg(dry=dry)
+    # run_hcg_qwen25_7B_hcg(dry=dry)
     # run_hcg_llama31_8B_hcg_fan_out_mlp(dry=dry)
 
