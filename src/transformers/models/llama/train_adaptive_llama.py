@@ -1185,7 +1185,7 @@ if __name__ == "__main__":
 
             def tokenize_function(examples):
                 # 2046 = 2048 - 1 - 1 # eos and bos tokens
-                text = [ '<|im_start|>' + x + '<|im_end|>' for x in examples['text'] ]
+                text = [ '<|im_start|>' + x  for x in examples['text'] ]
 
                 tokenized_inputs = tokenizer(text, truncation=True, padding='max_length', max_length=2046, return_tensors='pt')
 
