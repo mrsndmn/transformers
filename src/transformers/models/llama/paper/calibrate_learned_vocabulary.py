@@ -46,7 +46,7 @@ def calibrate_vocabulary(model, tokens_frequency, expected_sparsity):
     current_pruned_tokens = 0
 
     boarderline_token_idx = 0
-    for token_id in tqdm(ranked_token_idxs):
+    for token_id in ranked_token_idxs:
         if current_pruned_tokens / total_tokens * 100 >= expected_sparsity:
             break
 
