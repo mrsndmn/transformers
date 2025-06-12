@@ -8,12 +8,13 @@ import os
 import glob
 
 if __name__ == "__main__":
-
+    # Clear any existing plots
+    plt.clf()
+    
     input_files_names_full = sorted(glob.glob("results/calibrate_ppl_single_layer/ppl_results_*.csv"))
 
     input_files = []
     for file_name in input_files_names_full:
-
         match = re.search(r"ppl_results_hcg_llama31_8B_L(\d+)-(\d+)", file_name)
         if match:
             l_from = match.group(1)
@@ -24,10 +25,13 @@ if __name__ == "__main__":
             ])
 
     fontsize = 29
-    scale = 2
-    plt.gcf().set_size_inches(8 * scale, 6 * scale)
-
+    scale = 5
+    
+    # Set style first
     plt.style.use('seaborn-v0_8')
+    
+    # Create new figure with specified size
+    plt.figure(figsize=(8 * scale, 6 * scale))
 
     for file_path, model_name in input_files:
         if not os.path.exists(file_path):
@@ -42,7 +46,7 @@ if __name__ == "__main__":
     plt.yticks(fontsize=fontsize)
     plt.xlabel("Sparsity", fontsize=fontsize)
     plt.ylabel("PPL", fontsize=fontsize)
-    plt.title("WikiText-103 Sparsity vs PPL", fontsize=fontsize)
+    plt.title("WikiText-103 Sparsity vs PPL", fontsize=fontsize, pad=20)
     plot_path = os.path.join("results/calibrate_ppl_single_layer", f"sparsity_ppl_curves.png")
     plt.tight_layout()
     plt.savefig(plot_path)
