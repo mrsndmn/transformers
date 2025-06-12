@@ -930,7 +930,7 @@ if __name__ == "__main__":
             fan_in_idx=i,
             fan_out_idx=i+1,
             dry=dry,
-            select_train_dataset_items=170000,
+            select_train_dataset_items=100000,
             experiment_prefix_base_name="adaptive_hcg_llama31_8B_one"
         )
 

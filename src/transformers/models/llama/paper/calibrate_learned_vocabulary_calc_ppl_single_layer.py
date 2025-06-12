@@ -47,18 +47,24 @@ def main():
     for i in range(2, 30):
         output_suffix = f"hcg_llama31_8B_L{i}-{i+1}_w_0.1"
 
-        checkpoint_glob = glob.glob(f"./adaptive_hcg_llama31_8B_one_w_0.100_l_{i}-{i+1}_*/checkpoint-5000/")
+        checkpoint_glob = sorted(glob.glob(f"./adaptive_hcg_llama31_8B_one_w_0.100_l_{i}-{i+1}_*/checkpoint-5000/"))
 
         if len(checkpoint_glob) == 0:
             logger.info(f"No checkpoint found for {output_suffix}")
             continue
 
-        assert len(checkpoint_glob) == 1
-        checkpoint_path = checkpoint_glob[0]
+        checkpoint_path = checkpoint_glob[-1]
+        print("use checkpoint checkpoint_path", checkpoint_path)
 
         if not os.path.exists(checkpoint_path):
             logger.info(f"Checkpoint {checkpoint_path} does not exist")
             continue
+
+        result_file_path = os.path.join(output_dir, f"ppl_results_{output_suffix}.csv")
+
+        if os.path.exists(result_file_path):
+            continue
+
 
         tokens_frequency = {}
 
@@ -90,9 +96,8 @@ def main():
             })
 
         df = pd.DataFrame(results)
-        file_path = os.path.join(output_dir, f"ppl_results_{output_suffix}.csv")
-        df.to_csv(file_path, index=False)
-        logger.info(f"Saved PPL results to {file_path}")
+        df.to_csv(result_file_path, index=False)
+        logger.info(f"Saved PPL results to {result_file_path}")
 
 
 if __name__ == "__main__":
