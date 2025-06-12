@@ -82,7 +82,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
     per_device_eval_batch_size: int = field(default=4)
     num_train_epochs: int = field(default=1)
 
-
+    hcg_fan_in_from: Optional[str] = field(default=None)
+    fan_out_projection_mlp_intermediate_size: Optional[int] = field(default=None)
     lr_scheduler_type: str = field(default='constant_with_warmup')
 
     average_tokens_across_devices: bool = field(default=True)
@@ -99,7 +100,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     eval_steps: int = field(default=10000)
     save_strategy: str = field(default="steps")
     save_steps: int = field(default=10000)
-    save_total_limit: Optional[int] = field(default=15)
+    save_total_limit: Optional[int] = field(default=2)
     save_only_model: bool = field(default=True)
 
     prohibit_end_of_sentence_pruning: bool = field(default=False)
@@ -217,14 +218,14 @@ class AdaptiveLlamaTrainer(Trainer):
                 # HCG params without Weight Decay
                 {
                     "params": [
-                        p for n, p in opt_model.named_parameters() if (n in hcg_params and p.requires_grad)
+                        p for n, p in opt_model.named_parameters() if (n in hcg_params and (p.requires_grad or self.args.each_layer_pruning))
                     ],
                     "weight_decay": 0.0,
                     "lr": hcg_lr,
                 },
             ]
 
-            assert sum(sum(p.numel() for p in group['params']) for group in optimizer_grouped_parameters) == sum(p.numel() for p in opt_model.parameters() if p.requires_grad)
+            # assert sum(sum(p.numel() for p in group['params']) for group in optimizer_grouped_parameters) == sum(p.numel() for p in opt_model.parameters() if p.requires_grad)
 
             optimizer_cls, optimizer_kwargs = self.get_optimizer_cls_and_kwargs(self.args, opt_model)
 
@@ -886,8 +887,6 @@ class AdaptiveLlamaTrainer(Trainer):
                     self.log({ "lighteval/wikitext_ppl": results['results']["custom:wikitext_103:0"]["ppl"] })
         except Exception as e:
             print("Error in evaluation of PPL", e)
-            breakpoint()
-            print("Error in evaluation of PPL", e)
 
         self.model.train()
 
@@ -990,6 +989,8 @@ def build_model(training_args: AdaptiveTrainingArguments):
             concrete_random_mask_proba=training_args.concrete_random_mask_proba,
             pretrain_fan_out_projection=training_args.pretrain_fan_out_projection,
             each_layer_pruning=training_args.each_layer_pruning,
+            hcg_fan_in_from=training_args.hcg_fan_in_from,
+            fan_out_projection_mlp_intermediate_size=training_args.fan_out_projection_mlp_intermediate_size
         )
 
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
@@ -1069,6 +1070,14 @@ def build_model(training_args: AdaptiveTrainingArguments):
                 breakpoint()
 
 
+    if isinstance(model.model, AdaptiveLlamaModelWithEachLayerPruning):
+        for layer_idx in range(model.model.config.num_hidden_layers):
+            for p in model.model.fan_in_layers[layer_idx].parameters():
+                p.requires_grad = False
+
+        # Unfreeze only the first layer
+        for p in model.model.fan_in_layers[0].parameters():
+            p.requires_grad = True
 
     # if training_args.pretrain_fan_out_projection:
     #     print("Pretrain fan out projection. Freeze Fan In parameters")
@@ -1247,6 +1256,45 @@ if __name__ == "__main__":
     if training_args.early_stopping_for_pretraining:
         callbacks.append(EarlyStoppingCallbacForPretraining())
 
+    gradual_unfreeze_callback = None
+
+    if training_args.each_layer_pruning:
+        from transformers import TrainerCallback
+
+        class GradualUnfreezeStepCallback(TrainerCallback):
+            def __init__(self, model, unfreeze_interval=1000):
+                """
+                Args:
+                    model: The model to unfreeze layers on.
+                    layers_to_unfreeze: List of param groups to unfreeze step-by-step.
+                    unfreeze_interval: How often to unfreeze (in training steps).
+                """
+                self.model = model
+                self.unfreeze_interval = unfreeze_interval
+                self.current_step_idx = 1  # Index in layers_to_unfreeze
+                self.trainer = None  # Will be set later
+
+            def set_trainer(self, trainer):
+                # Huggingface will call this automatically at the beginning
+                self.trainer = trainer
+
+            def on_step_end(self, args, state, control, **kwargs):
+                # state.global_step is the current training step (int)
+
+                if state.global_step > 0 and state.global_step % self.unfreeze_interval == 0:
+                    if self.current_step_idx < self.model.config.num_hidden_layers:
+                        print(f"GradualUnfreezeStepCallback: Unfreezing layer group {self.current_step_idx} at step {state.global_step}")
+
+                        # Unfreeze params in current group
+                        for param in self.model.model.fan_in_layers[self.current_step_idx].parameters():
+                            param.requires_grad = True
+
+                        self.current_step_idx += 1
+
+
+        gradual_unfreeze_callback = GradualUnfreezeStepCallback(model)
+        callbacks.append(gradual_unfreeze_callback)
+
     trainer = AdaptiveLlamaTrainer(
         model,
         callbacks=callbacks,
@@ -1258,6 +1306,9 @@ if __name__ == "__main__":
         data_collator=data_collator,
         compute_metrics=compute_metrics,
     )
+
+    if gradual_unfreeze_callback is not None:
+        gradual_unfreeze_callback.set_trainer(trainer)
 
     trainer.accelerator.init_trackers(
         project_name=trackers_project_name,

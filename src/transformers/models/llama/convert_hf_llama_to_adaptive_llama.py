@@ -46,6 +46,7 @@ def build_adaptive_llama_from_llama_checkpoint(
         hcg_fan_in_from=None,
         adaptive_model_class=None,
         each_layer_pruning=False,
+        fan_out_projection_mlp_intermediate_size=None,
     ):
 
     if adaptive_model_class is None:
@@ -85,6 +86,9 @@ def build_adaptive_llama_from_llama_checkpoint(
     config.concrete_uniform_pruning = concrete_uniform_pruning
     config.concrete_stop_word_pruning = concrete_stop_word_pruning
     config.single_layer_hopping = single_layer_hopping
+
+    if fan_out_projection_mlp_intermediate_size is not None:
+        config.fan_out_projection_mlp_intermediate_size = fan_out_projection_mlp_intermediate_size
 
     if flash_attention:
         config._attn_implementation = 'flash_attention_2'

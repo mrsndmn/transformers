@@ -541,8 +541,7 @@ class AdaptiveFanOutHCG(nn.Module):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
-        new_mlp_hidden_size = config.hidden_size // 16
-        self.fan_out_mlp = mlp_class(config, intermediate_size=new_mlp_hidden_size)
+        self.fan_out_mlp = mlp_class(config, intermediate_size=config.fan_out_projection_mlp_intermediate_size)
 
         # if config.fan_out_embeddings:
         #     self.additive_embeddings = nn.Embedding(config.vocab_size, config.hidden_size)

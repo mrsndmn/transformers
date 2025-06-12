@@ -200,6 +200,7 @@ class LlamaConfig(PretrainedConfig):
         # scale_token_frequency=False,
         distributed=False,
         pretrain_fan_out_projection=False,
+        fan_out_projection_mlp_intermediate_size=256,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -220,6 +221,8 @@ class LlamaConfig(PretrainedConfig):
         if dummy_adaptive_fan_in is None:
             dummy_adaptive_fan_in = [ True ] * (num_hidden_layers // 2)
         self.dummy_adaptive_fan_in = dummy_adaptive_fan_in
+
+        self.fan_out_projection_mlp_intermediate_size = fan_out_projection_mlp_intermediate_size
         
         assert len(self.dummy_adaptive_fan_in) == (num_hidden_layers // 2)
 

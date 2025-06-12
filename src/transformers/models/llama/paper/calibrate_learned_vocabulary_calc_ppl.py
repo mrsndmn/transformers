@@ -51,6 +51,11 @@ logging.basicConfig(
 # python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./adaptive_hcg_qwen25_7B_w_1.000_l_12-17_HXIGMJTI/checkpoint-5000 --output_dir results/calibrate_ppl/ --output_suffix hcg_qwen25_7B_w_1.000
 # python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./adaptive_hcg_qwen25_7B_w_0.100_l_12-17_GQZARPC9/checkpoint-5000 --output_dir results/calibrate_ppl/ --output_suffix hcg_qwen25_7B_w_0.100
 
+
+# Single Layer Hopping
+#
+# python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./adaptive_hcg_llama31_8B_one_w_0.100_l_3-4_01U2EJA9/checkpoint-5000/ --output_dir results/calibrate_ppl_single_layer/ --output_suffix hcg_llama31_8B_L3-4_w_0.1
+
 @torch.no_grad()
 def main():
     parser = argparse.ArgumentParser()
@@ -75,8 +80,8 @@ def main():
 
     results = []
 
-    # for expected_sparsity in [10, 20, 30, 40, 50, 60, 70, 80, 90]:
-    for expected_sparsity in [ 10 ]:
+    for expected_sparsity in [10, 20, 30, 40, 50, 60, 70, 80, 90]:
+    # for expected_sparsity in [ 10 ]:
         calibrate_vocabulary(model, tokens_frequency, expected_sparsity)
 
         wikitext_results = evaluate_ppl_wikitext_103(model, max_samples=1000)
