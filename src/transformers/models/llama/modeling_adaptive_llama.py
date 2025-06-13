@@ -565,6 +565,7 @@ class AdaptiveFanOutHCG(nn.Module):
 
         # No projection
         if self.config.fan_out_projection:
+            print("run fan out projection")
             residual_hidden_states_projection = self.fan_out_mlp(residual_hidden_states)
         else:
             residual_hidden_states_projection = residual_hidden_states

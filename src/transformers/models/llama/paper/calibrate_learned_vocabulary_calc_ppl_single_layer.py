@@ -61,7 +61,6 @@ def main():
             continue
 
         result_file_path = os.path.join(output_dir, f"ppl_results_{output_suffix}.csv")
-
         if os.path.exists(result_file_path):
             continue
 
@@ -81,7 +80,7 @@ def main():
 
         results = []
 
-        for expected_sparsity in [10, 20, 30, 40, 50, 60, 70, 80, 90]:
+        for expected_sparsity in [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]:
         # for expected_sparsity in [ 10 ]:
             calibrate_vocabulary(model, tokens_frequency, expected_sparsity)
 

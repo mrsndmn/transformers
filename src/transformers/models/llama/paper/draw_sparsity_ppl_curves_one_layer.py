@@ -1,16 +1,15 @@
-import matplotlib
-
 import re
 import argparse
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import plotly.io as pio
 import pandas as pd
 import os
 import glob
 
+# Set Plotly renderer to VSCode
+pio.renderers.default = "vscode"
+
 if __name__ == "__main__":
-    # Clear any existing plots
-    plt.clf()
-    
     input_files_names_full = sorted(glob.glob("results/calibrate_ppl_single_layer/ppl_results_*.csv"))
 
     input_files = []
@@ -24,14 +23,8 @@ if __name__ == "__main__":
                 f"Llama3.1-8B L{l_from}-{l_to}",
             ])
 
-    fontsize = 29
-    scale = 5
-    
-    # Set style first
-    plt.style.use('seaborn-v0_8')
-    
-    # Create new figure with specified size
-    plt.figure(figsize=(8 * scale, 6 * scale))
+    # Create figure
+    fig = go.Figure()
 
     for file_path, model_name in input_files:
         if not os.path.exists(file_path):
@@ -39,18 +32,32 @@ if __name__ == "__main__":
             continue
 
         df = pd.read_csv(file_path)
-        plt.plot(df['sparsity'], df['ppl'], label=model_name, linewidth=5.0)
+        fig.add_trace(go.Scatter(
+            x=df['sparsity'],
+            y=df['ppl'],
+            name=model_name,
+            line=dict(width=5)
+        ))
 
-    plt.legend(fontsize=fontsize)
-    plt.xticks(fontsize=fontsize)
-    plt.yticks(fontsize=fontsize)
-    plt.xlabel("Sparsity", fontsize=fontsize)
-    plt.ylabel("PPL", fontsize=fontsize)
-    plt.title("WikiText-103 Sparsity vs PPL", fontsize=fontsize, pad=20)
-    plot_path = os.path.join("results/calibrate_ppl_single_layer", f"sparsity_ppl_curves.png")
-    plt.tight_layout()
-    plt.savefig(plot_path)
-    print(f"Saved sparsity PPL curves to {plot_path}")
+    # Update layout
+    fig.update_layout(
+        title="WikiText-103 Sparsity vs PPL",
+        xaxis_title="Sparsity",
+        yaxis_title="PPL",
+        font=dict(size=29),
+        showlegend=True,
+        legend=dict(font=dict(size=29)),
+        width=1200,
+        height=900
+    )
+
+    # Save the plot
+    plot_path = os.path.join("results/calibrate_ppl_single_layer", f"sparsity_ppl_curves.html")
+    fig.write_html(plot_path)
+    print(f"Saved interactive sparsity PPL curves to {plot_path}")
+
+    # Show the plot
+    fig.show()
 
 
 
