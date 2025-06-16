@@ -183,6 +183,7 @@ class Qwen2Config(PretrainedConfig):
         # scale_token_frequency=False,
         distributed=False,
         pretrain_fan_out_projection=False,
+        fan_out_projection_mlp_intermediate_size=224,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -243,6 +244,7 @@ class Qwen2Config(PretrainedConfig):
 
         print("Pretrain fan out projection", pretrain_fan_out_projection)
         self.pretrain_fan_out_projection = pretrain_fan_out_projection
+        self.fan_out_projection_mlp_intermediate_size = fan_out_projection_mlp_intermediate_size
 
         super().__init__(
             tie_word_embeddings=tie_word_embeddings,

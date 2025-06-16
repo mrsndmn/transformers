@@ -2,6 +2,7 @@ import glob
 import time
 import client_lib # импортируем библиотеку для работы с ML Space
 import json
+import copy
 from rich.console import Console
 
 import os
@@ -21,7 +22,9 @@ BASE_IMAGE = "cr.ai.cloud.ru/f51af5b1-d43b-4db4-938d-569d7cfffb7a/cuda12.1-torch
 
 workdir_prefix = "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out"
 
-def run_eval_experiments(experiments, job_description_prefix="eval", dry=False):
+def run_eval_experiments(experiments, job_description_prefix="eval", dry=False, tasks=None):
+
+    experiments = copy.deepcopy(experiments)
 
     env_bin_path = "/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin"
 
@@ -35,8 +38,15 @@ def run_eval_experiments(experiments, job_description_prefix="eval", dry=False):
         if len(exp.keys()) > 0:
             raise ValueError("Invalid exp values!")
 
-        script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 4 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|arc|0|1,custom|wikitext_103|0|1"\''
+        default_tasks = "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|arc|0|1,custom|wikitext_103|0|1,custom|winogrande|0|1,custom|hellaswag|0|1,custom|siqa|0|1,custom|openbookqa|0|1,custom|piqa|0|1"
+
+        if tasks is None:
+            tasks = default_tasks
+
+        script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "{tasks}"\''
         # script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 4 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|arc|0|1,custom|piqa|0|1,custom|wikitext_103|0|1"\''
+
+        # TODO gsm8k, math - 8--shot
 
         print(f"\n\n{script_str}\n\n")
 
@@ -49,7 +59,7 @@ def run_eval_experiments(experiments, job_description_prefix="eval", dry=False):
             n_workers=N_WORKERS,
             # conda_env="test_client_lib",
             processes_per_worker=1,
-            job_desc=f"{job_description_prefix} {pretrained_model} #rnd #multimodality",
+            job_desc=f"{job_description_prefix} {pretrained_model} {tasks} #rnd #multimodality",
             # stop_timer=600, # в минутах, = 10 часов
             env_variables={
                 "PATH": f"{env_bin_path}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/user/conda/bin",
@@ -67,188 +77,6 @@ def run_eval_experiments(experiments, job_description_prefix="eval", dry=False):
             print(output_dir, job_w_args.submit())
 
     return
-
-def eval_hcg_no_self_attention(**kwargs):
-
-    checkpoints = [
-        # "adaptive_hcg_slm2_360M_w_0.010_l_12_no_self_attn_G8Z0KI2B/checkpoint-240000",
-        "./adaptive_hcg_slm2_1.7B_l_10_init_from_XKLT4CMQ/",
-        "./adaptive_hcg_slm2_1.7B_l_8_init_from_XKLT4CMQ/",
-        "./adaptive_hcg_slm2_1.7B_l_4_init_from_XKLT4CMQ/",
-        "./adaptive_hcg_slm2_1.7B_l_2_init_from_XKLT4CMQ/",
-    ]
-
-    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
-
-    if kwargs.pop('extract_metrics', False):
-        run_extract_metrics(checkpoints)
-    else:
-        run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
-
-
-    return
-
-def explicit_fanin_fanout_eval(**kwargs):
-
-    checkpoints = [
-        "./adaptive_hcg_llama31_8B_w_0.100_l_14_4FMRKTX3/explicit_fanin_22_fanout_26-checkpoint-124987/",
-    ]
-
-    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
-
-    if kwargs.pop('extract_metrics', False):
-        run_extract_metrics(checkpoints)
-    else:
-        run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
-
-
-    return
-
-
-def saturday_morninig_eval(**kwargs):
-
-    checkpoints = [
-        # Strange 8 layer
-        # "./run_hcg_smollm1dot7B_layer_8_8_lmv_1.25/_backup_checkpoint-35000",
-        # "./run_hcg_smollm1dot7B_layer_8_8_lmv_1.1/_backup_checkpoint-35000",
-
-        # Strange 8 layer
-        # Fixed percent pruning slm2 1.7b 2 layer
-        # TODO
-        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_2_pr_pct20/checkpoint-4993",
-        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_2_pr_pct30/checkpoint-4993",
-        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_2_pr_pct40/checkpoint-4993",
-        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_2_pr_pct60/checkpoint-4993",
-        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_2_pr_pct80/checkpoint-4993",
-
-        # Fixed percent pruning slm2 1.7b 4 layer
-        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_4_pr_pct20/checkpoint-4993",
-        # Посчиталось
-        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_4_pr_pct30/checkpoint-4993",
-        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_4_pr_pct40/checkpoint-4993",
-        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_4_pr_pct60/checkpoint-4993",
-        # "./adaptive_hcg_slm2_1.7B_fixed_pruning_percent_v2_4_pr_pct80/checkpoint-4993",
-
-        # Fan out ablations
-        # TODO
-
-        # Random 20% tokens
-        # "./random_hcg_4_random0.2_1.7B/checkpoint-24993",
-        # "./random_hcg_8_random0.2_1.7B/checkpoint-24993",
-
-        "./adaptive_hcg_slm2_1.7B_nofoutproj_4/checkpoint-18743",
-        "./adaptive_hcg_slm2_1.7B_nofoutproj_8/checkpoint-18743",
-    ]
-
-    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
-
-    run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
-
-    return
-
-
-def no_crutch_loss_eval(**kwargs):
-
-    checkpoints = [
-        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_3/checkpoint-351000",
-        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_3/_backup_checkpoint-37000",
-        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_3/_backup_checkpoint-52000",
-        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_3/_backup_checkpoint-61000",
-        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_3/_backup_checkpoint-77000",
-
-        # 2.75
-        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_2.75/checkpoint-219000",
-
-        # 2.5
-        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_2.5/checkpoint-217000"
-
-        # 2.25
-        "./adaptive_hcg_slm2_1.7B_hcg_lambda_iterate_2.25/checkpoint-218000",
-    ]
-
-    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
-
-    run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
-
-    return
-
-
-def no_crutch_loss_normalize_token_frequenct_eval(**kwargs):
-
-    checkpoints = [
-        "./adaptive_hcg_slm2_1.7B_hcg_scale_token_frequency_0.5_no_eossp/checkpoint-58793/",
-        "./adaptive_hcg_slm2_1.7B_hcg_scale_token_frequency_0.75_no_eossp/checkpoint-58793/",
-        "./adaptive_hcg_slm2_1.7B_hcg_scale_token_frequency_1.0_no_eossp/checkpoint-58793/",
-        "./adaptive_hcg_slm2_1.7B_hcg_scale_token_frequency_1.5_no_eossp/checkpoint-58793/",
-        "./adaptive_hcg_slm2_1.7B_hcg_scale_token_frequency_2.0_no_eossp/checkpoint-58793/",
-
-        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_0.75_no_eossp/checkpoint-58793/",
-        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_1_no_eossp/checkpoint-58793/",
-        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_1.5_no_eossp/checkpoint-58793/",
-        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_2.0_no_eossp/checkpoint-58793/",
-        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_2.5_no_eossp/checkpoint-58793/",
-        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_3.0_no_eossp/checkpoint-58793/",
-        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_3.5_no_eossp/checkpoint-58793/",
-    ]
-
-    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
-
-
-    if kwargs.pop('extract_metrics', False):
-        run_extract_metrics(checkpoints)
-    else:
-        run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
-
-    return
-
-
-def no_crutch_loss_normalize_token_frequenct_eval_bs_1m(**kwargs):
-
-    checkpoints = [
-        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_fix_pretrain_1.5_no_eossp/checkpoint-14698",
-        "./adaptive_hcg_slm2_360M_hcg_scale_token_frequency_es_fix_pretrain_1.25_no_eossp/checkpoint-14698",
-    ]
-
-    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
-
-    if kwargs.pop('extract_metrics', False):
-        run_extract_metrics(checkpoints)
-    else:
-        run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", **kwargs)
-
-    return
-
-
-def baselines_rule_based_eval(**kwargs):
-
-    checkpoints = [
-        # Freezed
-        "./adaptive_hcg_slm2_360M_rule_based_random_0.1_freeze_1_WXBG8TRK/checkpoint-37487/",
-        "./adaptive_hcg_slm2_360M_rule_based_uniform_0.1_freeze_1_W87CVQV5/checkpoint-37487/",
-        "./adaptive_hcg_slm2_360M_rule_based_stop_words_pruning_freeze_1_MQRNRNRJ/checkpoint-37487/",
-
-        "./adaptive_hcg_slm2_360M_rule_based_uniform_0.2_freeze_1_Y4Q7B7JW/checkpoint-37487/",
-        "./adaptive_hcg_slm2_360M_rule_based_random_0.2_freeze_1_3YS0AJM1/checkpoint-37487/",
-
-        # Finetuned
-        "./adaptive_hcg_slm2_360M_rule_based_random_0.1_freeze_0_5X68TMDE/checkpoint-37487/",
-        "./adaptive_hcg_slm2_360M_rule_based_uniform_0.1_freeze_0_M04D44LF/checkpoint-37487/",
-        "./adaptive_hcg_slm2_360M_rule_based_stop_words_pruning_freeze_0_JEXQ1YJA/checkpoint-37487/",
-
-        "./adaptive_hcg_slm2_360M_rule_based_random_0.2_freeze_0_2GTV5AUE/checkpoint-37487/",
-        "./adaptive_hcg_slm2_360M_rule_based_uniform_0.2_freeze_0_Z3182L60/checkpoint-37487/",
-    ]
-
-    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
-
-    if kwargs.pop('extract_metrics', False):
-        run_extract_metrics(checkpoints)
-    else:
-        run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG Rule Based: ", **kwargs)
-
-    return
-
-
 
 def run_extract_metrics(checkpoints: list[str]):
 
@@ -305,6 +133,56 @@ def run_extract_metrics(checkpoints: list[str]):
         print(" & ".join([ checkpoint, '\%', '\-'] + checkpoint_metrics), " \\\\")
 
 
+
+def eval_hcg_adaptive_pretrain_all_tasks_parallel(**kwargs):
+
+    checkpoints = [
+        # a lot of jobs ...
+        # /mnt/virtual_ai0001053-00054_SR004-nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation/results/unsloth/Meta-Llama-3.1-8B/
+        # results_2025-06-16T17-17-36.190191.json
+        # results_2025-06-16T17-20-07.497466.json
+        # results_2025-06-16T17-20-20.107840.json
+        # results_2025-06-16T17-20-33.343409.json
+        # results_2025-06-16T17-20-49.794687.json
+        # results_2025-06-16T17-21-40.487502.json
+        # results_2025-06-16T17-21-50.828092.json
+        # results_2025-06-16T17-26-02.538177.json
+        # results_2025-06-16T17-43-04.025151.json
+        #
+        # "unsloth/Meta-Llama-3.1-8B",
+
+        "./adaptive_hcg_llama31_8B_w_1.000_l_22-26_NTWKRP0G/checkpoint-5000",
+
+        "./adaptive_hcg_llama31_8B_w_1.000_l_22-26_NTWKRP0G/calibr60_checkpoint-5000_left_padding/",
+
+        "./adaptive_hcg_qwen25_7B_w_1.000_l_12-17_HXIGMJTI/checkpoint-5000",
+
+        "./adaptive_hcg_qwen25_7B_w_1.000_l_12-17_HXIGMJTI/calib40_checkpoint-5000",
+
+        "./adaptive_hcg_llama31_8B_w_1.000_l_22-26_0Q8QETO9_fan_out_projection/checkpoint-30000",
+
+        # TODO statistical vocabs
+        # "./adaptive_hcg_qwen25_7B_l12-17_analytical_pruning",
+        # "./adaptive_hcg_llama31_8B_l22-26_analytical_pruning",
+    ]
+
+    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
+
+    print('len hcg_experiments:', len(hcg_experiments))
+
+    if kwargs.pop('extract_metrics', False):
+        run_extract_metrics(checkpoints)
+    else:
+        task = None
+        tasks = "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|arc|0|1,custom|wikitext_103|0|1,custom|winogrande|0|1,custom|hellaswag|0|1,custom|siqa|0|1,custom|openbookqa|0|1,custom|piqa|0|1".split(",")
+        for task in tasks:
+            run_eval_experiments(hcg_experiments, job_description_prefix="Eval HCG: ", tasks=task, **kwargs)
+
+
+    return
+
+
+
 if __name__ == "__main__":
 
     import sys
@@ -314,14 +192,4 @@ if __name__ == "__main__":
 
     print("dry", dry)
 
-    # eval_hcg_adaptive_pretrain(dry=dry)
-    # eval_hcg_fixed_percent(dry=dry)
-
-    # eval_hcg_strange_8layer(dry=dry)
-    # eval_hcg_no_self_attention(dry=dry, extract_metrics=extract_metrics)
-    explicit_fanin_fanout_eval(dry=dry, extract_metrics=extract_metrics)
-
-    # no_crutch_loss_eval(dry=dry)
-    # no_crutch_loss_normalize_token_frequenct_eval(dry=dry, extract_metrics=extract_metrics)
-    # no_crutch_loss_normalize_token_frequenct_eval_bs_1m(dry=dry, extract_metrics=extract_metrics)
-    # baselines_rule_based_eval(dry=dry, extract_metrics=extract_metrics)
+    eval_hcg_adaptive_pretrain_all_tasks_parallel(dry=dry)

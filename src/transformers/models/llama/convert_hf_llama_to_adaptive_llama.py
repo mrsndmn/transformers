@@ -47,6 +47,7 @@ def build_adaptive_llama_from_llama_checkpoint(
         adaptive_model_class=None,
         each_layer_pruning=False,
         fan_out_projection_mlp_intermediate_size=None,
+        torch_dtype=torch.bfloat16,
     ):
 
     if adaptive_model_class is None:
@@ -57,7 +58,8 @@ def build_adaptive_llama_from_llama_checkpoint(
         if "qwen" in llama_checkpoint.lower():
             adaptive_model_class = AdaptiveQwen2ForCausalLM
 
-    torch_dtype = torch.bfloat16
+    print("build adaptive llama torch dtype", torch_dtype)
+
     llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype, device_map='cpu')
     llama_model_state_dict = llama_model.state_dict()
 
@@ -97,7 +99,7 @@ def build_adaptive_llama_from_llama_checkpoint(
     assert num_hidden_layers % 2 == 0
 
     dtype_orig = torch.get_default_dtype()
-    torch.set_default_dtype(torch.bfloat16)
+    torch.set_default_dtype(torch_dtype)
     adaptive_llama_model = adaptive_model_class(config)
     torch.set_default_dtype(dtype_orig)
 

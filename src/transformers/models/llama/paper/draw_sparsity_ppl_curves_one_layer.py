@@ -55,9 +55,3 @@ if __name__ == "__main__":
     plot_path = os.path.join("results/calibrate_ppl_single_layer", f"sparsity_ppl_curves.html")
     fig.write_html(plot_path)
     print(f"Saved interactive sparsity PPL curves to {plot_path}")
-
-    # Show the plot
-    fig.show()
-
-
-

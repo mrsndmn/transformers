@@ -918,21 +918,19 @@ if __name__ == "__main__":
 
     # MLP Training. Freezed Vocab
 
-    # Each layer
-    # run_hcg_llama31_8B_hcg_each_layer(dry=dry)
 
     # import os
     # os.exit(0)
 
-    for i in range(2, 30):
-        run_hcg_llama31_8B_hcg(
-            hcg_loss_weight=0.1,
-            fan_in_idx=i,
-            fan_out_idx=i+1,
-            dry=dry,
-            select_train_dataset_items=100000,
-            experiment_prefix_base_name="adaptive_hcg_llama31_8B_one"
-        )
+    # for i in range(2, 30):
+    #     run_hcg_llama31_8B_hcg(
+    #         hcg_loss_weight=0.1,
+    #         fan_in_idx=i,
+    #         fan_out_idx=i+1,
+    #         dry=dry,
+    #         select_train_dataset_items=85000,
+    #         experiment_prefix_base_name="adaptive_hcg_llama31_8B_one"
+    #     )
 
     # Fan out projection
     # run_hcg_llama31_8B_hcg(
@@ -957,18 +955,18 @@ if __name__ == "__main__":
     # )
 
     # Finetune LLM
-    # run_hcg_llama31_8B_hcg(
-    #     train_hcg=False,
-    #     learning_rate=0.00001,
-    #     unfreeze_inner_layers='1',
-    #     model_type="pretrained_checkpoint",
-    #     llama_checkpoint="/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_1.000_l_22-26_NTWKRP0G/calibr60_checkpoint-5000",
-    #     fan_out_projection=False,
-    #     select_train_dataset_items=500000*4*4,
-    #     lr_scheduler_type="cosine",
-    #     dry=dry,
-    #     instance_type="a100.4gpu",
-    # )
+    run_hcg_llama31_8B_hcg(
+        train_hcg=False,
+        learning_rate=0.00001,
+        unfreeze_inner_layers='1',
+        model_type="pretrained_checkpoint",
+        llama_checkpoint="/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_1.000_l_22-26_NTWKRP0G/calibr60_checkpoint-5000",
+        fan_out_projection=False,
+        select_train_dataset_items=500000*4*4,
+        lr_scheduler_type="cosine",
+        dry=dry,
+        instance_type="a100.4gpu",
+    )
     # run_hcg_qwen25_7B_hcg(
     #     train_hcg=False,
     #     learning_rate=0.0001,

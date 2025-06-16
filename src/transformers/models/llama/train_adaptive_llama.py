@@ -855,7 +855,7 @@ class AdaptiveLlamaTrainer(Trainer):
                 custom_tasks_directory='/workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py',
                 override_batch_size=1,
                 num_fewshot_seeds=0,
-                max_samples=None,
+                max_samples=100,
                 use_chat_template=False,
                 system_prompt=None,
                 load_responses_from_details_date_id=None,
@@ -917,6 +917,10 @@ def freeze_lm_backbone(model: nn.Module, train_after_fan_out_llm_layer: bool):
 def build_model(training_args: AdaptiveTrainingArguments):
     tokenizer = None
 
+    torch_dtype = torch.bfloat16 if training_args.bf16 else torch.float32
+    print("build_model torch_dtype", torch_dtype)
+
+
     if training_args.model_type == 'dummy':
         num_layers = 2
         num_layers_half = num_layers // 2
@@ -944,7 +948,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
     elif training_args.model_type == 'pretrained_checkpoint':
         llama_checkpoint = training_args.llama_checkpoint
         print("Load model from", llama_checkpoint)
-        model = AdaptiveLlamaForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch.bfloat16)
+        model = AdaptiveLlamaForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
         
     elif training_args.model_type == 'pretrained':
@@ -990,7 +994,8 @@ def build_model(training_args: AdaptiveTrainingArguments):
             pretrain_fan_out_projection=training_args.pretrain_fan_out_projection,
             each_layer_pruning=training_args.each_layer_pruning,
             hcg_fan_in_from=training_args.hcg_fan_in_from,
-            fan_out_projection_mlp_intermediate_size=training_args.fan_out_projection_mlp_intermediate_size
+            fan_out_projection_mlp_intermediate_size=training_args.fan_out_projection_mlp_intermediate_size,
+            torch_dtype=torch_dtype,
         )
 
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
