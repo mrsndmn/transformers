@@ -78,7 +78,7 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(args.llama_checkpoint)
 
-    wikitext_103: datasets.Dataset = datasets.load_dataset("lighteval/wikitext_103", split="test")
+    wikitext_103: datasets.Dataset = datasets.load_dataset("mrsndmn/wikitext-2-raw-v1-validation", split="validation")
     for item in wikitext_103:
         for token in tokenizer(item['text']).input_ids:
             tokens_frequency[token] = tokens_frequency.get(token, 0) + 1

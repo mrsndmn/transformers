@@ -48,13 +48,13 @@ def pairwise_cosine_similarity(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor
 
     return cosine_sim
 
-if __name__ == "__main__":
-
+@torch.no_grad()
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--llama_checkpoint", type=str, required=True)
     parser.add_argument("--num_samples", type=int, default=128)
-    parser.add_argument("--hop_threshold", type=float, default=0.8)
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--hop_threshold", type=float, default=0.6)
+    parser.add_argument("--batch_size", type=int, default=1)
     # parser.add_argument("--torch_compile", type=bool, action="store_true", default=True)
 
     args = parser.parse_args()
@@ -73,8 +73,7 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained(args.llama_checkpoint)
     tokenizer.pad_token = tokenizer.eos_token
 
-    data_files = [ f"data/CC-MAIN-2024-10/000_{i:05}.parquet" for i in range(1) ]
-    text_dataset = datasets.load_dataset("HuggingFaceFW/fineweb", split="train", data_files=data_files, num_proc=16)
+    text_dataset = datasets.load_dataset('mrsndmn/wikitext-2-raw-v1-validation', split="validation", num_proc=16)
 
     def tokenize_function(examples):
         tokenized_inputs = tokenizer(examples['text'], truncation=True, padding='max_length', max_length=1024, return_tensors='pt')
@@ -82,13 +81,15 @@ if __name__ == "__main__":
         return tokenized_inputs
 
     print("len text_dataset", len(text_dataset), "args.num_samples", args.num_samples)
-    if args.num_samples is not None:
+    if args.num_samples is not None and args.num_samples < len(text_dataset):
         text_dataset = text_dataset.select(range(args.num_samples))
 
     text_dataset = text_dataset.map(tokenize_function, batched=True, num_proc=32)
 
     batch_size = args.batch_size
     total_batches = len(text_dataset) // batch_size
+
+    print("batch_size", batch_size, "total_batches", total_batches)
 
     # Create output directories
     output_dir = os.path.join("results", "token_embeddings_hopping_potential")
@@ -173,3 +174,6 @@ if __name__ == "__main__":
     with open(file_path, "wb") as f:
         pickle.dump(token_occurencies, f)
     print(f"Saved token_occurencies to {file_path}")
+
+if __name__ == "__main__":
+    main()

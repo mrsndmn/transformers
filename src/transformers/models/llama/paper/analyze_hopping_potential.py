@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument("--min_frequency", type=int, default=10)
     parser.add_argument("--max_tokens", type=int, default=None)
     parser.add_argument("--output_dir", type=str, required=True)
+    parser.add_argument("--no_analyze_token_potentials", default=False, action="store_true")
     return parser.parse_args()
 
 def load_data(args):
@@ -91,7 +92,7 @@ def plot_log_freq_vs_hopping_potential(token_potential_min_df, output_dir, model
     plt.xticks(rotation=45)
     plt.xlabel(f'log10(freq) bins (width = {bin_step})')
     plt.ylabel('mean hopping potential')
-    plt.ylim(0, 4)
+    plt.ylim(0, 8)
     plt.title('Mean Hopping Potential vs Log(Freq) Bins')
     plt.tight_layout()
     file_path = os.path.join(output_dir, f"boxplot_log_freq_bins_vs_mean_hopping_potential_{model_name}.png")
@@ -104,7 +105,7 @@ def plot_hopping_potential_distribution(token_potential_min_df, output_dir, mode
     H_cols = [col for col in token_potential_min_df.columns if col.startswith("H")]
     token_potential_min_df[H_cols].plot(kind='box', figsize=(15, 6))
     plt.xticks(rotation=90)
-    plt.ylim(0, 10)
+    plt.ylim(0, 18)
     plt.ylabel('Hop Layers')
     plt.xlabel('Hidden states to hop from')
     plt.grid(True)
@@ -166,11 +167,15 @@ def main():
     if args.max_tokens is not None:
         max_tokens = min(args.max_tokens, len(token_occurences))
 
-    token_potential_min_df = analyze_token_potentials(tokenizer, per_token_hopping_potentials, token_occurences, max_tokens)
-
     file_path = os.path.join(args.output_dir, f"token_potential_min_{model_name}.csv")
-    token_potential_min_df.to_csv(file_path, index=False)
-    print(f"Saved token potential min to {file_path}")
+
+    print("args.no_analyze_token_potentials", args.no_analyze_token_potentials)
+    if not args.no_analyze_token_potentials:
+        token_potential_min_df = analyze_token_potentials(tokenizer, per_token_hopping_potentials, token_occurences, max_tokens)
+        token_potential_min_df.to_csv(file_path, index=False)
+        print(f"Saved token potential min to {file_path}")
+
+    token_potential_min_df = pd.read_csv(file_path)
 
     plot_log_freq_vs_hopping_potential(token_potential_min_df, args.output_dir, model_name=model_name)
 
@@ -179,7 +184,6 @@ def main():
 
     plot_token_occurrences_distribution(token_occurences, args.output_dir, model_name=model_name)
 
-    breakpoint()
 
 
 if __name__ == "__main__":

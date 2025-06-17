@@ -184,3 +184,5 @@ run_hcg_*
 exps_evaluation/
 *.gif
 *.mp4
+
+paper_checkpoints/

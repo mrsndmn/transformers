@@ -443,7 +443,7 @@ class AdaptiveFanInHCG(nn.Module):
 
             concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
 
-            # print("concrete_bool", concrete_bool.sum().item(), '/', attention_mask.sum().item())
+            print("concrete_bool", concrete_bool.sum().item(), '/', attention_mask.sum().item())
 
             if past_key_values is None or len(past_key_values.merged_attention_masks) == 0:
                 # Prefilling stage

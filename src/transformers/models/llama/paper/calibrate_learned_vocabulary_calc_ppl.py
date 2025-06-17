@@ -46,15 +46,12 @@ logging.basicConfig(
 # adaptive_hcg_llama31_8B_l22-26_analytical_pruning
 # adaptive_hcg_qwen25_7B_l12-17_analytical_pruning
 
-# python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./adaptive_hcg_llama31_8B_w_1.000_l_22-26_NTWKRP0G/checkpoint-5000 --output_dir results/calibrate_ppl/ --output_suffix hcg_llama31_8B_w_1.000
-# python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./adaptive_hcg_llama31_8B_w_0.100_l_22-26_HEHE7U06/checkpoint-5000 --output_dir results/calibrate_ppl/ --output_suffix hcg_llama31_8B_w_0.100
-# python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./adaptive_hcg_qwen25_7B_w_1.000_l_12-17_HXIGMJTI/checkpoint-5000 --output_dir results/calibrate_ppl/ --output_suffix hcg_qwen25_7B_w_1.000
-# python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./adaptive_hcg_qwen25_7B_w_0.100_l_12-17_GQZARPC9/checkpoint-5000 --output_dir results/calibrate_ppl/ --output_suffix hcg_qwen25_7B_w_0.100
+# python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306 --output_dir results/calibrate_ppl/ --output_suffix hcg_llama31_8B_w_1.000_thshold_0.6
+# python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_0.100_l_18-26_DAZ0UXGX/checkpoint-5306 --output_dir results/calibrate_ppl/ --output_suffix hcg_llama31_8B_w_0.100_thshold_0.6
+# python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_1.000_l_9-20_J3BTODV3/checkpoint-5306 --output_dir results/calibrate_ppl/ --output_suffix hcg_qwen25_7B_w_1.000_thshold_0.6
+# python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_0.100_l_9-20_3P72MPZU/checkpoint-5306 --output_dir results/calibrate_ppl/ --output_suffix hcg_qwen25_7B_w_0.100_thshold_0.6
 
 
-# Single Layer Hopping
-#
-# python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./adaptive_hcg_llama31_8B_one_w_0.100_l_3-4_01U2EJA9/checkpoint-5000/ --output_dir results/calibrate_ppl_single_layer/ --output_suffix hcg_llama31_8B_L3-4_w_0.1
 
 @torch.no_grad()
 def main():
@@ -69,7 +66,7 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(args.llama_checkpoint)
 
-    wikitext_103: datasets.Dataset = datasets.load_dataset("lighteval/wikitext_103", split="test")
+    wikitext_103: datasets.Dataset = datasets.load_dataset("mrsndmn/wikitext-2-raw-v1-validation", split="validation")
     for item in wikitext_103:
         for token in tokenizer(item['text']).input_ids:
             tokens_frequency[token] = tokens_frequency.get(token, 0) + 1
@@ -80,11 +77,10 @@ def main():
 
     results = []
 
-    for expected_sparsity in [10, 20, 30, 40, 50, 60, 70, 80, 90]:
-    # for expected_sparsity in [ 10 ]:
+    for expected_sparsity in [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]:
         calibrate_vocabulary(model, tokens_frequency, expected_sparsity)
 
-        wikitext_results = evaluate_ppl_wikitext_103(model, max_samples=1000)
+        wikitext_results = evaluate_ppl_wikitext_103(model)
         ppl = wikitext_results['ppl']
         ppl_stderr = wikitext_results['ppl_stderr']
 

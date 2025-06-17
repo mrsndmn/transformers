@@ -58,6 +58,10 @@ def pruning_hook(module, input, output):
     total_initial_tokens += output.merged_embeddings_counts.sum().item()
     total_pruned_tokens += output.attention_mask.sum().item()
 
+    print("total_initial_tokens", total_initial_tokens, "total_pruned_tokens", total_pruned_tokens)
+
+    return
+
 def evaluate_lighteval_task(model, task_name, override_batch_size=1, num_fewshot_seeds=0, max_samples=None):
     evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'" # Removed extra quotes
     evaluation_tracker = EvaluationTracker(
@@ -99,7 +103,7 @@ def evaluate_ppl_wikitext_103(model, max_samples=None):
     results = evaluate_lighteval_task(
         model,
         'wikitext_103',
-        override_batch_size=1,
+        override_batch_size=2,
         num_fewshot_seeds=0,
         max_samples=max_samples,
     )
@@ -226,7 +230,7 @@ def evaluate_different_percents(model, percent_step=10, max_percent=100, min_per
         if count_pruned_percent:
             target_layer = model.model.fan_in
             hook_handle = target_layer.register_forward_hook(pruning_hook)
-        print("Registered forward hook on model.model.fan_in")
+            print("Registered forward hook on model.model.fan_in")
 
         start_time = time.time()
         ppl_results = evaluate_ppl_wikitext_103(model)
@@ -570,8 +574,6 @@ if __name__ == "__main__":
             print("\n\nsetting fan_out_projection to", fan_out_projection)
             model.config.fan_out_projection = fan_out_projection
 
-        model.model.fan_in_idx = 5
-        model.model.fan_out_idx = 19
         print("Model fan in idx  ", model.model.fan_in_idx)
         print("Model fan out idx ", model.model.fan_out_idx)
 

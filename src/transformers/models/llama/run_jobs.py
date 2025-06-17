@@ -75,7 +75,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         per_device_train_batch_size = exp.pop('per_device_train_batch_size', 32)
         gradient_accumulation_steps = exp.pop('gradient_accumulation_steps', 1)
 
-        save_steps = exp.pop('save_steps', 2500)
+        save_steps = exp.pop('save_steps', 5000)
         torch_compile = exp.pop('torch_compile', 1)
 
         concrete_random_mask_proba = exp.pop('concrete_random_mask_proba', '0')
@@ -403,7 +403,26 @@ def run_hcg_smollm2_1_7B_hcg(**kwargs):
     return
 
 
-def run_hcg_llama31_8B_hcg(hcg_loss_weight=1.0, fan_in_idx=22, fan_out_idx=26, train_hcg=True, fan_out_projection_mlp_intermediate_size=None, hcg_fan_in_from=None, learning_rate=0.08, unfreeze_inner_layers='0', model_type="pretrained", llama_checkpoint="unsloth/Meta-Llama-3.1-8B", fan_out_projection=False, select_train_dataset_items=500000, lr_scheduler_type="constant_with_warmup", instance_type="a100.1gpu", experiment_prefix_base_name = "adaptive_hcg_llama31_8B", **kwargs):
+def run_hcg_llama31_8B_hcg(
+        hcg_loss_weight=1.0,
+        fan_in_idx=22,
+        fan_out_idx=26,
+        train_hcg=True,
+        fan_out_projection_mlp_intermediate_size=None,
+        hcg_fan_in_from=None,
+        learning_rate=0.08,
+        unfreeze_inner_layers='0',
+        model_type="pretrained",
+        llama_checkpoint="unsloth/Meta-Llama-3.1-8B",
+        fan_out_projection=False,
+        select_train_dataset_items=500000,
+        lr_scheduler_type="constant_with_warmup",
+        instance_type="a100.1gpu",
+        experiment_prefix_base_name = "adaptive_hcg_llama31_8B",
+        gradient_accumulation_steps=4,
+        init_hcg_a=1.0,
+        **kwargs,
+    ):
 
     common_params = {
         # Model
@@ -413,7 +432,7 @@ def run_hcg_llama31_8B_hcg(hcg_loss_weight=1.0, fan_in_idx=22, fan_out_idx=26, t
 
         "freeze_lm_backbone": '1',
         "unfreeze_inner_layers": unfreeze_inner_layers,
-        "init_hcg_a": 1.0,
+        "init_hcg_a": init_hcg_a,
 
         "fan_out_projection_mlp_intermediate_size": fan_out_projection_mlp_intermediate_size,
 
@@ -425,13 +444,14 @@ def run_hcg_llama31_8B_hcg(hcg_loss_weight=1.0, fan_in_idx=22, fan_out_idx=26, t
         "learning_rate": learning_rate,
         "hcg_learning_rate": 0.08,
         "lr_scheduler_type": lr_scheduler_type,
+        "save_steps": 5000,
 
         # "hcg_loss_weight": # will be overriden in cycle later,
         "max_grad_norm": 0,
 
         "train_hcg": "1" if train_hcg else "0",
 
-        "gradient_accumulation_steps": 4,
+        "gradient_accumulation_steps": gradient_accumulation_steps,
 
         'instance_type': instance_type,
         'num_train_epochs': 1,
@@ -675,86 +695,23 @@ def run_hcg_llama31_8B_hcg_train_after_fan_out_llm_layer(**kwargs):
     return
 
 
-def run_hcg_llama31_8B_hcg_fan_out_mlp(**kwargs):
-
-    experiment_prefix_base_name = "adaptive_hcg_llama31_8B_fan_out_mlp"
-
-    common_params = {
-        # Model
-        "model_type": "pretrained_checkpoint",
-        # "llama_checkpoint": "unsloth/Meta-Llama-3.1-8B",
-
-        "freeze_lm_backbone": "1",
-        "freeze_hcg": "1",
-
-        # Data
-        "select_train_dataset_items": 150000,
-        "warmup_steps": 1000,
-        "per_device_train_batch_size": 4,
-
-        # Training
-        "learning_rate": 0.002,
-        "hcg_learning_rate": 0.002,
-        "lr_scheduler_type": "cosine",
-
-        # "hcg_loss_weight": # will be overriden in cycle later,
-        "max_grad_norm": 0,
-
-        'instance_type': 'a100.1gpu',
-        'num_train_epochs': 1,
-        "hcg_loss_weight": '1.0',
-
-        "save_steps": 2000,
-        "eval_steps": 2000,
-
-        # Training type
-        "pretrain_fan_out_projection": "0",
-        "init_fan_out_mlp": 0,
-    }
-
-    hcg_experiments = []
-
-    extra_params_from_scratch = [
-        (
-            # f"{workdir_prefix}/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/checkpoint-90000", # checkpoint
-            f"{workdir_prefix}/adaptive_hcg_llama31_8B_fan_out_mlp_w_1.000_l_8-21_L305L6W0/checkpoint-10000", # checkpoint
-            "8-21",
-            '8',
-            '21',
-        ),
-        (
-            # f"{workdir_prefix}/adaptive_hcg_llama31_8B_w_1.000_l_14_IHHIQR0I/checkpoint-90000", # checkpoint
-            f"{workdir_prefix}/adaptive_hcg_llama31_8B_fan_out_mlp_w_1.000_l_6-21_XVU9ZFGZ/checkpoint-10000", # checkpoint
-            "6-21",
-            '6',
-            '21',
-        ),
-    ]
-
-    for checkpoint, suffix, fan_in_idx, fan_out_idx in extra_params_from_scratch:
-        exp_config = {
-            "dummy_adaptive_fan_in_layers_str": "1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1", # no matter
-            "fan_in_idx": fan_in_idx,
-            "fan_out_idx": fan_out_idx,
-            "llama_checkpoint": checkpoint,
-            **common_params,
-        }
-        weight = exp_config['hcg_loss_weight']
-        exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{float(weight):.3f}_l_{suffix}"
-
-        hcg_experiments.append(exp_config)
-
-
-    run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
-
-    return
-
-
-
-
-def run_hcg_qwen25_7B_hcg(train_hcg=True, learning_rate=0.08, unfreeze_inner_layers='0', model_type="pretrained", llama_checkpoint="Qwen/Qwen2.5-7B", fan_out_projection=False, select_train_dataset_items=500000, lr_scheduler_type="constant_with_warmup", **kwargs):
-
-    experiment_prefix_base_name = "adaptive_hcg_qwen25_7B"
+def run_hcg_qwen25_7B_hcg(
+    hcg_loss_weight=1.0,
+    fan_in_idx=12,
+    fan_out_idx=17,
+    train_hcg=True,
+    learning_rate=0.08,
+    unfreeze_inner_layers='0',
+    model_type="pretrained",
+    llama_checkpoint="Qwen/Qwen2.5-7B",
+    fan_out_projection=False,
+    select_train_dataset_items=500000,
+    experiment_prefix_base_name="adaptive_hcg_qwen25_7B",
+    fan_out_projection_mlp_intermediate_size=18944,
+    gradient_accumulation_steps=4,
+    lr_scheduler_type="constant_with_warmup",
+    **kwargs,
+):
 
     common_params = {
         # Model
@@ -770,10 +727,15 @@ def run_hcg_qwen25_7B_hcg(train_hcg=True, learning_rate=0.08, unfreeze_inner_lay
         "select_train_dataset_items": select_train_dataset_items,
         "per_device_train_batch_size": 4,
 
+        "fan_out_projection_mlp_intermediate_size": fan_out_projection_mlp_intermediate_size,
+
         # Training
         "learning_rate": learning_rate,
         "hcg_learning_rate": 0.08,
         "lr_scheduler_type": lr_scheduler_type,
+
+        "gradient_accumulation_steps": gradient_accumulation_steps,
+        "save_steps": 5000,
 
         "max_grad_norm": 0,
         "train_hcg": "1" if train_hcg else "0",
@@ -790,26 +752,24 @@ def run_hcg_qwen25_7B_hcg(train_hcg=True, learning_rate=0.08, unfreeze_inner_lay
 
     extra_params_from_scratch = [
         (
-            "12-17",
-            "12",
-            "17"
+            f"{fan_in_idx}-{fan_out_idx}",
+            f"{fan_in_idx}",
+            f"{fan_out_idx}",
         ),
     ]
 
-    for hcg_loss_weight in [ 1.0 ]:
-    # for hcg_loss_weight in [ 0.1, 1.0 ]:
-        for suffix, fan_in_idx, fan_out_idx in extra_params_from_scratch:
-            in_layers_str = "1,1,1,1,1,1,1,1,1,1,1,0,1,1"
-            exp_config = {
-                "dummy_adaptive_fan_in_layers_str": in_layers_str,
-                "fan_in_idx": fan_in_idx,
-                "fan_out_idx": fan_out_idx,
-                **common_params,
-            }
-            exp_config['hcg_loss_weight'] = hcg_loss_weight
-            exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{hcg_loss_weight:.3f}_l_{suffix}"
+    for suffix, fan_in_idx, fan_out_idx in extra_params_from_scratch:
+        in_layers_str = "1,1,1,1,1,1,1,1,1,1,1,0,1,1"
+        exp_config = {
+            "dummy_adaptive_fan_in_layers_str": in_layers_str,
+            "fan_in_idx": fan_in_idx,
+            "fan_out_idx": fan_out_idx,
+            **common_params,
+        }
+        exp_config['hcg_loss_weight'] = hcg_loss_weight
+        exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{hcg_loss_weight:.3f}_l_{suffix}"
 
-            hcg_experiments.append(exp_config)
+        hcg_experiments.append(exp_config)
 
 
     run_experiments(hcg_experiments, job_description_prefix="HCG: ", **kwargs)
@@ -901,84 +861,111 @@ if __name__ == "__main__":
     #         exit(1)
 
 
-    # SLM360M
-    # run_hcg_smollm2_360M_pretrain_fan_out_projection(dry=dry)
-    # run_hcg_smollm2_360M_hcg(dry=dry)
-    # run_hcg_smollm2_1_7B_hcg(dry=dry)
 
-    # run_hcg_llama31_8B_hcg_forward_residuals(dry=dry)
+    if False:
+        for i in range(2, 30):
+            run_hcg_llama31_8B_hcg(
+                hcg_loss_weight=0.1,
+                fan_in_idx=i,
+                fan_out_idx=i+1,
+                dry=dry,
+                select_train_dataset_items=85000,
+                experiment_prefix_base_name="adaptive_hcg_llama31_8B_one"
+            )
 
+        sys.exit(0)
 
-    # run_hcg_llama31_8B_hcg_train_after_fan_out_llm_layer(dry=dry)
+    # Pretrain Learned Vocab
+    if True:
+        for hcg_loss_weight in [ 0.1, 1.0 ]:
+            run_hcg_llama31_8B_hcg(
+                fan_in_idx=18,
+                fan_out_idx=26,
+                hcg_loss_weight=hcg_loss_weight,
+                model_type="pretrained",
+                llama_checkpoint='unsloth/Meta-Llama-3.1-8B',
+                fan_out_projection_mlp_intermediate_size=16384,
+                fan_out_projection=False,
+                experiment_prefix_base_name='adaptive_hcg_llama31_8B_learned_vocab',
+                select_train_dataset_items=85000,
+                dry=dry,
+            )
 
-    # run_hcg_smollm2_360M_hcg_post_training(dry=dry)
+            run_hcg_qwen25_7B_hcg(
+                fan_in_idx=9,
+                fan_out_idx=20,
+                hcg_loss_weight=hcg_loss_weight,
+                model_type="pretrained",
+                llama_checkpoint='Qwen/Qwen2.5-7B',
+                fan_out_projection=False,
+                select_train_dataset_items=85000,
+                fan_out_projection_mlp_intermediate_size=18944,
+                experiment_prefix_base_name='adaptive_hcg_qwen25_7B_learned_vocab',
+                dry=dry,
+            )
 
-    # Rule based
-    # run_hcg_smollm2_360M_hcg_rule_based(dry=dry)
+        sys.exit(0)
 
-    # MLP Training. Freezed Vocab
-
-
-    # import os
-    # os.exit(0)
-
-    # for i in range(2, 30):
-    #     run_hcg_llama31_8B_hcg(
-    #         hcg_loss_weight=0.1,
-    #         fan_in_idx=i,
-    #         fan_out_idx=i+1,
-    #         dry=dry,
-    #         select_train_dataset_items=85000,
-    #         experiment_prefix_base_name="adaptive_hcg_llama31_8B_one"
-    #     )
 
     # Fan out projection
-    # run_hcg_llama31_8B_hcg(
-    #     train_hcg=False,
-    #     model_type="pretrained",
-    #     fan_out_projection_mlp_intermediate_size=16384,
-    #     hcg_fan_in_from="/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_1.000_l_22-26_NTWKRP0G/calibr60_checkpoint-5000",
-    #     llama_checkpoint='unsloth/Meta-Llama-3.1-8B',
-    #     fan_out_projection=True,
-    #     select_train_dataset_items=500000,
-    #     lr_scheduler_type="cosine",
-    #     dry=dry,
-    # )
-    # run_hcg_qwen25_7B_hcg(
-    #     train_hcg=False,
-    #     model_type="pretrained_checkpoint",
-    #     llama_checkpoint="/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25_7B_w_1.000_l_12-17_HXIGMJTI/calib40_checkpoint-5000",
-    #     fan_out_projection=True,
-    #     select_train_dataset_items=500000,
-    #     lr_scheduler_type="cosine",
-    #     dry=dry,
-    # )
+    if True:
+        run_hcg_llama31_8B_hcg(
+            train_hcg=False,
+            model_type="pretrained",
+            fan_out_projection_mlp_intermediate_size=16384,
+            hcg_fan_in_from= raise ,
+            llama_checkpoint='unsloth/Meta-Llama-3.1-8B',
+            fan_out_projection=True,
+            experiment_prefix_base_name='adaptive_hcg_llama31_8B_fan_out_projection',
+            select_train_dataset_items=50000,
+            lr_scheduler_type="cosine",
+            init_hcg_a='',
+            dry=dry,
+        )
+        run_hcg_qwen25_7B_hcg(
+            train_hcg=False,
+            model_type="pretrained_checkpoint",
+            llama_checkpoint= raise ,
+            fan_out_projection=True,
+            experiment_prefix_base_name='adaptive_hcg_qwen25_7B_fan_out_projection',
+            select_train_dataset_items=50000,
+            lr_scheduler_type="cosine",
+            dry=dry,
+        )
+
+        sys.exit(0)
+
 
     # Finetune LLM
-    run_hcg_llama31_8B_hcg(
-        train_hcg=False,
-        learning_rate=0.00001,
-        unfreeze_inner_layers='1',
-        model_type="pretrained_checkpoint",
-        llama_checkpoint="/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_llama31_8B_w_1.000_l_22-26_NTWKRP0G/calibr60_checkpoint-5000",
-        fan_out_projection=False,
-        select_train_dataset_items=500000*4*4,
-        lr_scheduler_type="cosine",
-        dry=dry,
-        instance_type="a100.4gpu",
-    )
-    # run_hcg_qwen25_7B_hcg(
-    #     train_hcg=False,
-    #     learning_rate=0.0001,
-    #     unfreeze_inner_layers='1',
-    #     model_type="pretrained_checkpoint",
-    #     llama_checkpoint="/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/adaptive_hcg_qwen25_7B_w_1.000_l_12-17_HXIGMJTI/calib40_checkpoint-5000",
-    #     fan_out_projection=False,
-    #     select_train_dataset_items=500000,
-    #     lr_scheduler_type="cosine",
-    #     dry=dry,
-    # )
+    if True:
+        run_hcg_llama31_8B_hcg(
+            train_hcg=False,
+            learning_rate=0.00001,
+            unfreeze_inner_layers='1',
+            model_type="pretrained_checkpoint",
+            llama_checkpoint= raise ,
+            fan_out_projection=True,
+            select_train_dataset_items=50000*4*4,
+            lr_scheduler_type="cosine",
+            experiment_prefix_base_name='adaptive_hcg_llama31_8B_finetune',
+            dry=dry,
+            instance_type="a100.4gpu",
+            init_hcg_a='',
+        )
+        run_hcg_qwen25_7B_hcg(
+            train_hcg=False,
+            learning_rate=0.0001,
+            unfreeze_inner_layers='1',
+            model_type="pretrained_checkpoint",
+            llama_checkpoint= raise ,
+            fan_out_projection=False,
+            select_train_dataset_items=500000,
+            lr_scheduler_type="cosine",
+            dry=dry,
+            raise "TODO check all other params"
+        )
 
+        sys.exit(0)
 
     # run_hcg_llama31_8B_hcg(dry=dry)
     # run_hcg_qwen25_7B_hcg(dry=dry)

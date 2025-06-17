@@ -80,5 +80,4 @@ if __name__ == "__main__":
     tokeniser.save_pretrained(output_dir)
     model.save_pretrained(output_dir)
 
-    breakpoint()
 

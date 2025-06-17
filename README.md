@@ -24,8 +24,8 @@ python setup.py build_ext --inplace
 
 1. Compute pairwise hidden states similarities
 ```
-python src/transformers/models/llama/paper/calculate_hopping_potential.py --llama_checkpoint Qwen/Qwen2.5-7B --batch_size 4 --num_samples 1024
-python src/transformers/models/llama/paper/calculate_hopping_potential.py --llama_checkpoint unsloth/Meta-Llama-3.1-8B --batch_size 4 --num_samples 1024
+python src/transformers/models/llama/paper/calculate_hopping_potential.py --llama_checkpoint Qwen/Qwen2.5-7B
+python src/transformers/models/llama/paper/calculate_hopping_potential.py --llama_checkpoint unsloth/Meta-Llama-3.1-8B
 ```
 
 2. Compute plots and mintoken_potential_min_df_csv_path
@@ -53,14 +53,18 @@ Hyperparameters should be set based on 4th step script output.
 
 ```
 # Llama3.1-8B
-LLAMA31_8B_FAN_IN_INDEX=22
+LLAMA31_8B_FAN_IN_INDEX=18
 LLAMA31_8B_FAN_OUT_INDEX=26
-python src/transformers/models/llama/paper/adaptive_llama_from_vocab.py --checkpoint_base_path unsloth/Meta-Llama-3.1-8B --fan_in_idx $LLAMA31_8B_FAN_IN_INDEX --fan_out_idx $LLAMA31_8B_FAN_OUT_INDEX --vocab_csv_path results/token_embeddings_hopping_potential/pruning_vocab_q1_Meta-Llama-3.1-8B.csv --output_dir ./adaptive_hcg_llama31_8B_l${LLAMA31_8B_FAN_IN_INDEX}-${LLAMA31_8B_FAN_OUT_INDEX}_analytical_pruning
+for VOCAB_QUANTILE in 0.25 0.5 0.75 1; do
+    python src/transformers/models/llama/paper/adaptive_llama_from_vocab.py --checkpoint_base_path unsloth/Meta-Llama-3.1-8B --fan_in_idx $LLAMA31_8B_FAN_IN_INDEX --fan_out_idx $LLAMA31_8B_FAN_OUT_INDEX --vocab_csv_path results/token_embeddings_hopping_potential/pruning_vocab_q${VOCAB_QUANTILE}_Meta-Llama-3.1-8B.csv --output_dir ./adaptive_hcg_llama31_8B_l${LLAMA31_8B_FAN_IN_INDEX}-${LLAMA31_8B_FAN_OUT_INDEX}_analytical_pruning_q${VOCAB_QUANTILE}
+done
 
 # Qwen2.5-7B
-QWEN25_7B_FAN_IN_INDEX=12
-QWEN25_7B_FAN_OUT_INDEX=17
-python src/transformers/models/llama/paper/adaptive_llama_from_vocab.py --checkpoint_base_path Qwen/Qwen2.5-7B --fan_in_idx $QWEN25_7B_FAN_IN_INDEX --fan_out_idx $QWEN25_7B_FAN_OUT_INDEX --vocab_csv_path results/token_embeddings_hopping_potential/pruning_vocab_q1_Qwen2.5-7B.csv --output_dir ./adaptive_hcg_qwen25_7B_l${QWEN25_7B_FAN_IN_INDEX}-${QWEN25_7B_FAN_OUT_INDEX}_analytical_pruning
+QWEN25_7B_FAN_IN_INDEX=9
+QWEN25_7B_FAN_OUT_INDEX=20
+for VOCAB_QUANTILE in 0.25 0.5 0.75 1; do
+    python src/transformers/models/llama/paper/adaptive_llama_from_vocab.py --checkpoint_base_path Qwen/Qwen2.5-7B --fan_in_idx $QWEN25_7B_FAN_IN_INDEX --fan_out_idx $QWEN25_7B_FAN_OUT_INDEX --vocab_csv_path results/token_embeddings_hopping_potential/pruning_vocab_q${VOCAB_QUANTILE}_Qwen2.5-7B.csv --output_dir ./adaptive_hcg_qwen25_7B_l${QWEN25_7B_FAN_IN_INDEX}-${QWEN25_7B_FAN_OUT_INDEX}_analytical_pruning_q${VOCAB_QUANTILE}
+done
 ```
 
 # Train Learnable Pruning Vocabulary

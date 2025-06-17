@@ -920,6 +920,9 @@ def build_model(training_args: AdaptiveTrainingArguments):
     torch_dtype = torch.bfloat16 if training_args.bf16 else torch.float32
     print("build_model torch_dtype", torch_dtype)
 
+    if training_args.init_hcg_a is not None:
+        assert training_args.hcg_fan_in_from is None, 'hcg_fan_in_from must be None if init_hcg_a is not None'
+
 
     if training_args.model_type == 'dummy':
         num_layers = 2
