@@ -17,6 +17,7 @@ import tempfile
 from collections import Counter
 import random
 from sklearn.metrics.pairwise import cosine_distances
+from datasets import load_dataset
 
 from transformers.models.llama.analyze.embeddings_change import compute_distances, norm_compute_cosine_distance, compute_l1_distance
 from transformers.models.llama.analyze.mean_per_token_embeddings_change import trim_embeddings
@@ -25,7 +26,9 @@ from transformers.models.qwen2.modeling_adaptive_qwen2 import AdaptiveQwen2ForCa
 
 from transformers.models.llama.paper.calibrate_learned_vocabulary import calibrate_vocabulary
 
-from transformers.models.llama.interpretation.explore_eval_hard_concrete_percent import evaluate_ppl_wikitext_103
+from transformers.models.llama.interpretation.explore_eval_hard_concrete_percent import evaluate_ppl_wikitext_103, evaluate_acc_hellaswag, compute_tokens_counts_hellaswag, compute_tokens_counts
+
+from transformers.models.llama.paper.calibrate_learned_vocabulary_calc_ppl import evaluate_sparsity_metrics
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -47,7 +50,7 @@ def main():
     for i in range(2, 30):
         output_suffix = f"hcg_llama31_8B_L{i}-{i+1}_w_0.1"
 
-        checkpoint_glob = sorted(glob.glob(f"./adaptive_hcg_llama31_8B_one_w_0.100_l_{i}-{i+1}_*/checkpoint-5000/"))
+        checkpoint_glob = sorted(glob.glob(f"./paper_checkpoints/single_layer_hopping/adaptive_hcg_llama31_8B_one_w_0.100_l_{i}-{i+1}_*/checkpoint-5*/"))
 
         if len(checkpoint_glob) == 0:
             logger.info(f"No checkpoint found for {output_suffix}")
@@ -58,10 +61,6 @@ def main():
 
         if not os.path.exists(checkpoint_path):
             logger.info(f"Checkpoint {checkpoint_path} does not exist")
-            continue
-
-        result_file_path = os.path.join(output_dir, f"ppl_results_{output_suffix}.csv")
-        if os.path.exists(result_file_path):
             continue
 
 
@@ -78,23 +77,10 @@ def main():
 
         model = model_class.from_pretrained(checkpoint_path, torch_dtype=torch.bfloat16)
 
-        results = []
-
-        for expected_sparsity in [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]:
-        # for expected_sparsity in [ 10 ]:
-            calibrate_vocabulary(model, tokens_frequency, expected_sparsity)
-
-            wikitext_results = evaluate_ppl_wikitext_103(model, max_samples=1000)
-            ppl = wikitext_results['ppl']
-            ppl_stderr = wikitext_results['ppl_stderr']
-
-            results.append({
-                "sparsity": expected_sparsity,
-                "ppl": ppl,
-                "ppl_stderr": ppl_stderr,
-            })
+        results = evaluate_sparsity_metrics(model, tokenizer, tokens_frequency)
 
         df = pd.DataFrame(results)
+        result_file_path = os.path.join(output_dir, f"ppl_results_{output_suffix}.csv")
         df.to_csv(result_file_path, index=False)
         logger.info(f"Saved PPL results to {result_file_path}")
 

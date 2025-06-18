@@ -15,6 +15,7 @@ import imageio.v2 as imageio
 import tempfile
 from collections import Counter
 import random
+from datasets import load_dataset
 from sklearn.metrics.pairwise import cosine_distances
 
 from transformers.models.llama.analyze.embeddings_change import compute_distances, norm_compute_cosine_distance, compute_l1_distance
@@ -24,7 +25,7 @@ from transformers.models.qwen2.modeling_adaptive_qwen2 import AdaptiveQwen2ForCa
 
 from transformers.models.llama.paper.calibrate_learned_vocabulary import calibrate_vocabulary
 
-from transformers.models.llama.interpretation.explore_eval_hard_concrete_percent import evaluate_ppl_wikitext_103
+from transformers.models.llama.interpretation.explore_eval_hard_concrete_percent import evaluate_ppl_wikitext_103, evaluate_acc_hellaswag, compute_tokens_counts_hellaswag, compute_tokens_counts
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -52,6 +53,49 @@ logging.basicConfig(
 # python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_0.100_l_9-20_3P72MPZU/checkpoint-5306 --output_dir results/calibrate_ppl/ --output_suffix hcg_qwen25_7B_w_0.100_thshold_0.6
 
 
+def evaluate_sparsity_metrics(model, tokenizer, tokens_frequency):
+
+    wikitext_103_dataset = load_dataset('lighteval/wikitext_103', 'default', split='test')
+    wikitext_103_bincount = compute_tokens_counts(model, tokenizer, wikitext_103_dataset)
+
+    hellaswag_dataset = load_dataset('hellaswag', 'default', split='validation')
+    hellaswag_bincount = compute_tokens_counts_hellaswag(model, tokenizer, hellaswag_dataset)
+
+
+    results = []
+
+    for expected_sparsity in [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]:
+        calibrate_vocabulary(model, tokens_frequency, expected_sparsity)
+
+        wikitext_results = evaluate_ppl_wikitext_103(model, bincount=wikitext_103_bincount)
+        ppl = wikitext_results['ppl']
+        ppl_stderr = wikitext_results['ppl_stderr']
+        wikitext_pruned_percent = wikitext_results['pruned_percent']
+        wikitext_total_tokens_count = wikitext_results['total_tokens_count']
+
+        hellaswag_results = evaluate_acc_hellaswag(model, bincount=hellaswag_bincount)
+        acc_norm = hellaswag_results['acc_norm']
+        hellaswag_pruned_percent = hellaswag_results['pruned_percent']
+        hellaswag_total_tokens_count = hellaswag_results['total_tokens_count']
+
+        result = {
+            "sparsity": expected_sparsity,
+
+            "wikitext_ppl": ppl,
+            "wikitext_ppl_stderr": ppl_stderr,
+            "wikitext_pruned_percent": wikitext_pruned_percent,
+            "wikitext_total_tokens_count": wikitext_total_tokens_count,
+
+            "hellaswag_acc_norm": acc_norm,
+            "hellaswag_pruned_percent": hellaswag_pruned_percent,
+            "hellaswag_total_tokens_count": hellaswag_total_tokens_count,
+        }
+
+        print(result)
+
+        results.append(result)
+
+    return results
 
 @torch.no_grad()
 def main():
@@ -75,22 +119,9 @@ def main():
 
     model = model_class.from_pretrained(args.llama_checkpoint, torch_dtype=torch.bfloat16)
 
-    results = []
-
-    for expected_sparsity in [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]:
-        calibrate_vocabulary(model, tokens_frequency, expected_sparsity)
-
-        wikitext_results = evaluate_ppl_wikitext_103(model)
-        ppl = wikitext_results['ppl']
-        ppl_stderr = wikitext_results['ppl_stderr']
-
-        results.append({
-            "sparsity": expected_sparsity,
-            "ppl": ppl,
-            "ppl_stderr": ppl_stderr,
-        })
-
     model_name = args.llama_checkpoint.split("/")[-1]
+
+    results = evaluate_sparsity_metrics(model, tokenizer, tokens_frequency)
 
     df = pd.DataFrame(results)
     file_path = os.path.join(args.output_dir, f"ppl_results_{model_name}_{args.output_suffix}.csv")
