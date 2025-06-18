@@ -30,6 +30,12 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+# python src/transformers/models/llama/paper/calibrate_learned_vocabulary.py --llama_checkpoint ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306 --expected_sparsity 40 --output_dir ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306_calib40
+# python src/transformers/models/llama/paper/calibrate_learned_vocabulary.py --llama_checkpoint ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306 --expected_sparsity 90 --output_dir ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306_calib90
+
+# python src/transformers/models/llama/paper/calibrate_learned_vocabulary.py --llama_checkpoint ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_1.000_l_9-20_J3BTODV3/checkpoint-5306 --expected_sparsity 40 --output_dir ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_1.000_l_9-20_J3BTODV3/checkpoint-5306_calib40
+# python src/transformers/models/llama/paper/calibrate_learned_vocabulary.py --llama_checkpoint ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_1.000_l_9-20_J3BTODV3/checkpoint-5306 --expected_sparsity 90 --output_dir ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_1.000_l_9-20_J3BTODV3/checkpoint-5306_calib90
+
 @torch.no_grad()
 def calibrate_vocabulary(model, tokens_frequency, expected_sparsity):
     log_d_data = model.model.fan_in.hcg.hcg_log_a.data
@@ -95,7 +101,6 @@ def main():
     tokenizer.save_pretrained(args.output_dir)
     print(f"Saved model and tokenizer to {args.output_dir} with calibrated vocabulary")
 
-    breakpoint()
 
 
 if __name__ == "__main__":

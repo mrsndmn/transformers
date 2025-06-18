@@ -58,11 +58,11 @@ if __name__ == "__main__":
     # plt.scatter([ 8.43 ], [ 9.03 ], label="Qwen2.5-7B Stat. Vocab", color="red", marker="x", s=300)
 
     # Threshold 0.6
-    plt.scatter([ 5.58 ], [ 4.71 ], label="Llama3.1-8B Stat. Vocab", color="blue", marker="x", s=300)
-    plt.scatter([ 5.85 ], [ 8.97 ], label="Qwen2.5-7B Stat. Vocab", color="red", marker="x", s=300)
+    plt.scatter([ 5.58 ], [ 4.71 ], label="Llama3.1-8B Stat. Vocab", color="blue", marker="x", s=300, alpha=0.5)
+    plt.scatter([ 5.85 ], [ 8.97 ], label="Qwen2.5-7B Stat. Vocab", color="red", marker="x", s=300, alpha=0.5)
 
-    plt.scatter([ 0 ], [ 5.34 ], label="Llama3.1-8B Orig.", color="blue", marker="o", s=200)
-    plt.scatter([ 0 ], [ 9.704 ], label="Qwen2.5-7B Orig.", color="red", marker="o", s=200)
+    plt.scatter([ 0 ], [ 5.34 ], label="Llama3.1-8B Orig.", color="blue", marker="o", s=200, alpha=0.5)
+    plt.scatter([ 0 ], [ 9.704 ], label="Qwen2.5-7B Orig.", color="red", marker="o", s=200, alpha=0.5)
 
 
     for file_path, model_name in input_files:
@@ -78,6 +78,9 @@ if __name__ == "__main__":
     plt.yticks(fontsize=fontsize)
     plt.xlabel("Sparsity", fontsize=fontsize)
     plt.ylabel("PPL", fontsize=fontsize)
+
+    plt.ylim(0, 40)
+
     plt.title("WikiText-103 Sparsity vs PPL", fontsize=fontsize)
     plot_path = os.path.join("results/calibrate_ppl", f"sparsity_ppl_curves.png")
     plt.tight_layout()

@@ -100,7 +100,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     eval_steps: int = field(default=10000)
     save_strategy: str = field(default="steps")
     save_steps: int = field(default=10000)
-    save_total_limit: Optional[int] = field(default=2)
+    save_total_limit: Optional[int] = field(default=3)
     save_only_model: bool = field(default=True)
 
     prohibit_end_of_sentence_pruning: bool = field(default=False)
@@ -861,7 +861,6 @@ class AdaptiveLlamaTrainer(Trainer):
                 load_responses_from_details_date_id=None,
             )
 
-            tasks = "custom|wikitext_103|0|1"
 
             unwrapped_model = self.accelerator.unwrap_model(self.model)
             unwrapped_model.eval()
@@ -871,6 +870,11 @@ class AdaptiveLlamaTrainer(Trainer):
             unwrapped_model.config.max_length = unwrapped_model.config.max_position_embeddings
 
             with torch.no_grad():
+                # WIkitext
+                tasks = "custom|wikitext_103|0|1"
+                evaluation_tracker = EvaluationTracker(
+                    output_dir=evaluation_output_dir,
+                )
                 pipeline = Pipeline(
                     tasks=tasks,
                     pipeline_parameters=pipeline_params,
@@ -882,9 +886,54 @@ class AdaptiveLlamaTrainer(Trainer):
                 pipeline.show_results()
                 results = pipeline.get_results()
 
-                print("results", results)
+                print("wikitext results", results)
+
+                wikitext_ppl = results['results']["custom:wikitext_103:0"]["ppl"]
+
+                # Arc
+                tasks = "custom|arc|0|1"
+                evaluation_tracker = EvaluationTracker(
+                    output_dir=evaluation_output_dir,
+                )
+                pipeline = Pipeline(
+                    tasks=tasks,
+                    pipeline_parameters=pipeline_params,
+                    evaluation_tracker=evaluation_tracker,
+                    model=unwrapped_model,
+                )
+                pipeline.evaluate()
+
+                pipeline.show_results()
+                results = pipeline.get_results()
+
+                print("arc results", results)
+                arc_acc_norm = results['results']["custom:arc:_average:0"]["acc_norm"]
+
+                # HellaSwag
+                tasks = "custom|hellaswag|0|1"
+                evaluation_tracker = EvaluationTracker(
+                    output_dir=evaluation_output_dir,
+                )
+                pipeline = Pipeline(
+                    tasks=tasks,
+                    pipeline_parameters=pipeline_params,
+                    evaluation_tracker=evaluation_tracker,
+                    model=unwrapped_model,
+                )
+                pipeline.evaluate()
+
+                pipeline.show_results()
+                results = pipeline.get_results()
+
+                print("hellaswag results", results)
+                hellaswag_acc_norm = results['results']["custom:hellaswag:0"]["acc_norm"]
+
                 if results is not None:
-                    self.log({ "lighteval/wikitext_ppl": results['results']["custom:wikitext_103:0"]["ppl"] })
+                    self.log({
+                        "lighteval/wikitext_ppl": wikitext_ppl,
+                        "lighteval/arc_acc_norm": arc_acc_norm,
+                        "lighteval/hellaswag_acc_norm": hellaswag_acc_norm,
+                    })
         except Exception as e:
             print("Error in evaluation of PPL", e)
 
