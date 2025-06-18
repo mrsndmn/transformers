@@ -45,44 +45,49 @@ logging.basicConfig(
 @torch.no_grad()
 def main():
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--layer_idx", type=int, required=True)
+    args = parser.parse_args()
+
+    i = int(args.layer_idx)
+
     output_dir = 'results/calibrate_ppl_single_layer/'
 
-    for i in range(2, 30):
-        output_suffix = f"hcg_llama31_8B_L{i}-{i+1}_w_0.1"
+    output_suffix = f"hcg_llama31_8B_L{i}-{i+1}_w_0.1"
 
-        checkpoint_glob = sorted(glob.glob(f"./paper_checkpoints/single_layer_hopping/adaptive_hcg_llama31_8B_one_w_0.100_l_{i}-{i+1}_*/checkpoint-5*/"))
+    checkpoint_glob = sorted(glob.glob(f"./paper_checkpoints/single_layer_hopping/adaptive_hcg_llama31_8B_one_w_0.100_l_{i}-{i+1}_*/checkpoint-5*/"))
 
-        if len(checkpoint_glob) == 0:
-            logger.info(f"No checkpoint found for {output_suffix}")
-            continue
+    if len(checkpoint_glob) == 0:
+        logger.info(f"No checkpoint found for {output_suffix}")
+        return
 
-        checkpoint_path = checkpoint_glob[-1]
-        print("use checkpoint checkpoint_path", checkpoint_path)
+    checkpoint_path = checkpoint_glob[-1]
+    print("use checkpoint checkpoint_path", checkpoint_path)
 
-        if not os.path.exists(checkpoint_path):
-            logger.info(f"Checkpoint {checkpoint_path} does not exist")
-            continue
+    if not os.path.exists(checkpoint_path):
+        logger.info(f"Checkpoint {checkpoint_path} does not exist")
+        return
 
 
-        tokens_frequency = {}
+    tokens_frequency = {}
 
-        tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
+    tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
 
-        wikitext_103: datasets.Dataset = datasets.load_dataset("mrsndmn/wikitext-2-raw-v1-validation", split="validation")
-        for item in wikitext_103:
-            for token in tokenizer(item['text']).input_ids:
-                tokens_frequency[token] = tokens_frequency.get(token, 0) + 1
+    wikitext_103: datasets.Dataset = datasets.load_dataset("mrsndmn/wikitext-2-raw-v1-validation", split="validation")
+    for item in wikitext_103:
+        for token in tokenizer(item['text']).input_ids:
+            tokens_frequency[token] = tokens_frequency.get(token, 0) + 1
 
-        model_class = AdaptiveLlamaForCausalLM if "llama" in checkpoint_path else AdaptiveQwen2ForCausalLM
+    model_class = AdaptiveLlamaForCausalLM if "llama" in checkpoint_path else AdaptiveQwen2ForCausalLM
 
-        model = model_class.from_pretrained(checkpoint_path, torch_dtype=torch.bfloat16)
+    model = model_class.from_pretrained(checkpoint_path, torch_dtype=torch.bfloat16)
 
-        results = evaluate_sparsity_metrics(model, tokenizer, tokens_frequency)
+    results = evaluate_sparsity_metrics(model, tokenizer, tokens_frequency)
 
-        df = pd.DataFrame(results)
-        result_file_path = os.path.join(output_dir, f"ppl_results_{output_suffix}.csv")
-        df.to_csv(result_file_path, index=False)
-        logger.info(f"Saved PPL results to {result_file_path}")
+    df = pd.DataFrame(results)
+    result_file_path = os.path.join(output_dir, f"ppl_results_{output_suffix}.csv")
+    df.to_csv(result_file_path, index=False)
+    logger.info(f"Saved PPL results to {result_file_path}")
 
 
 if __name__ == "__main__":
