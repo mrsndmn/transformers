@@ -77,6 +77,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
     clip_hcg_log_a: Optional[float] = field(default=None)
     hard_hcg_log_a: Optional[bool] = field(default=None)
 
+    do_eval_on_save: bool = field(default=True)
+
     warmup_steps: int = field(default=500)
     per_device_train_batch_size: int = field(default=32)
     per_device_eval_batch_size: int = field(default=4)
@@ -844,100 +846,101 @@ class AdaptiveLlamaTrainer(Trainer):
                 print("Error in saving model", e)
                 time.sleep(300)
 
-        try:
-            evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'"
-            evaluation_tracker = EvaluationTracker(
-                output_dir=evaluation_output_dir,
-            )
-            pipeline_params = PipelineParameters(
-                launcher_type=ParallelismManager.ACCELERATE,
-                # env_config=env_config,
-                custom_tasks_directory='/workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py',
-                override_batch_size=1,
-                num_fewshot_seeds=0,
-                max_samples=100,
-                use_chat_template=False,
-                system_prompt=None,
-                load_responses_from_details_date_id=None,
-            )
-
-
-            unwrapped_model = self.accelerator.unwrap_model(self.model)
-            unwrapped_model.eval()
-
-            unwrapped_model.name_or_path = output_dir
-            # assert unwrapped_model.config.max_length > 100
-            unwrapped_model.config.max_length = unwrapped_model.config.max_position_embeddings
-
-            with torch.no_grad():
-                # WIkitext
-                tasks = "custom|wikitext_103|0|1"
+        if self.args.do_eval_on_save:
+            try:
+                evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'"
                 evaluation_tracker = EvaluationTracker(
                     output_dir=evaluation_output_dir,
                 )
-                pipeline = Pipeline(
-                    tasks=tasks,
-                    pipeline_parameters=pipeline_params,
-                    evaluation_tracker=evaluation_tracker,
-                    model=unwrapped_model,
+                pipeline_params = PipelineParameters(
+                    launcher_type=ParallelismManager.ACCELERATE,
+                    # env_config=env_config,
+                    custom_tasks_directory='/workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py',
+                    override_batch_size=1,
+                    num_fewshot_seeds=0,
+                    max_samples=100,
+                    use_chat_template=False,
+                    system_prompt=None,
+                    load_responses_from_details_date_id=None,
                 )
-                pipeline.evaluate()
 
-                pipeline.show_results()
-                results = pipeline.get_results()
 
-                print("wikitext results", results)
+                unwrapped_model = self.accelerator.unwrap_model(self.model)
+                unwrapped_model.eval()
 
-                wikitext_ppl = results['results']["custom:wikitext_103:0"]["ppl"]
+                unwrapped_model.name_or_path = output_dir
+                # assert unwrapped_model.config.max_length > 100
+                unwrapped_model.config.max_length = unwrapped_model.config.max_position_embeddings
 
-                # Arc
-                tasks = "custom|arc|0|1"
-                evaluation_tracker = EvaluationTracker(
-                    output_dir=evaluation_output_dir,
-                )
-                pipeline = Pipeline(
-                    tasks=tasks,
-                    pipeline_parameters=pipeline_params,
-                    evaluation_tracker=evaluation_tracker,
-                    model=unwrapped_model,
-                )
-                pipeline.evaluate()
+                with torch.no_grad():
+                    # WIkitext
+                    tasks = "custom|wikitext_103|0|1"
+                    evaluation_tracker = EvaluationTracker(
+                        output_dir=evaluation_output_dir,
+                    )
+                    pipeline = Pipeline(
+                        tasks=tasks,
+                        pipeline_parameters=pipeline_params,
+                        evaluation_tracker=evaluation_tracker,
+                        model=unwrapped_model,
+                    )
+                    pipeline.evaluate()
 
-                pipeline.show_results()
-                results = pipeline.get_results()
+                    pipeline.show_results()
+                    results = pipeline.get_results()
 
-                print("arc results", results)
-                arc_acc_norm = results['results']["custom:arc:_average:0"]["acc_norm"]
+                    print("wikitext results", results)
 
-                # HellaSwag
-                tasks = "custom|hellaswag|0|1"
-                evaluation_tracker = EvaluationTracker(
-                    output_dir=evaluation_output_dir,
-                )
-                pipeline = Pipeline(
-                    tasks=tasks,
-                    pipeline_parameters=pipeline_params,
-                    evaluation_tracker=evaluation_tracker,
-                    model=unwrapped_model,
-                )
-                pipeline.evaluate()
+                    wikitext_ppl = results['results']["custom:wikitext_103:0"]["ppl"]
 
-                pipeline.show_results()
-                results = pipeline.get_results()
+                    # Arc
+                    tasks = "custom|arc|0|1"
+                    evaluation_tracker = EvaluationTracker(
+                        output_dir=evaluation_output_dir,
+                    )
+                    pipeline = Pipeline(
+                        tasks=tasks,
+                        pipeline_parameters=pipeline_params,
+                        evaluation_tracker=evaluation_tracker,
+                        model=unwrapped_model,
+                    )
+                    pipeline.evaluate()
 
-                print("hellaswag results", results)
-                hellaswag_acc_norm = results['results']["custom:hellaswag:0"]["acc_norm"]
+                    pipeline.show_results()
+                    results = pipeline.get_results()
 
-                if results is not None:
-                    self.log({
-                        "lighteval/wikitext_ppl": wikitext_ppl,
-                        "lighteval/arc_acc_norm": arc_acc_norm,
-                        "lighteval/hellaswag_acc_norm": hellaswag_acc_norm,
-                    })
-        except Exception as e:
-            print("Error in evaluation of PPL", e)
+                    print("arc results", results)
+                    arc_acc_norm = results['results']["custom:arc:_average:0"]["acc_norm"]
 
-        self.model.train()
+                    # HellaSwag
+                    tasks = "custom|hellaswag|0|1"
+                    evaluation_tracker = EvaluationTracker(
+                        output_dir=evaluation_output_dir,
+                    )
+                    pipeline = Pipeline(
+                        tasks=tasks,
+                        pipeline_parameters=pipeline_params,
+                        evaluation_tracker=evaluation_tracker,
+                        model=unwrapped_model,
+                    )
+                    pipeline.evaluate()
+
+                    pipeline.show_results()
+                    results = pipeline.get_results()
+
+                    print("hellaswag results", results)
+                    hellaswag_acc_norm = results['results']["custom:hellaswag:0"]["acc_norm"]
+
+                    if results is not None:
+                        self.log({
+                            "lighteval/wikitext_ppl": wikitext_ppl,
+                            "lighteval/arc_acc_norm": arc_acc_norm,
+                            "lighteval/hellaswag_acc_norm": hellaswag_acc_norm,
+                        })
+            except Exception as e:
+                print("Error in evaluation of PPL", e)
+
+            self.model.train()
 
 
 def freeze_lm_backbone(model: nn.Module, train_after_fan_out_llm_layer: bool):
@@ -1351,6 +1354,8 @@ if __name__ == "__main__":
 
         gradual_unfreeze_callback = GradualUnfreezeStepCallback(model)
         callbacks.append(gradual_unfreeze_callback)
+
+    print("training_args.do_eval_on_save", training_args.do_eval_on_save)
 
     trainer = AdaptiveLlamaTrainer(
         model,

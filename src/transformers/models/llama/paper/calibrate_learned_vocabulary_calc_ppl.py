@@ -53,7 +53,7 @@ logging.basicConfig(
 # python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --llama_checkpoint ./paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_0.100_l_9-20_3P72MPZU/checkpoint-5306 --output_dir results/calibrate_ppl/ --output_suffix hcg_qwen25_7B_w_0.100_thshold_0.6
 
 
-def evaluate_sparsity_metrics(model, tokenizer, tokens_frequency):
+def evaluate_sparsity_metrics(model, tokenizer, tokens_frequency, sparsity_only=False):
 
     wikitext_103_dataset = load_dataset('lighteval/wikitext_103', 'default', split='test')
     wikitext_103_bincount = compute_tokens_counts(model, tokenizer, wikitext_103_dataset)
@@ -67,14 +67,15 @@ def evaluate_sparsity_metrics(model, tokenizer, tokens_frequency):
     for expected_sparsity in [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]:
         calibrate_vocabulary(model, tokens_frequency, expected_sparsity)
 
-        wikitext_results = evaluate_ppl_wikitext_103(model, bincount=wikitext_103_bincount)
+        wikitext_results = evaluate_ppl_wikitext_103(model, bincount=wikitext_103_bincount.clone(), sparsity_only=sparsity_only)
         ppl = wikitext_results['ppl']
         ppl_stderr = wikitext_results['ppl_stderr']
         wikitext_pruned_percent = wikitext_results['pruned_percent']
         wikitext_total_tokens_count = wikitext_results['total_tokens_count']
 
-        hellaswag_results = evaluate_acc_hellaswag(model, bincount=hellaswag_bincount)
+        hellaswag_results = evaluate_acc_hellaswag(model, bincount=hellaswag_bincount.clone(), sparsity_only=sparsity_only)
         acc_norm = hellaswag_results['acc_norm']
+        acc_norm_stderr = hellaswag_results['acc_norm_stderr']
         hellaswag_pruned_percent = hellaswag_results['pruned_percent']
         hellaswag_total_tokens_count = hellaswag_results['total_tokens_count']
 
@@ -87,6 +88,7 @@ def evaluate_sparsity_metrics(model, tokenizer, tokens_frequency):
             "wikitext_total_tokens_count": wikitext_total_tokens_count,
 
             "hellaswag_acc_norm": acc_norm,
+            "hellaswag_acc_norm_stderr": acc_norm_stderr,
             "hellaswag_pruned_percent": hellaswag_pruned_percent,
             "hellaswag_total_tokens_count": hellaswag_total_tokens_count,
         }
@@ -103,8 +105,11 @@ def main():
     parser.add_argument("--llama_checkpoint", type=str, required=True)
     parser.add_argument("--output_dir", type=str, required=True)
     parser.add_argument("--output_suffix", type=str, required=True)
+    parser.add_argument("--sparsity_only", action="store_true", default=False)
 
     args = parser.parse_args()
+
+    sparsity_only = args.sparsity_only
 
     tokens_frequency = {}
 
@@ -121,10 +126,21 @@ def main():
 
     model_name = args.llama_checkpoint.split("/")[-1]
 
-    results = evaluate_sparsity_metrics(model, tokenizer, tokens_frequency)
+    results = evaluate_sparsity_metrics(model, tokenizer, tokens_frequency, sparsity_only=sparsity_only)
 
     df = pd.DataFrame(results)
     file_path = os.path.join(args.output_dir, f"ppl_results_{model_name}_{args.output_suffix}.csv")
+
+    file_path_old_backup = file_path.replace(".csv", "_old.csv")
+    if os.path.exists(file_path_old_backup):
+        old_df = pd.read_csv(file_path_old_backup)
+    else:
+        old_df = pd.read_csv(file_path)
+        old_df.to_csv(file_path_old_backup, index=False)
+
+    for col in ['wikitext_ppl','wikitext_ppl_stderr','wikitext_total_tokens_count','hellaswag_acc_norm','hellaswag_acc_norm_stderr','hellaswag_total_tokens_count']:
+        df[col] = old_df[col]
+
     df.to_csv(file_path, index=False)
     logger.info(f"Saved PPL results to {file_path}")
 

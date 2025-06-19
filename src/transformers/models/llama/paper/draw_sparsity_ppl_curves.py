@@ -71,7 +71,8 @@ if __name__ == "__main__":
             continue
 
         df = pd.read_csv(file_path)
-        plt.plot(df['sparsity'], df['ppl'], label=model_name, linewidth=5.0)
+        plt.plot(df['wikitext_pruned_percent'], df['wikitext_ppl'], label=model_name, linewidth=5.0)
+        # plt.errorbar(df['sparsity'], df['wikitext_ppl'], yerr=df['wikitext_ppl_stderr'], label=model_name, linewidth=5.0, capsize=5, capthick=2)
 
     plt.legend(fontsize=fontsize)
     plt.xticks(fontsize=fontsize)
@@ -81,11 +82,34 @@ if __name__ == "__main__":
 
     plt.ylim(0, 40)
 
-    plt.title("WikiText-103 Sparsity vs PPL", fontsize=fontsize)
-    plot_path = os.path.join("results/calibrate_ppl", f"sparsity_ppl_curves.png")
+    plt.title("WikiText Sparsity vs PPL", fontsize=fontsize)
+    plot_path = os.path.join("results/calibrate_ppl", f"sparsity_wikitext_ppl_curves.png")
     plt.tight_layout()
     plt.savefig(plot_path)
     print(f"Saved sparsity PPL curves to {plot_path}")
 
 
+    plt.clf()
 
+    for file_path, model_name in input_files:
+        if not os.path.exists(file_path):
+            print(f"File {file_path} does not exist")
+            continue
+
+        df = pd.read_csv(file_path)
+        plt.plot(df['hellaswag_pruned_percent'], df['hellaswag_acc_norm'], label=model_name, linewidth=5.0)
+        # plt.errorbar(df['sparsity'], df['wikitext_ppl'], yerr=df['wikitext_ppl_stderr'], label=model_name, linewidth=5.0, capsize=5, capthick=2)
+
+    plt.legend(fontsize=fontsize)
+    plt.xticks(fontsize=fontsize)
+    plt.yticks(fontsize=fontsize)
+    plt.xlabel("Sparsity", fontsize=fontsize)
+    plt.ylabel("Acc", fontsize=fontsize)
+
+    plt.ylim(0, 1)
+
+    plt.title("WikiText Sparsity vs HellaSwag Acc", fontsize=fontsize)
+    plot_path = os.path.join("results/calibrate_ppl", f"sparsity_hellaswag_acc_curves.png")
+    plt.tight_layout()
+    plt.savefig(plot_path)
+    print(f"Saved sparsity HellaSwag Acc curves to {plot_path}")

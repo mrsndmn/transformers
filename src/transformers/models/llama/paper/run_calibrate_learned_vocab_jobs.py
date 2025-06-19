@@ -13,8 +13,8 @@ REGION = "SR004"
 
 SEED = 1008
 
-console = Console()
-console.print(client_lib.get_instance_types(regions="SR004"))
+# console = Console()
+# console.print(client_lib.get_instance_types(regions="SR004"))
 
 INSTANCE_TYPE = "a100.1gpu"
 N_WORKERS = 1
@@ -41,6 +41,7 @@ def run_eval_experiments(experiments, job_description_prefix="eval calibrate", d
             raise ValueError("Invalid exp values!")
 
         script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --output_suffix {output_suffix} --llama_checkpoint {llama_checkpoint} --output_dir {output_dir}\''
+        # script_str = f'python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --output_suffix {output_suffix} --llama_checkpoint {llama_checkpoint} --output_dir {output_dir} --sparsity_only'
         # script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 4 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|arc|0|1,custom|piqa|0|1,custom|wikitext_103|0|1"\''
 
         # TODO gsm8k, math - 8--shot
@@ -134,32 +135,32 @@ if __name__ == "__main__":
     print("dry", dry, 'extract_metrics', extract_metrics)
 
 
-    # run_eval_experiments([
-    #     {
-    #         'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306',
-    #         'output_suffix': 'hcg_llama31_8B_w_1.000_thshold_0.6',
-    #         'output_dir': './results/calibrate_ppl/'
-    #     },
-    #     {
-    #         'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_0.100_l_18-26_DAZ0UXGX/checkpoint-5306',
-    #         'output_suffix': 'hcg_llama31_8B_w_0.100_thshold_0.6',
-    #         'output_dir': './results/calibrate_ppl/'
-    #     },
-    #     {
-    #         'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_1.000_l_9-20_J3BTODV3/checkpoint-5306',
-    #         'output_suffix': 'hcg_qwen25_7B_w_1.000_thshold_0.6',
-    #         'output_dir': './results/calibrate_ppl/'
-    #     },
-    #     {
-    #         'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_0.100_l_9-20_3P72MPZU/checkpoint-5306',
-    #         'output_suffix': 'hcg_qwen25_7B_w_0.100_thshold_0.6',
-    #         'output_dir': './results/calibrate_ppl/'
-    #     },
-    # ], dry=dry)
-
-    run_eval_experiments_single_layer([
+    run_eval_experiments([
         {
-            'layer_idx': i,
-        } for i in range(2, 30)
-        # } for i in range(2, 3)
+            'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306',
+            'output_suffix': 'hcg_llama31_8B_w_1.000_thshold_0.6',
+            'output_dir': './results/calibrate_ppl/'
+        },
+        {
+            'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_0.100_l_18-26_DAZ0UXGX/checkpoint-5306',
+            'output_suffix': 'hcg_llama31_8B_w_0.100_thshold_0.6',
+            'output_dir': './results/calibrate_ppl/'
+        },
+        {
+            'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_1.000_l_9-20_J3BTODV3/checkpoint-5306',
+            'output_suffix': 'hcg_qwen25_7B_w_1.000_thshold_0.6',
+            'output_dir': './results/calibrate_ppl/'
+        },
+        {
+            'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_0.100_l_9-20_3P72MPZU/checkpoint-5306',
+            'output_suffix': 'hcg_qwen25_7B_w_0.100_thshold_0.6',
+            'output_dir': './results/calibrate_ppl/'
+        },
     ], dry=dry)
+
+    # run_eval_experiments_single_layer([
+    #     {
+    #         'layer_idx': i,
+    #     } for i in range(2, 30)
+    #     # } for i in range(2, 3)
+    # ], dry=dry)

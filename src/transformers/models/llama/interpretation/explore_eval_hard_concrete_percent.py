@@ -100,6 +100,8 @@ def compute_tokens_counts_hellaswag(model, tokenizer, dataset):
 
 def compute_pruned_percent(model, bincount):
 
+    bincount = bincount.clone()
+
     all_tokens_ids = torch.arange(0, model.config.vocab_size, device=model.model.fan_in.hcg.hcg_log_a.device).unsqueeze(0)
     pruned_proba = model.model.fan_in.hcg(all_tokens_ids, torch.ones_like(all_tokens_ids, dtype=torch.long))
 
@@ -113,6 +115,7 @@ def compute_pruned_percent(model, bincount):
 
 # hellaswag preprocessing copy paste
 def compute_pruned_percent_hellaswag(model, bincount):
+    bincount = bincount.clone()
 
     all_tokens_ids = torch.arange(0, model.config.vocab_size, device=model.model.fan_in.hcg.hcg_log_a.device).unsqueeze(0)
     pruned_proba = model.model.fan_in.hcg(all_tokens_ids, torch.ones_like(all_tokens_ids, dtype=torch.long))
@@ -164,19 +167,23 @@ def evaluate_lighteval_task(model, task_name, override_batch_size=1, num_fewshot
     return results
 
 
-def evaluate_ppl_wikitext_103(model, bincount=None):
-    results = evaluate_lighteval_task(
-        model,
-        'wikitext_103',
-        override_batch_size=2,
-        num_fewshot_seeds=0,
-        # max_samples=1,
-    )
+def evaluate_ppl_wikitext_103(model, bincount=None, sparsity_only=False):
 
-    print('results[results]["custom:wikitext_103:0"]', results['results']["custom:wikitext_103:0"])
+    ppl = None
+    ppl_stderr = None
+    if not sparsity_only:
+        results = evaluate_lighteval_task(
+            model,
+            'wikitext_103',
+            override_batch_size=2,
+            num_fewshot_seeds=0,
+            # max_samples=1,
+        )
 
-    ppl = results['results']["custom:wikitext_103:0"]["ppl"]
-    ppl_stderr = results['results']["custom:wikitext_103:0"]["ppl_stderr"]
+        print('results[results]["custom:wikitext_103:0"]', results['results']["custom:wikitext_103:0"])
+
+        ppl = results['results']["custom:wikitext_103:0"]["ppl"]
+        ppl_stderr = results['results']["custom:wikitext_103:0"]["ppl_stderr"]
 
     pruned_percent = None
     total_tokens_count = None
@@ -191,17 +198,21 @@ def evaluate_ppl_wikitext_103(model, bincount=None):
     }
 
 # ~12 минут на один проход
-def evaluate_acc_hellaswag(model, bincount=None):
-    results = evaluate_lighteval_task(
-        model,
-        'hellaswag',
-        override_batch_size=512,
-        num_fewshot_seeds=0,
-        # max_samples=100,
-    )
+def evaluate_acc_hellaswag(model, bincount=None, sparsity_only=False):
 
-    acc_norm = results['results']["custom:hellaswag:0"]["acc_norm"]
-    acc_norm_stderr = results['results']["custom:hellaswag:0"]["acc_norm_stderr"]
+    acc_norm = None
+    acc_norm_stderr = None
+    if not sparsity_only:
+        results = evaluate_lighteval_task(
+            model,
+            'hellaswag',
+            override_batch_size=512,
+            num_fewshot_seeds=0,
+            # max_samples=100,
+        )
+
+        acc_norm = results['results']["custom:hellaswag:0"]["acc_norm"]
+        acc_norm_stderr = results['results']["custom:hellaswag:0"]["acc_norm_stderr"]
 
     pruned_percent = None
     total_tokens_count = None
