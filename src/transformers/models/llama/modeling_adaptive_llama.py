@@ -1718,7 +1718,6 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         # Initialize weights and apply final processing
         self.post_init()
 
-
     def _init_adaptive_layers(self):
         return self.model._init_adaptive_layers()
 

@@ -1067,9 +1067,9 @@ if __name__ == "__main__":
 
     # Finetune Full LLM
     if True:
-        gradient_accumulation_steps = 64
+        gradient_accumulation_steps = 16
         n_gpus = 8
-        batch_size = 2
+        batch_size = 8
         optim_steps = 1700
 
         for fan_in_idx, fan_out_idx, llama_checkpoint in llama_calibrated_checkpoints:

@@ -299,13 +299,9 @@ class AdaptiveLlamaTrainer(Trainer):
         Subclass and override for custom behavior.
         """
 
-        if (self.label_smoother is not None or self.compute_loss_func is not None) and "labels" in inputs:
-            labels = inputs.pop("labels")
+        # if (self.label_smoother is not None or self.compute_loss_func is not None) and "labels" in inputs:
 
-        labels = inputs.get('labels', None)
-        if labels is None:
-            labels = inputs['input_ids'].clone()
-            labels[labels == self.tokenizer.pad_token_id] = -100
+        labels = inputs.pop("labels")
 
         special_embeddings_mask = inputs.get('special_embeddings_mask')
 
@@ -316,7 +312,7 @@ class AdaptiveLlamaTrainer(Trainer):
             "labels": labels,
             "attention_mask": attention_mask,
             # "token_frequency": token_frequency,
-            "use_cache": None,
+            "use_cache": False,
             "output_attentions": False,
             "stop_words_tokens_mask": inputs.get('stop_words_tokens_mask', None),
         }
@@ -326,7 +322,6 @@ class AdaptiveLlamaTrainer(Trainer):
             if num_items_in_batch is not None:
                 loss_kwargs["num_items_in_batch"] = num_items_in_batch
             model_kwargs = {**model_kwargs, **loss_kwargs}
-
 
         assert special_embeddings_mask is not None
         model_kwargs["special_embeddings_mask"] = special_embeddings_mask
@@ -1274,7 +1269,7 @@ if __name__ == "__main__":
 
         state = PartialState()
         with state.local_main_process_first():
-            data_files = [ f"data/CC-MAIN-2024-10/000_{i:05}.parquet" for i in range(20) ]
+            data_files = [ f"data/CC-MAIN-2024-10/000_{i:05}.parquet" for i in range(21) ]
             smollm_corpus = load_dataset("HuggingFaceFW/fineweb", split="train", data_files=data_files, num_proc=16)
 
             def tokenize_function(examples):
@@ -1313,7 +1308,7 @@ if __name__ == "__main__":
 
             collate_dummy['special_embeddings_mask'] = collate_dummy['attention_mask'].cumsum(-1)
             collate_dummy['special_embeddings_mask'][ collate_dummy['special_embeddings_mask'] > 1 ] = 0
-            collate_dummy['special_embeddings_mask'][:, -1] = 1
+            # collate_dummy['special_embeddings_mask'][:, -1] = 1
 
             if special_tokens is not None:
                 for special_token in special_tokens:
