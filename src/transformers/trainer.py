@@ -87,6 +87,7 @@ from .trainer_callback import (
     TrainerState,
 )
 from .trainer_pt_utils import (
+    AcceleratorConfig,
     DistributedTensorGatherer,
     EvalLoopContainer,
     IterableDatasetShard,

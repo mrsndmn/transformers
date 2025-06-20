@@ -69,6 +69,9 @@ import torch.profiler
 
 @dataclass
 class AdaptiveTrainingArguments(TrainingArguments):
+
+    ddp_find_unused_parameters: bool = field(default=True)
+
     output_dir: str = field(default="llama_for_sequential_numbers",)
     learning_rate: float = field(default=2e-4)
     hcg_learning_rate: float = field(default=0.1)
@@ -111,7 +114,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     push_to_hub: bool = field(default=False)
     optim: str = field(default="adamw_torch_fused")
     report_to: str = field(default="wandb")
-    logging_steps: int = field(default=500)
+    logging_steps: int = field(default=100)
     dataloader_drop_last: bool = field(default=True)
     dataloader_num_workers: int = field(default=0)
     merging_type: str = field(default="next_token_merge_mlp")
@@ -200,11 +203,21 @@ class AdaptiveLlamaTrainer(Trainer):
             decay_parameters = decay_parameters - hcg_params
             # TODO separate group for HCG linear?
 
+            def check_need_optim_fan_out(param_name):
+                if 'fan_out' not in param_name:
+                    return True
+
+                if not opt_model.config.fan_out_projection:
+                    return False
+
+                return True
+
+
             optimizer_grouped_parameters = [
                 # LM params with Weight Decay
                 {
                     "params": [
-                        p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in hcg_params and p.requires_grad)
+                        p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in hcg_params and p.requires_grad and check_need_optim_fan_out(n))
                     ],
                     "weight_decay": self.args.weight_decay,
                     "lr": self.args.learning_rate,
@@ -212,7 +225,7 @@ class AdaptiveLlamaTrainer(Trainer):
                 # LM params without Weight Decay
                 {
                     "params": [
-                        p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in hcg_params and p.requires_grad)
+                        p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in hcg_params and p.requires_grad and check_need_optim_fan_out(n))
                     ],
                     "weight_decay": 0.0,
                     "lr": self.args.learning_rate,
@@ -220,7 +233,7 @@ class AdaptiveLlamaTrainer(Trainer):
                 # HCG params without Weight Decay
                 {
                     "params": [
-                        p for n, p in opt_model.named_parameters() if (n in hcg_params and (p.requires_grad or self.args.each_layer_pruning))
+                        p for n, p in opt_model.named_parameters() if (n in hcg_params and (p.requires_grad or self.args.each_layer_pruning) and check_need_optim_fan_out(n))
                     ],
                     "weight_decay": 0.0,
                     "lr": hcg_lr,
@@ -252,8 +265,20 @@ class AdaptiveLlamaTrainer(Trainer):
             print("optimizer_cls, optimizer_kwargs", optimizer_cls, optimizer_kwargs)
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
 
-            if optimizer_cls.__name__ == "Adam8bit":
-                raise ValueError("Adam8bit optimizer is not supported")
+            print("adamw_bnb_8bit", self.args.optim)
+            import bitsandbytes
+            if self.args.optim == "adamw_bnb_8bit" or (optimizer_cls == bitsandbytes.optim.adamw.AdamW and optimizer_kwargs['optim_bits'] == 8):
+
+                manager = bitsandbytes.optim.GlobalOptimManager.get_instance()
+
+                skipped = 0
+                for module in opt_model.modules():
+                    if isinstance(module, nn.Embedding):
+                        skipped += sum({p.data_ptr(): p.numel() for p in module.parameters()}.values())
+                        logger.info(f"skipped {module}: {skipped / 2**20}M params")
+                        manager.register_module_override(module, "weight", {"optim_bits": 32})
+                        logger.debug(f"bitsandbytes: will optimize {module} in fp32")
+                logger.info(f"skipped: {skipped / 2**20}M params")
 
             print("optim lr", [ pg['lr'] for pg in self.optimizer.param_groups ])
             print("optim params shape:", [ " ".join( str(p.shape) for p in  pg['params']) for pg in self.optimizer.param_groups ])
@@ -1254,9 +1279,7 @@ if __name__ == "__main__":
 
             def tokenize_function(examples):
                 # 2046 = 2048 - 1 - 1 # eos and bos tokens
-                text = [ '<|im_start|>' + x  for x in examples['text'] ]
-
-                tokenized_inputs = tokenizer(text, truncation=True, padding='max_length', max_length=2046, return_tensors='pt')
+                tokenized_inputs = tokenizer(examples['text'], truncation=True, padding='max_length', max_length=2046, return_tensors='pt')
 
                 return tokenized_inputs
 
@@ -1357,12 +1380,19 @@ if __name__ == "__main__":
 
     print("training_args.do_eval_on_save", training_args.do_eval_on_save)
 
+    # from accelerate.utils import DistributedDataParallelKwargs
+    # ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=False, static_graph=True)
+
+    # training_args.accelerator_config = {
+    #     "kwargs_handlers": [ddp_kwargs],
+    # }
+
     trainer = AdaptiveLlamaTrainer(
         model,
         callbacks=callbacks,
-
         processing_class=tokenizer,
         args=training_args,
+
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         data_collator=data_collator,

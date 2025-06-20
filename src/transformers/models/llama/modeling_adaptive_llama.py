@@ -23,6 +23,7 @@ from typing import List, Optional, Tuple, Union
 import os
 
 import copy
+import warnings
 
 import torch
 import torch.nn as nn
@@ -175,6 +176,7 @@ class HardConcreteGate(nn.Module):
         super(HardConcreteGate, self).__init__()
 
         self.eps = eps
+        self.max_seq_len = max_seq_len
 
         print('temperature', temperature, "learnt_temperature", learnt_temperature)
 
@@ -218,12 +220,14 @@ class HardConcreteGate(nn.Module):
             if log_a_dtype != torch.float32:
                 log_a = log_a.to(torch.float32)
 
-            torch.rand(self.random_buffer.size(), out=self.random_buffer) # avoid extra allocations
+            # torch.rand(self.random_buffer.size(), out=self.random_buffer) # avoid extra allocations
+            random_buffer = torch.rand(1, self.max_seq_len, 1, dtype=torch.float32, device=log_a.device)
 
-            assert self.random_buffer.dtype == torch.float32
+            # if self.random_buffer.dtype != torch.float32:
+            #     logger.warning_once("random_buffer.dtype != torch.float32, actual dtype: %s", self.random_buffer.dtype)
 
-            random_buffer_log = (self.random_buffer).log()[:, :seq_len]
-            one_minus_rand_log = (1 - self.random_buffer).log()[:, :seq_len]
+            random_buffer_log = (random_buffer).log()[:, :seq_len]
+            one_minus_rand_log = (1 - random_buffer).log()[:, :seq_len]
 
             # avoid nan gradients in backward for learned temperature
             temperature_scale = (attention_mask_input_ids * self.temperature).unsqueeze(-1) + 1e-6
@@ -880,6 +884,10 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
 
+        if self.training and use_cache:
+            logger.warning_once("use_cache=True should not be used in training")
+            use_cache = False
+
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
                 "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
@@ -1344,7 +1352,7 @@ class AdaptiveLlamaModelWithEachLayerPruning(AdaptiveLlamaPreTrainedModel):
                 cache_position=cache_position,
                 position_embeddings=position_embeddings,
             )
-        
+
         return layer_outputs
 
     def forward_decoder_layers(self, decoder_layers, hidden_states, attention_mask, position_ids, past_key_values, output_attentions, output_hidden_states, use_cache, cache_position, position_embeddings, all_hidden_states, all_self_attns):

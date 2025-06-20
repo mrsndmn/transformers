@@ -207,17 +207,18 @@ def eval_hcg_adaptive_pretrain_all_tasks_parallel(**kwargs):
         './paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_1.000_l_9-20_J3BTODV3/checkpoint-5306_calib90',
     ]
 
-    # temporary checkpoints for finetuned models
-    checkpoints = [
-        './adaptive_hcg_llama31_8B_finetune_w_1.000_l_18-26_HLTUKB25/checkpoint-5000',
-        './adaptive_hcg_qwen25_7B_finetune_w_1.000_l_9-20_N31CKBUP/checkpoint-5000',
-    ]
-
     # checkpoints for fan out projection tuned models
     checkpoints = [
         './adaptive_hcg_llama31_8B_fan_out_projection_w_1.000_l_18-26_GHLL4UA3/checkpoint-60000/',
         './adaptive_hcg_qwen25_7B_fan_out_projection_w_1.000_l_9-20_8VWXTSOA/checkpoint-60000/',
     ]
+
+    # temporary checkpoints for finetuned models
+    checkpoints = [
+        './paper_checkpoints/ft_thrshold0.6/adaptive_hcg_llama31_8B_finetune_w_1.000_l_18-26_GSGM5UVW/checkpoint-12498/',
+        './paper_checkpoints/ft_thrshold0.6/adaptive_hcg_qwen25_7B_finetune_w_1.000_l_9-20_ZGRS21P4/checkpoint-12498/',
+    ]
+
 
 
     hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
