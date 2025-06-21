@@ -133,8 +133,6 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         instance_type = instance_type.removesuffix('_fsdp')
 
         save_only_model = ""
-        if is_fsdp:
-            save_only_model = "--save_only_model 0"
 
         if instance_type == 'a100.8gpu':
             if is_fsdp:
@@ -1067,9 +1065,9 @@ if __name__ == "__main__":
 
     # Finetune Full LLM
     if True:
-        gradient_accumulation_steps = 16
+        gradient_accumulation_steps = 64
         n_gpus = 8
-        batch_size = 8
+        batch_size = 2
         optim_steps = 1700
 
         for fan_in_idx, fan_out_idx, llama_checkpoint in llama_calibrated_checkpoints:
@@ -1098,8 +1096,9 @@ if __name__ == "__main__":
                 dry=dry,
                 instance_type=f"a100.{n_gpus}gpu_fsdp",
                 fan_out_projection_mlp_intermediate_size=16384,
+                # save_steps=1,
                 save_steps=300,
-                save_total_limit=20,
+                save_total_limit=10,
                 logging_steps=10,
                 warmup_steps=200,
             )

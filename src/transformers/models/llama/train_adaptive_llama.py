@@ -71,6 +71,7 @@ import torch.profiler
 class AdaptiveTrainingArguments(TrainingArguments):
 
     ddp_find_unused_parameters: bool = field(default=True)
+    load_best_model_at_end: bool = field(default=False)
 
     output_dir: str = field(default="llama_for_sequential_numbers",)
     learning_rate: float = field(default=2e-4)
