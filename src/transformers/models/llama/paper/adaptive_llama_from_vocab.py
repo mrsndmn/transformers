@@ -18,7 +18,6 @@ import numpy as np # Added
 from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM, AdaptiveFanInOutput
-from transformers.models.llama.train_adaptive_llama import freeze_lm_backbone
 from transformers.models.qwen2.modeling_adaptive_qwen2 import AdaptiveQwen2ForCausalLM
 import imageio  # Add imageio import
 import io # Add io import

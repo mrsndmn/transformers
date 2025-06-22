@@ -67,6 +67,8 @@ from typing import List, Optional
 
 import torch.profiler
 
+from transformers.models.llama.types import AVAILABLE_OPTIMIZED_PARAMS
+
 @dataclass
 class AdaptiveTrainingArguments(TrainingArguments):
 
@@ -97,9 +99,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     llama_checkpoint: str = field(default='')
 
     each_layer_pruning: bool = field(default=False)
-    train_after_fan_out_llm_layer: bool = field(default=False)
 
-    train_hcg: bool = field(default=True)
 
     weight_decay: float = field(default=0.01)
     eval_strategy: str = field(default="steps")
@@ -119,11 +119,11 @@ class AdaptiveTrainingArguments(TrainingArguments):
     dataloader_drop_last: bool = field(default=True)
     dataloader_num_workers: int = field(default=0)
     merging_type: str = field(default="next_token_merge_mlp")
-    freeze_lm_backbone: bool = field(default=False)
-    unfreeze_inner_layers: bool = field(default=False)
-    freeze_hcg: bool = field(default=False)
+
     init_fan_out_mlp: bool = field(default=False)
     bf16: bool = field(default=True)
+
+    optimized_params: str = field(default='full') # checkout AVAILABLE_OPTIMIZED_PARAMS
 
     forward_residuals: bool = field(default=False)
     fan_in_idx:  Optional[int] = field(default=None)
@@ -285,7 +285,7 @@ class AdaptiveLlamaTrainer(Trainer):
             print("optim params shape:", [ " ".join( str(p.shape) for p in  pg['params']) for pg in self.optimizer.param_groups ])
 
             if not opt_model.config.fan_out_projection:
-                if self.args.train_hcg:
+                if self.args.optimized_params == 'fan_in':
                     assert self.optimizer.param_groups[2]['lr'] == hcg_lr
                     assert self.optimizer.param_groups[2]['params'][0].shape == torch.Size([ opt_model.config.vocab_size ])
 
@@ -964,27 +964,26 @@ class AdaptiveLlamaTrainer(Trainer):
             self.model.train()
 
 
-def freeze_lm_backbone(model: nn.Module, train_after_fan_out_llm_layer: bool):
+def freeze_model(model: nn.Module):
     for p in model.parameters():
         p.requires_grad = False
 
+def unfreeze_fan_in(model: nn.Module):
     if isinstance(model.model, AdaptiveLlamaModelWithEachLayerPruning):
         for p in model.model.fan_in_layers.parameters():
-            p.requires_grad = True
-
-        for p in model.model.fan_out_layers.parameters():
             p.requires_grad = True
     else:
         for p in model.model.fan_in.parameters():
             p.requires_grad = True
 
+def unfreeze_fan_out(model: nn.Module):
+    if isinstance(model.model, AdaptiveLlamaModelWithEachLayerPruning):
+        for p in model.model.fan_out_layers.parameters():
+            p.requires_grad = True
+    else:
         for p in model.model.fan_out.parameters():
             p.requires_grad = True
 
-    if train_after_fan_out_llm_layer:
-        assert isinstance(model, AdaptiveLlamaForCausalLM), 'train_after_fan_out_llm_layer is only supported for AdaptiveLlamaForCausalLM'
-        for p in model.model.layers[model.config.fan_out_idx].parameters():
-            p.requires_grad = True
 
 
 def build_model(training_args: AdaptiveTrainingArguments):
@@ -1118,17 +1117,45 @@ def build_model(training_args: AdaptiveTrainingArguments):
     print("model.config.fan_in_idx", model.config.fan_in_idx)
     print("model.config.fan_out_idx", model.config.fan_out_idx)
 
-    if training_args.freeze_lm_backbone:
-        freeze_lm_backbone(model, train_after_fan_out_llm_layer=training_args.train_after_fan_out_llm_layer)
+    optimized_params = training_args.optimized_params.split(',')
 
-    if training_args.unfreeze_inner_layers:
+    for param_name in optimized_params:
+        assert param_name in AVAILABLE_OPTIMIZED_PARAMS, f'{param_name} is not in {available_optimized_params}'
+
+    if 'full' in optimized_params:
+        assert len(optimized_params) == 1
+
+    if 'full' not in optimized_params:
+        freeze_model(model)
+
+    if 'fan_in' in optimized_params:
+        unfreeze_fan_in(model)
+
+    if 'fan_out' in optimized_params:
+        unfreeze_fan_out(model)
+
+    if 'inner_layers' in optimized_params:
         for layer in model.model.layers[model.config.fan_in_idx:model.config.fan_out_idx+1]:
             for p in layer.parameters():
                 p.requires_grad = True
 
-    if training_args.freeze_hcg:
-        for p in model.model.fan_in.parameters():
-            p.requires_grad = False
+    if 'lora_lm_head_embed_tokens' in optimized_params:
+        assert len(optimized_params) == 1, 'lora must be the only optimized param'
+
+        from peft import get_peft_model, LoraConfig, TaskType
+
+        lora_config = LoraConfig(
+            r=16,
+            lora_alpha=32,
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+            bias="none",
+            modules_to_save=["lm_head", 'embed_tokens'],
+
+        )
+
+        model = get_peft_model(model, lora_config)
+        model.print_trainable_parameters()
+
 
     if training_args.init_fan_out_mlp:
         print("\n\nInit fan out mlp!\n\n")
@@ -1189,11 +1216,6 @@ def build_model(training_args: AdaptiveTrainingArguments):
         model.model.fan_in.hcg.hcg_log_a.data = log_a_data
         sigmoid = torch.nn.functional.sigmoid(log_a_data)
         print("Harded hcg_log_a for fan_in with value", sigmoid.min(), sigmoid.max())
-
-    if not training_args.train_hcg:
-        model.model.fan_in.eval()
-        for p in model.model.fan_in.parameters():
-            p.requires_grad = False
 
     print("model", type(model))
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))

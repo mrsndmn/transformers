@@ -741,7 +741,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
         if is_dummy_fan_in is None:
             is_dummy_fan_in = [ False ] * config.num_hidden_layers
 
-        assert (len(is_dummy_fan_in) - sum(is_dummy_fan_in)) == 1, 'only one not dummy fan in'
+        # assert (len(is_dummy_fan_in) - sum(is_dummy_fan_in)) == 1, 'only one not dummy fan in'
         # not dummy index
 
         self.recalc_fan_in_fan_out_idx()
