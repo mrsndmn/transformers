@@ -67,7 +67,7 @@ from typing import List, Optional
 
 import torch.profiler
 
-from transformers.models.llama.types import AVAILABLE_OPTIMIZED_PARAMS
+from transformers.models.llama.extra_types import AVAILABLE_OPTIMIZED_PARAMS
 
 @dataclass
 class AdaptiveTrainingArguments(TrainingArguments):
@@ -378,7 +378,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
         count_hcg_layers = 0
         hcg_loss = 0
-        if self.args.hcg_loss_weight != 0.0 and  model_config.merging_type == 'hcg' and model_unwrapped.training:
+        if not self.args.model_type.startswith('SmolLM2') and self.args.hcg_loss_weight != 0.0 and  model_config.merging_type == 'hcg' and model_unwrapped.training:
             for i, (hcg_p_open, hcg_p_open_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                 if hcg_p_open is None:
                     continue
@@ -450,7 +450,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
         # print("extra_log_hcg_dynamic", extra_log_hcg_dynamic)
 
-        if force_log or log_metrics and self.state.global_step % self.args.logging_steps == 0:
+        if not self.args.model_type.startswith('SmolLM2') and (force_log or log_metrics and self.state.global_step % self.args.logging_steps == 0):
 
             outputs_loss = causal_lm_loss
             if len(outputs_loss.shape) > 0:
@@ -1025,7 +1025,6 @@ def build_model(training_args: AdaptiveTrainingArguments):
         print("Load model from", llama_checkpoint)
         model = AdaptiveLlamaForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
-        
     elif training_args.model_type == 'pretrained':
         from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
 
@@ -1074,6 +1073,10 @@ def build_model(training_args: AdaptiveTrainingArguments):
         )
 
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
+    elif training_args.model_type == 'SmolLM2-135M':
+        llama_checkpoint = "HuggingFaceTB/SmolLM2-135M"
+        model = LlamaForCausalLM.from_pretrained(llama_checkpoint)
+        tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
     elif training_args.model_type == 'SmolLM-1.7B':
         llama_checkpoint = "HuggingFaceTB/SmolLM2-1.7B"
         model = LlamaForCausalLM.from_pretrained(llama_checkpoint, )
@@ -1103,122 +1106,123 @@ def build_model(training_args: AdaptiveTrainingArguments):
     if training_args.fan_out_idx is not None:
         model.config.fan_out_idx = training_args.fan_out_idx
 
-    model.model.recalc_fan_in_fan_out_idx()
+    if training_args.model_type != 'SmolLM2-135M':
+        model.model.recalc_fan_in_fan_out_idx()
 
-    print("model.config.fan_in_idx", model.config.fan_in_idx)
-    print("model.config.fan_out_idx", model.config.fan_out_idx)
-    print("\n\n")
+        print("model.config.fan_in_idx", model.config.fan_in_idx)
+        print("model.config.fan_out_idx", model.config.fan_out_idx)
+        print("\n\n")
 
 
-    print("model.config.concrete_random_mask_proba", model.config.concrete_random_mask_proba)
-    print("model.config.concrete_uniform_pruning", model.config.concrete_uniform_pruning)
-    print("model.config.concrete_stop_word_pruning", model.config.concrete_stop_word_pruning)
-    print("model.config.forward_residuals", model.config.forward_residuals)
-    print("model.config.fan_in_idx", model.config.fan_in_idx)
-    print("model.config.fan_out_idx", model.config.fan_out_idx)
+        print("model.config.concrete_random_mask_proba", model.config.concrete_random_mask_proba)
+        print("model.config.concrete_uniform_pruning", model.config.concrete_uniform_pruning)
+        print("model.config.concrete_stop_word_pruning", model.config.concrete_stop_word_pruning)
+        print("model.config.forward_residuals", model.config.forward_residuals)
+        print("model.config.fan_in_idx", model.config.fan_in_idx)
+        print("model.config.fan_out_idx", model.config.fan_out_idx)
 
-    optimized_params = training_args.optimized_params.split(',')
+        optimized_params = training_args.optimized_params.split(',')
 
-    for param_name in optimized_params:
-        assert param_name in AVAILABLE_OPTIMIZED_PARAMS, f'{param_name} is not in {available_optimized_params}'
+        for param_name in optimized_params:
+            assert param_name in AVAILABLE_OPTIMIZED_PARAMS, f'{param_name} is not in {available_optimized_params}'
 
-    if 'full' in optimized_params:
-        assert len(optimized_params) == 1
+        if 'full' in optimized_params:
+            assert len(optimized_params) == 1
 
-    if 'full' not in optimized_params:
-        freeze_model(model)
+        if 'full' not in optimized_params:
+            freeze_model(model)
 
-    if 'fan_in' in optimized_params:
-        unfreeze_fan_in(model)
+        if 'fan_in' in optimized_params:
+            unfreeze_fan_in(model)
 
-    if 'fan_out' in optimized_params:
-        unfreeze_fan_out(model)
+        if 'fan_out' in optimized_params:
+            unfreeze_fan_out(model)
 
-    if 'inner_layers' in optimized_params:
-        for layer in model.model.layers[model.config.fan_in_idx:model.config.fan_out_idx+1]:
-            for p in layer.parameters():
+        if 'inner_layers' in optimized_params:
+            for layer in model.model.layers[model.config.fan_in_idx:model.config.fan_out_idx+1]:
+                for p in layer.parameters():
+                    p.requires_grad = True
+
+        if 'lora_lm_head_embed_tokens' in optimized_params:
+            assert len(optimized_params) == 1, 'lora must be the only optimized param'
+
+            from peft import get_peft_model, LoraConfig, TaskType
+
+            lora_config = LoraConfig(
+                r=16,
+                lora_alpha=32,
+                target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+                bias="none",
+                modules_to_save=["lm_head", 'embed_tokens'],
+
+            )
+
+            model = get_peft_model(model, lora_config)
+            model.print_trainable_parameters()
+
+
+        if training_args.init_fan_out_mlp:
+            print("\n\nInit fan out mlp!\n\n")
+            def _init_weights(module):
+                std = 0.02
+                if isinstance(module, nn.Linear):
+                    module.weight.data.normal_(mean=0.0, std=std)
+                    if module.bias is not None:
+                        module.bias.data.zero_()
+                elif isinstance(module, nn.Embedding):
+                    module.weight.data.normal_(mean=0.0, std=std)
+                    if module.padding_idx is not None:
+                        module.weight.data[module.padding_idx].zero_()
+
+            model.model.fan_out.apply(_init_weights)
+
+            for p in model.model.fan_out.parameters():
+                if p.isnan().any():
+                    print("p.isnan().any()", p.isnan().any())
+                    breakpoint()
+
+
+        if isinstance(model.model, AdaptiveLlamaModelWithEachLayerPruning):
+            for layer_idx in range(model.model.config.num_hidden_layers):
+                for p in model.model.fan_in_layers[layer_idx].parameters():
+                    p.requires_grad = False
+
+            # Unfreeze only the first layer
+            for p in model.model.fan_in_layers[0].parameters():
                 p.requires_grad = True
 
-    if 'lora_lm_head_embed_tokens' in optimized_params:
-        assert len(optimized_params) == 1, 'lora must be the only optimized param'
+        # if training_args.pretrain_fan_out_projection:
+        #     print("Pretrain fan out projection. Freeze Fan In parameters")
+        #     for adaptive_down in model.model.adaptive_down:
+        #         for p in adaptive_down.parameters():
+        #             p.requires_grad = False
 
-        from peft import get_peft_model, LoraConfig, TaskType
+        if training_args.init_hcg_a is not None:
+            if isinstance(model.model, AdaptiveLlamaModelWithEachLayerPruning):
+                for layer_idx in range(model.model.config.num_hidden_layers):
+                    model.model.fan_in_layers[layer_idx].hcg.hcg_log_a.data.fill_(training_args.init_hcg_a)
+            else:
+                model.model.fan_in.hcg.hcg_log_a.data.fill_(training_args.init_hcg_a)
+            print("Initialized hcg_log_a for fan_in with value", training_args.init_hcg_a)
 
-        lora_config = LoraConfig(
-            r=16,
-            lora_alpha=32,
-            target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-            bias="none",
-            modules_to_save=["lm_head", 'embed_tokens'],
+        if training_args.clip_hcg_log_a is not None:
+            if isinstance(model.model, AdaptiveLlamaModelWithEachLayerPruning):
+                for layer_idx in range(model.model.config.num_hidden_layers):
+                    model.model.fan_in_layers[layer_idx].hcg.hcg_log_a.data.clamp_(min=-training_args.clip_hcg_log_a, max=training_args.clip_hcg_log_a)
+            else:
+                model.model.fan_in.hcg.hcg_log_a.data.clamp_(min=-training_args.clip_hcg_log_a, max=training_args.clip_hcg_log_a)
 
-        )
+        if training_args.hard_hcg_log_a is not None and training_args.hard_hcg_log_a:
+            # TODO support each layer pruning
+            log_a_data = model.model.fan_in.hcg.hcg_log_a.data
+            log_a_data[ log_a_data >= 0.0 ] = 10000
+            log_a_data[ log_a_data < 0.0 ] = -10000
+            model.model.fan_in.hcg.hcg_log_a.data = log_a_data
+            sigmoid = torch.nn.functional.sigmoid(log_a_data)
+            print("Harded hcg_log_a for fan_in with value", sigmoid.min(), sigmoid.max())
 
-        model = get_peft_model(model, lora_config)
-        model.print_trainable_parameters()
-
-
-    if training_args.init_fan_out_mlp:
-        print("\n\nInit fan out mlp!\n\n")
-        def _init_weights(module):
-            std = 0.02
-            if isinstance(module, nn.Linear):
-                module.weight.data.normal_(mean=0.0, std=std)
-                if module.bias is not None:
-                    module.bias.data.zero_()
-            elif isinstance(module, nn.Embedding):
-                module.weight.data.normal_(mean=0.0, std=std)
-                if module.padding_idx is not None:
-                    module.weight.data[module.padding_idx].zero_()
-
-        model.model.fan_out.apply(_init_weights)
-
-        for p in model.model.fan_out.parameters():
-            if p.isnan().any():
-                print("p.isnan().any()", p.isnan().any())
-                breakpoint()
-
-
-    if isinstance(model.model, AdaptiveLlamaModelWithEachLayerPruning):
-        for layer_idx in range(model.model.config.num_hidden_layers):
-            for p in model.model.fan_in_layers[layer_idx].parameters():
-                p.requires_grad = False
-
-        # Unfreeze only the first layer
-        for p in model.model.fan_in_layers[0].parameters():
-            p.requires_grad = True
-
-    # if training_args.pretrain_fan_out_projection:
-    #     print("Pretrain fan out projection. Freeze Fan In parameters")
-    #     for adaptive_down in model.model.adaptive_down:
-    #         for p in adaptive_down.parameters():
-    #             p.requires_grad = False
-
-    if training_args.init_hcg_a is not None:
-        if isinstance(model.model, AdaptiveLlamaModelWithEachLayerPruning):
-            for layer_idx in range(model.model.config.num_hidden_layers):
-                model.model.fan_in_layers[layer_idx].hcg.hcg_log_a.data.fill_(training_args.init_hcg_a)
-        else:
-            model.model.fan_in.hcg.hcg_log_a.data.fill_(training_args.init_hcg_a)
-        print("Initialized hcg_log_a for fan_in with value", training_args.init_hcg_a)
-
-    if training_args.clip_hcg_log_a is not None:
-        if isinstance(model.model, AdaptiveLlamaModelWithEachLayerPruning):
-            for layer_idx in range(model.model.config.num_hidden_layers):
-                model.model.fan_in_layers[layer_idx].hcg.hcg_log_a.data.clamp_(min=-training_args.clip_hcg_log_a, max=training_args.clip_hcg_log_a)
-        else:
-            model.model.fan_in.hcg.hcg_log_a.data.clamp_(min=-training_args.clip_hcg_log_a, max=training_args.clip_hcg_log_a)
-
-    if training_args.hard_hcg_log_a is not None and training_args.hard_hcg_log_a:
-        # TODO support each layer pruning
-        log_a_data = model.model.fan_in.hcg.hcg_log_a.data
-        log_a_data[ log_a_data >= 0.0 ] = 10000
-        log_a_data[ log_a_data < 0.0 ] = -10000
-        model.model.fan_in.hcg.hcg_log_a.data = log_a_data
-        sigmoid = torch.nn.functional.sigmoid(log_a_data)
-        print("Harded hcg_log_a for fan_in with value", sigmoid.min(), sigmoid.max())
-
-    print("model", type(model))
-    print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
+        print("model", type(model))
+        print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
 
     return model, tokenizer
 

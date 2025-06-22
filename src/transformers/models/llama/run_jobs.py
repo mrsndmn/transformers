@@ -11,7 +11,7 @@ assert os.environ.get("WANDB_API_KEY", "") != "", "WANDB_API_KEY is required"
 
 from copy import deepcopy
 
-from transformers.models.llama.types import AVAILABLE_OPTIMIZED_PARAMS
+from transformers.models.llama.extra_types import AVAILABLE_OPTIMIZED_PARAMS
 
 REGION = "SR004"
 
@@ -145,7 +145,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         elif instance_type == 'a100.2gpu':
             accelerate_config = '/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/accelerate_config_2gpu.yaml'
         elif instance_type == 'a100.1gpu':
-            do_eval_on_save = 1
+            # do_eval_on_save = 1
             accelerate_config = '/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/accelerate_config_1gpu.yaml'
         else:
             raise ValueError(f"unknown instance_type:{instance_type}")
@@ -456,8 +456,8 @@ def run_hcg_llama31_8B_hcg(
         **kwargs,
     ):
 
-    assert fan_in_idx is not None, "fan_in_idx is required"
-    assert fan_out_idx is not None, "fan_out_idx is required"
+    # assert fan_in_idx is not None, "fan_in_idx is required"
+    # assert fan_out_idx is not None, "fan_out_idx is required"
 
     common_params = {
         # Model
@@ -839,6 +839,38 @@ if __name__ == "__main__":
     #         exit(1)
 
 
+    # Pretrain Fain Out on Tiny Datasets
+    # if True:
+    if False:
+        run_hcg_llama31_8B_hcg(
+            hcg_loss_weight=0.1,
+            model_type='pretrained_checkpoint',
+            optimized_params='full',
+            per_device_train_batch_size=16,
+            gradient_accumulation_steps=32,
+            select_train_dataset_items=1510000,
+            llama_checkpoint=f'{workdir_prefix}/paper_checkpoints/pretrain/adaptive_slm2_135M_random_init',
+            fan_in_idx=10,
+            fan_out_idx=20,
+            dry=dry,
+            experiment_prefix_base_name="adaptive_slm2_135M_pretrain",
+        )
+
+    if True:
+        # TODO pretrain simple llama model
+        run_hcg_llama31_8B_hcg(
+            hcg_loss_weight=0.0,
+            model_type='SmolLM2-135M',
+            optimized_params='full',
+            per_device_train_batch_size=16,
+            gradient_accumulation_steps=32,
+            select_train_dataset_items=1510000,
+            llama_checkpoint=None,
+            fan_in_idx='',
+            fan_out_idx='',
+            dry=dry,
+            experiment_prefix_base_name="vanilla_slm2_135M_pretrain",
+        )
 
     if False:
         for i in range(2, 30):
@@ -982,7 +1014,7 @@ if __name__ == "__main__":
         # sys.exit(0)
 
     # Finetune Full LLM
-    if True:
+    # if True:
     # if False:
         gradient_accumulation_steps = 64
         n_gpus = 8

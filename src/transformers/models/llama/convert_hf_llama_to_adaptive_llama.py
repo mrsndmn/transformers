@@ -30,7 +30,7 @@ from transformers.models.qwen2.modeling_qwen2 import Qwen2Config
 def build_adaptive_llama_from_llama_checkpoint(
         llama_checkpoint,
         dummy_adaptive_fan_in=None,
-        generate_merges_transform_impl='python', # cuda_kernel
+        generate_merges_transform_impl='cuda_kernel', # cuda_kernel
         fan_out_projection=True,
         merging_type='hcg',
         hcg_temperature=1.0,
@@ -48,6 +48,7 @@ def build_adaptive_llama_from_llama_checkpoint(
         each_layer_pruning=False,
         fan_out_projection_mlp_intermediate_size=None,
         torch_dtype=torch.bfloat16,
+        llama_model_state_dict=None,
     ):
 
     if adaptive_model_class is None:
@@ -60,8 +61,9 @@ def build_adaptive_llama_from_llama_checkpoint(
 
     print("build adaptive llama torch dtype", torch_dtype)
 
-    llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype, device_map='cpu')
-    llama_model_state_dict = llama_model.state_dict()
+    if llama_model_state_dict is None:
+        llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype, device_map='cpu')
+        llama_model_state_dict = llama_model.state_dict()
 
     config_kwargs = {}
     if flash_attention:
