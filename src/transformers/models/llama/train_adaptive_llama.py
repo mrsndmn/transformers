@@ -85,6 +85,8 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
     do_eval_on_save: bool = field(default=True)
 
+    dataset: str = field(default='smollm-corpus')
+
     warmup_steps: int = field(default=500)
     per_device_train_batch_size: int = field(default=32)
     per_device_eval_batch_size: int = field(default=4)
@@ -1074,7 +1076,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
     elif training_args.model_type == 'SmolLM2-135M':
-        llama_checkpoint = "HuggingFaceTB/SmolLM2-135M"
+        llama_checkpoint = training_args.llama_checkpoint
         model = LlamaForCausalLM.from_pretrained(llama_checkpoint)
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
     elif training_args.model_type == 'SmolLM-1.7B':
@@ -1221,8 +1223,11 @@ def build_model(training_args: AdaptiveTrainingArguments):
             sigmoid = torch.nn.functional.sigmoid(log_a_data)
             print("Harded hcg_log_a for fan_in with value", sigmoid.min(), sigmoid.max())
 
-        print("model", type(model))
-        print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
+    print("model", type(model))
+    print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
+    print("num freezed model parameters:", sum(p.numel() for p in model.parameters() if not p.requires_grad))
+
+    # breakpoint()
 
     return model, tokenizer
 
@@ -1296,29 +1301,40 @@ if __name__ == "__main__":
 
         state = PartialState()
         with state.local_main_process_first():
-            data_files = [ f"data/CC-MAIN-2024-10/000_{i:05}.parquet" for i in range(21) ]
-            smollm_corpus = load_dataset("HuggingFaceFW/fineweb", split="train", data_files=data_files, num_proc=16)
 
-            def tokenize_function(examples):
-                # 2046 = 2048 - 1 - 1 # eos and bos tokens
-                tokenized_inputs = tokenizer(examples['text'], truncation=True, padding='max_length', max_length=2046, return_tensors='pt')
+            if training_args.dataset == 'smollm-corpus':
+                data_files = [ f"data/CC-MAIN-2024-10/000_{i:05}.parquet" for i in range(21) ]
+                smollm_corpus = load_dataset("HuggingFaceFW/fineweb", split="train", data_files=data_files, num_proc=16)
 
-                return tokenized_inputs
+                def tokenize_function(examples):
+                    # 2046 = 2048 - 1 - 1 # eos and bos tokens
+                    tokenized_inputs = tokenizer(examples['text'], truncation=True, padding='max_length', max_length=2046, return_tensors='pt')
 
-            print("training_args.select_train_dataset_items", training_args.select_train_dataset_items)
-            if training_args.select_train_dataset_items > 0:
-                smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items))
+                    return tokenized_inputs
 
-            smollm_corpus = smollm_corpus.map(tokenize_function, batched=True, num_proc=32)
+                print("training_args.select_train_dataset_items", training_args.select_train_dataset_items)
+                if training_args.select_train_dataset_items > 0:
+                    smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items))
 
+                smollm_corpus = smollm_corpus.map(tokenize_function, batched=True, num_proc=32)
 
-        if len(smollm_corpus) <= 100:
-            train_dataset = smollm_corpus
-            eval_dataset = smollm_corpus
-        else:
-            smollm_corpus = smollm_corpus.train_test_split(test_size=100, seed=1)
-            train_dataset = smollm_corpus['train']
-            eval_dataset = smollm_corpus['test']
+                smollm_corpus = smollm_corpus.train_test_split(test_size=100, seed=1)
+                train_dataset = smollm_corpus['train']
+                eval_dataset = smollm_corpus['test']
+            elif training_args.dataset == 'tiny':
+                train_dataset = load_dataset("roneneldan/TinyStories", split="train")
+                eval_dataset = load_dataset("roneneldan/TinyStories", split="validation")
+
+                def tokenize_function(examples):
+                    # 2046 = 2048 - 1 - 1 # eos and bos tokens
+                    tokenized_inputs = tokenizer(examples['text'], truncation=True, padding='max_length', max_length=1152, return_tensors='pt')
+
+                    return tokenized_inputs
+
+                train_dataset = train_dataset.map(tokenize_function, batched=True, num_proc=32)
+                eval_dataset = eval_dataset.map(tokenize_function, batched=True, num_proc=32)
+            else:
+                raise ValueError(f"unknown dataset:{training_args.dataset}")
 
         nested_data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 

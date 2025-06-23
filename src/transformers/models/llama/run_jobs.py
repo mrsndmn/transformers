@@ -56,6 +56,12 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         hcg_learning_rate = exp.pop('hcg_learning_rate', learning_rate)
         lr_scheduler_type = exp.pop('lr_scheduler_type', 'cosine')
         max_grad_norm = exp.pop('max_grad_norm', 1)
+
+
+        dataset = exp.pop('dataset', None)
+        if dataset is not None:
+            dataset = f"--dataset {dataset}"
+
         optim = exp.pop('optim', '')
         if optim != '':
             optim = f"--optim {optim}"
@@ -152,7 +158,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
 
         seed = SEED
 
-        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --hcg_learning_rate {hcg_learning_rate} {init_hcg_a} --hard_hcg_log_a {hard_hcg_log_a} --max_grad_norm {max_grad_norm} --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type {lr_scheduler_type} --merging_type {merging_type} --temperature_schedule 0 --optimized_params {optimized_params} --fan_out_projection {fan_out_projection} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --bf16 1 --torch_compile {torch_compile} --sparsity_level {sparsity_level} --concrete_random_mask_proba {concrete_random_mask_proba} --lm_loss_max_value {lm_loss_max_value} --hcg_loss_max_value {hcg_loss_max_value} --prohibit_end_of_sentence_pruning {prohibit_end_of_sentence_pruning} --early_stopping_for_pretraining {early_stopping_for_pretraining} {gradient_accumulation_steps} --pretrain_fan_out_projection {pretrain_fan_out_projection} --eval_strategy {eval_strategy} --concrete_uniform_pruning {concrete_uniform_pruning} --concrete_stop_word_pruning {concrete_stop_word_pruning} --each_layer_pruning {each_layer_pruning} {fan_in_idx} {fan_out_idx} --forward_residuals {forward_residuals} --eval_steps {eval_steps} --init_fan_out_mlp {init_fan_out_mlp} {hcg_fan_in_from} {fan_out_projection_mlp_intermediate_size} --do_eval_on_save {do_eval_on_save} --gradient_checkpointing {gradient_checkpointing} {save_total_limit} {optim} {save_only_model} {logging_steps}"
+        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --hcg_learning_rate {hcg_learning_rate} {init_hcg_a} --hard_hcg_log_a {hard_hcg_log_a} --max_grad_norm {max_grad_norm} --num_train_epochs {num_train_epochs} --seed {seed} --training_dataset smollm-corpus --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type {lr_scheduler_type} --merging_type {merging_type} --temperature_schedule 0 --optimized_params {optimized_params} --fan_out_projection {fan_out_projection} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --bf16 1 --torch_compile {torch_compile} --sparsity_level {sparsity_level} --concrete_random_mask_proba {concrete_random_mask_proba} --lm_loss_max_value {lm_loss_max_value} --hcg_loss_max_value {hcg_loss_max_value} --prohibit_end_of_sentence_pruning {prohibit_end_of_sentence_pruning} --early_stopping_for_pretraining {early_stopping_for_pretraining} {gradient_accumulation_steps} --pretrain_fan_out_projection {pretrain_fan_out_projection} --eval_strategy {eval_strategy} --concrete_uniform_pruning {concrete_uniform_pruning} --concrete_stop_word_pruning {concrete_stop_word_pruning} --each_layer_pruning {each_layer_pruning} {fan_in_idx} {fan_out_idx} --forward_residuals {forward_residuals} --eval_steps {eval_steps} --init_fan_out_mlp {init_fan_out_mlp} {hcg_fan_in_from} {fan_out_projection_mlp_intermediate_size} --do_eval_on_save {do_eval_on_save} --gradient_checkpointing {gradient_checkpointing} {save_total_limit} {optim} {save_only_model} {logging_steps} {dataset}"
 
         print(f"\n\n{script_str}\n\n")
 
@@ -431,11 +437,13 @@ def run_hcg_smollm2_1_7B_hcg(**kwargs):
 def run_hcg_llama31_8B_hcg(
         hcg_loss_weight=1.0,
         fan_in_idx=None,
+        num_train_epochs=1,
         fan_out_idx=None,
         optimized_params='fan_in,fan_out',
         fan_out_projection_mlp_intermediate_size=None,
         hcg_fan_in_from=None,
         learning_rate=0.08,
+        hcg_learning_rate=0.04,
         model_type="pretrained",
         llama_checkpoint="unsloth/Meta-Llama-3.1-8B",
         fan_out_projection=False,
@@ -453,6 +461,7 @@ def run_hcg_llama31_8B_hcg(
         torch_compile='1',
         logging_steps='',
         warmup_steps=2000,
+        dataset=None,
         **kwargs,
     ):
 
@@ -466,6 +475,9 @@ def run_hcg_llama31_8B_hcg(
         "hcg_fan_in_from": hcg_fan_in_from,
 
         "optimized_params": optimized_params,
+
+        "dataset": dataset,
+        "num_train_epochs": num_train_epochs,
 
         "init_hcg_a": init_hcg_a,
         "gradient_checkpointing": gradient_checkpointing,
@@ -484,7 +496,7 @@ def run_hcg_llama31_8B_hcg(
 
         # Training
         "learning_rate": learning_rate,
-        "hcg_learning_rate": 0.08,
+        "hcg_learning_rate": hcg_learning_rate,
         "lr_scheduler_type": lr_scheduler_type,
         "save_steps": save_steps,
         "save_total_limit": save_total_limit,
@@ -840,35 +852,56 @@ if __name__ == "__main__":
 
 
     # Pretrain Fain Out on Tiny Datasets
-    # if True:
-    if False:
+    # NGPUS = 1
+    NGPUS = 4
+    num_train_epochs = 2
+    if True:
+    # if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.1,
+            hcg_learning_rate=0.01,
+            learning_rate=0.0003,
             model_type='pretrained_checkpoint',
             optimized_params='full',
             per_device_train_batch_size=16,
-            gradient_accumulation_steps=32,
-            select_train_dataset_items=1510000,
+            gradient_accumulation_steps=(32 // NGPUS),
+            # select_train_dataset_items=1510000 * NGPUS,
+            num_train_epochs=num_train_epochs,
+            save_total_limit=13,
+            save_steps=1000,
+            instance_type=f'a100.{NGPUS}gpu',
             llama_checkpoint=f'{workdir_prefix}/paper_checkpoints/pretrain/adaptive_slm2_135M_random_init',
+            dataset='tiny',
             fan_in_idx=10,
             fan_out_idx=20,
+            warmup_steps=1000,
             dry=dry,
+            lr_scheduler_type='cosine',
             experiment_prefix_base_name="adaptive_slm2_135M_pretrain",
         )
 
     if True:
-        # TODO pretrain simple llama model
+    # if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.0,
+            hcg_learning_rate=0.00,
+            learning_rate=0.0003,
             model_type='SmolLM2-135M',
             optimized_params='full',
             per_device_train_batch_size=16,
-            gradient_accumulation_steps=32,
-            select_train_dataset_items=1510000,
-            llama_checkpoint=None,
+            gradient_accumulation_steps=(32 // NGPUS),
+            # select_train_dataset_items=1510000 * NGPUS,
+            num_train_epochs=num_train_epochs,
+            save_total_limit=13,
+            save_steps=1000,
+            instance_type=f'a100.{NGPUS}gpu',
+            llama_checkpoint=f"{workdir_prefix}/paper_checkpoints/pretrain/slm2_135M_random_init/",
+            dataset='tiny',
             fan_in_idx='',
             fan_out_idx='',
             dry=dry,
+            warmup_steps=1000,
+            lr_scheduler_type='cosine',
             experiment_prefix_base_name="vanilla_slm2_135M_pretrain",
         )
 

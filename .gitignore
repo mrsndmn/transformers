@@ -186,3 +186,4 @@ exps_evaluation/
 *.mp4
 
 paper_checkpoints/
+vanilla_slm2*
