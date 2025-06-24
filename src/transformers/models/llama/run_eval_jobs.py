@@ -214,9 +214,15 @@ def eval_hcg_adaptive_pretrain_all_tasks_parallel(**kwargs):
     ]
 
     # temporary checkpoints for finetuned models
+    # checkpoints = [
+    #     './paper_checkpoints/ft_thrshold0.6/adaptive_hcg_llama31_8B_finetune_w_1.000_l_18-26_GSGM5UVW/checkpoint-12498/',
+    #     './paper_checkpoints/ft_thrshold0.6/adaptive_hcg_qwen25_7B_finetune_w_1.000_l_9-20_ZGRS21P4/checkpoint-12498/',
+    # ]
+
+    # Lora and Full FineTune
     checkpoints = [
-        './paper_checkpoints/ft_thrshold0.6/adaptive_hcg_llama31_8B_finetune_w_1.000_l_18-26_GSGM5UVW/checkpoint-12498/',
-        './paper_checkpoints/ft_thrshold0.6/adaptive_hcg_qwen25_7B_finetune_w_1.000_l_9-20_ZGRS21P4/checkpoint-12498/',
+        "./adaptive_hcg_llama31_8B_lora_finetune_w_1.000_l_18-26_QU5AE7L1/checkpoint-1699",
+        "./adaptive_hcg_llama31_8B_full_finetune_w_1.000_l_18-26_8HMU6OB6/checkpoint-900",
     ]
 
 

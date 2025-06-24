@@ -178,6 +178,8 @@ class HardConcreteGate(nn.Module):
         self.eps = eps
         self.max_seq_len = max_seq_len
 
+        self.init_log_a = log_a
+
         print('temperature', temperature, "learnt_temperature", learnt_temperature)
 
         assert not learnt_temperature
@@ -196,6 +198,12 @@ class HardConcreteGate(nn.Module):
         self.activation = nn.Sigmoid()
 
         return
+
+    def resize_hcg_log_a(self, vocab_size):
+        current_hcg_log_a = self.hcg_log_a.data
+        self.hcg_log_a = nn.Parameter(torch.full((vocab_size,), float(self.init_log_a)))
+
+        self.hcg_log_a.data[:current_hcg_log_a.shape[0]] = current_hcg_log_a
 
     def get_p_open(self, input_ids):
         log_a = self.hcg_log_a[input_ids].unsqueeze(-1)
@@ -1718,6 +1726,14 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         # Initialize weights and apply final processing
         self.post_init()
 
+    def resize_token_embeddings(self, new_num_tokens: Optional[int] = None, pad_to_multiple_of: Optional[int] = None, mean_resizing: bool = True):
+        embeds = super().resize_token_embeddings(new_num_tokens, pad_to_multiple_of, mean_resizing)
+
+        self.model.fan_in.hcg.resize_hcg_log_a(new_num_tokens)
+        print(f"Resized HCG log a to {new_num_tokens}")
+
+        return embeds
+
     def _init_adaptive_layers(self):
         return self.model._init_adaptive_layers()
 
@@ -1803,6 +1819,9 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
         if special_embeddings_mask is None:
             special_embeddings_mask = attention_mask.cumsum(dim=-1)
             special_embeddings_mask[special_embeddings_mask > 1] = 0
+            if self.config.end_of_sentence_token_id is not None:
+                print("number of end of sentence tokens", (input_ids == self.config.end_of_sentence_token_id).sum())
+                special_embeddings_mask[input_ids == self.config.end_of_sentence_token_id] = 1
 
         assert special_embeddings_mask is not None
 
@@ -1829,7 +1848,12 @@ class AdaptiveLlamaForCausalLM(AdaptiveLlamaPreTrainedModel, GenerationMixin):
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
+            loss = self.loss_function(
+                logits=logits,
+                labels=labels,
+                vocab_size=self.config.vocab_size,
+                **kwargs
+            )
 
         if not return_dict:
             output = (logits,) + outputs[1:]
@@ -1862,6 +1886,15 @@ class AdaptiveLlamaForCausalLMWithEachLayerPruning(AdaptiveLlamaPreTrainedModel,
         # Initialize weights and apply final processing
         self.post_init()
 
+
+    def resize_token_embeddings(self, new_num_tokens: Optional[int] = None, pad_to_multiple_of: Optional[int] = None, mean_resizing: bool = True):
+        embeds = super().resize_token_embeddings(new_num_tokens, pad_to_multiple_of, mean_resizing)
+
+        for fan_in_layer in self.model.fan_in_layers:
+            fan_in_layer.hcg.resize_hcg_log_a(new_num_tokens)
+            print(f"Resized HCG log a to {new_num_tokens}")
+
+        return embeds
 
     def _init_adaptive_layers(self):
         return self.model._init_adaptive_layers()

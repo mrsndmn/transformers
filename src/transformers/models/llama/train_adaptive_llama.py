@@ -138,7 +138,6 @@ class AdaptiveTrainingArguments(TrainingArguments):
     early_stopping_for_pretraining: bool = field(default=False)
     pretrain_fan_out_projection: bool = field(default=False)
 
-    training_dataset: str = "sequential-numbers" # sequential-numbers | smollm-corpus
     model_type: str = "dummy" # dummy | pretrained | SmolLM-1.7B
     
     hcg_loss_weight: float = 0.0
@@ -164,6 +163,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     
     select_train_dataset_items: int = 20000
     fan_out_projection: bool = True
+    add_end_of_sentence_token: bool = field(default=False)
 
 class ComputeMetrics():
 
@@ -368,7 +368,6 @@ class AdaptiveLlamaTrainer(Trainer):
 
         causal_lm_loss = loss
 
-
         # fan_in_merging_logits_sum = sum(x.sum(dim=[0, 1]) for x in fan_in_merging_logits)
         model_unwrapped = model
         if type(model_unwrapped) != AdaptiveLlamaForCausalLM and hasattr(model_unwrapped, "module"):
@@ -379,6 +378,7 @@ class AdaptiveLlamaTrainer(Trainer):
         count_merging_losses = 0
 
         count_hcg_layers = 0
+        sum_tokens = 0
         hcg_loss = 0
         if not self.args.model_type.startswith('SmolLM2') and self.args.hcg_loss_weight != 0.0 and  model_config.merging_type == 'hcg' and model_unwrapped.training:
             for i, (hcg_p_open, hcg_p_open_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
@@ -390,59 +390,20 @@ class AdaptiveLlamaTrainer(Trainer):
                 hcg_p_open = hcg_p_open.squeeze(2).flatten()
                 p_open_non_masked = hcg_p_open[hcg_p_open_attention_mask.flatten().bool()]
 
+                sum_tokens += hcg_p_open_attention_mask.bool().sum().item()
+
                 if self.args.pretrain_hcg:
-                    hcg_loss += (p_open_non_masked.mean() - 0.5)**2
+                    hcg_loss += (p_open_non_masked.sum() - 0.5)**2
                 else:
-                    hcg_loss += p_open_non_masked.mean()
+                    hcg_loss += p_open_non_masked.sum()
 
             if count_hcg_layers > 0:
                 hcg_loss /= count_hcg_layers
 
-        lm_loss = causal_lm_loss.mean()
+        if num_items_in_batch is not None:
+            hcg_loss /= num_items_in_batch
 
-        extra_log_hcg_dynamic = {}
-
-        if self.args.hcg_loss_weight_dynamic:
-            assert self.args.hcg_loss_weight == 1.0
-            # print("sum_pruned_tokens / total_tokens", sum_pruned_tokens / total_tokens)
-
-            if not hasattr(self, 'loss_history'):
-                self.hcg_scale = 1.0
-                self.loss_history = []
-
-            lm_loss_item = lm_loss.item()
-
-            if len(self.loss_history) < 1000:
-                self.loss_history.append(lm_loss_item)
-            else:
-                if not hasattr(self, 'loss_history_mean'):
-                    # Trim warmup
-                    self.loss_history = self.loss_history[int(len(self.loss_history) * 0.1):]
-                    self.loss_history_mean = np.mean(self.loss_history)
-                    self.loss_history_std = np.std(self.loss_history)
-
-                scale_hcg_loss = (self.loss_history_mean - lm_loss_item) / self.loss_history_std
-                self.hcg_scale *= 1.1 ** scale_hcg_loss
-                extra_log_hcg_dynamic['loss_history_mean'] = self.loss_history_mean
-                extra_log_hcg_dynamic['loss_history_std'] = self.loss_history_std
-
-                if self.hcg_scale < 0.1:
-                    self.hcg_scale = 0.1
-                elif self.hcg_scale > 10.0:
-                    self.hcg_scale = 10.0
-
-            # hcg_dynamic_scale
-            extra_log_hcg_dynamic['scale'] = self.hcg_scale
-
-            hcg_loss *= self.hcg_scale
-        else:
-            hcg_loss *= self.args.hcg_loss_weight
-
-        # loss = causal_lm_loss
-        loss = lm_loss + hcg_loss
-
-        # print("pruning_loss", pruning_loss)
-        # print("hcg_loss", hcg_loss)
+        loss = causal_lm_loss + hcg_loss
 
         outputs.loss = loss
 
@@ -556,9 +517,6 @@ class AdaptiveLlamaTrainer(Trainer):
             "prefix_ids": prefix_ids,
             "input_ids": inputs['input_ids'],
         }
-
-        if self.args.training_dataset == 'sequential-numbers':
-            result["generated_ids"] = model.generate(**all_generation_params)
 
         return result
 
@@ -1265,7 +1223,7 @@ class EarlyStoppingCallbacForPretraining(TrainerCallback):
         return control
 
 # pretrained
-# WANDB_MODE=online PYTHONPATH=/Users/d.tarasov/workspace/transformers/src:./src ~/miniconda3/envs/audio/bin/python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --per_device_train_batch_size 32 --num_train_epochs 10 --seed 1001 --training_dataset smollm-corpus --model_type pretrained
+# WANDB_MODE=online PYTHONPATH=/Users/d.tarasov/workspace/transformers/src:./src ~/miniconda3/envs/audio/bin/python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --per_device_train_batch_size 32 --num_train_epochs 10 --seed 1001 --model_type pretrained
 
 # dummy
 # WANDB_MODE=online PYTHONPATH=/Users/d.tarasov/workspace/transformers/src:./src ~/miniconda3/envs/audio/bin/python -m pdb -c continue src/transformers/models/llama/train_adaptive_llama.py --per_device_train_batch_size 32 --num_train_epochs 10 --seed 1001
@@ -1283,90 +1241,118 @@ if __name__ == "__main__":
     compute_metrics = None
     data_collator = None
 
-    if training_args.training_dataset == "smollm-corpus":
 
-        tokenizer.pad_token = tokenizer.eos_token
-        # from tokenizers.processors import TemplateProcessing
-        # tokenizer.post_processor = TemplateProcessing(
-        #     single=f"{tokenizer.bos_token} $A {tokenizer.eos_token}",
-        #     special_tokens=[(tokenizer.bos_token, tokenizer.bos_token_id), (tokenizer.eos_token, tokenizer.eos_token_id)],
-        # )
+    tokenizer.pad_token = tokenizer.eos_token
 
-        im_start_token_id = 1
-        im_end_token_id = 2
+    # Add end_of_sentence token if flag is enabled
+    if training_args.add_end_of_sentence_token:
+        end_of_sentence_token = '<end_of_sentence>'
+        tokenizer.add_special_tokens({'additional_special_tokens': [end_of_sentence_token]})
+        print(f"Added {end_of_sentence_token} token with ID: {tokenizer.convert_tokens_to_ids(end_of_sentence_token)}")
 
-        # load and tokenize
-        # data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(20) ]
-        # smollm_corpus = load_dataset("HuggingFaceTB/SmolLM2-corpus", split="train", data_files=data_files, num_proc=16)
+        # Resize model embeddings to match new vocabulary size
+        end_of_sentence_token_id = tokenizer.convert_tokens_to_ids(end_of_sentence_token)
+        model.config.end_of_sentence_token_id = end_of_sentence_token_id
+        model.resize_token_embeddings(len(tokenizer))
+        print(f"Resized model embeddings to vocabulary size: {len(tokenizer)}")
 
-        state = PartialState()
-        with state.local_main_process_first():
+    # from tokenizers.processors import TemplateProcessing
+    # tokenizer.post_processor = TemplateProcessing(
+    #     single=f"{tokenizer.bos_token} $A {tokenizer.eos_token}",
+    #     special_tokens=[(tokenizer.bos_token, tokenizer.bos_token_id), (tokenizer.eos_token, tokenizer.eos_token_id)],
+    # )
 
-            if training_args.dataset == 'smollm-corpus':
-                data_files = [ f"data/CC-MAIN-2024-10/000_{i:05}.parquet" for i in range(21) ]
-                smollm_corpus = load_dataset("HuggingFaceFW/fineweb", split="train", data_files=data_files, num_proc=16)
+    im_start_token_id = 1
+    im_end_token_id = 2
 
-                def tokenize_function(examples):
-                    # 2046 = 2048 - 1 - 1 # eos and bos tokens
-                    tokenized_inputs = tokenizer(examples['text'], truncation=True, padding='max_length', max_length=2046, return_tensors='pt')
+    # load and tokenize
+    # data_files = [ f"cosmopedia-v2/train-{i:05}-of-00104.parquet" for i in range(20) ]
+    # smollm_corpus = load_dataset("HuggingFaceTB/SmolLM2-corpus", split="train", data_files=data_files, num_proc=16)
 
-                    return tokenized_inputs
+    state = PartialState()
+    with state.local_main_process_first():
 
-                print("training_args.select_train_dataset_items", training_args.select_train_dataset_items)
-                if training_args.select_train_dataset_items > 0:
-                    smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items))
+        if training_args.dataset == 'smollm-corpus':
+            data_files = [ f"data/CC-MAIN-2024-10/000_{i:05}.parquet" for i in range(21) ]
+            smollm_corpus = load_dataset("HuggingFaceFW/fineweb", split="train", data_files=data_files, num_proc=16)
 
-                smollm_corpus = smollm_corpus.map(tokenize_function, batched=True, num_proc=32)
+            def tokenize_function(examples):
+                # 2046 = 2048 - 1 - 1 # eos and bos tokens
+                text = examples['text']
+                
+                # Add end_of_sentence tokens if flag is enabled
+                if training_args.add_end_of_sentence_token:
+                    for i in range(len(text)):
+                        text[i] = text[i].replace('. ', '. <end_of_sentence> ')
+                
+                tokenized_inputs = tokenizer(text, truncation=True, padding='max_length', max_length=2046, return_tensors='pt')
 
-                smollm_corpus = smollm_corpus.train_test_split(test_size=100, seed=1)
-                train_dataset = smollm_corpus['train']
-                eval_dataset = smollm_corpus['test']
-            elif training_args.dataset == 'tiny':
-                train_dataset = load_dataset("roneneldan/TinyStories", split="train")
-                eval_dataset = load_dataset("roneneldan/TinyStories", split="validation")
+                return tokenized_inputs
 
-                def tokenize_function(examples):
-                    # 2046 = 2048 - 1 - 1 # eos and bos tokens
-                    tokenized_inputs = tokenizer(examples['text'], truncation=True, padding='max_length', max_length=1152, return_tensors='pt')
+            print("training_args.select_train_dataset_items", training_args.select_train_dataset_items)
+            if training_args.select_train_dataset_items > 0:
+                smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items))
 
-                    return tokenized_inputs
+            smollm_corpus = smollm_corpus.map(tokenize_function, batched=True, num_proc=32)
 
-                train_dataset = train_dataset.map(tokenize_function, batched=True, num_proc=32)
-                eval_dataset = eval_dataset.map(tokenize_function, batched=True, num_proc=32)
-            else:
-                raise ValueError(f"unknown dataset:{training_args.dataset}")
+            smollm_corpus = smollm_corpus.train_test_split(test_size=100, seed=1)
+            train_dataset = smollm_corpus['train']
+            eval_dataset = smollm_corpus['test']
+        elif training_args.dataset == 'tiny':
+            train_dataset = load_dataset("roneneldan/TinyStories", split="train")
+            eval_dataset = load_dataset("roneneldan/TinyStories", split="validation")
 
-        nested_data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+            def tokenize_function(examples):
+                # 2046 = 2048 - 1 - 1 # eos and bos tokens
 
-        special_tokens = None
-        if training_args.prohibit_end_of_sentence_pruning:
-            special_tokens = [ x[0] for x in tokenizer([ '.', '..', '...', '?', '!', ':', ';' ])['input_ids'] ]
+                text = examples['text']
+                if training_args.add_end_of_sentence_token:
+                    for i in range(len(text)):
+                        text[i] = text[i].replace('. ', '. <end_of_sentence> ')
 
-        stop_words = None
-        if training_args.concrete_stop_word_pruning is not None:
-            stop_words = [ x[0] for x in tokenizer([ 'and', 'or', 'the', '.', ',', 'to', 'of', 'has', 'an', 'in', 'we', 'have', 'this'])['input_ids'] ]
+                tokenized_inputs = tokenizer(text, truncation=True, padding='max_length', max_length=1152, return_tensors='pt')
 
-        def crutch_collator(examples):
-            collate_dummy = nested_data_collator(examples)
+                return tokenized_inputs
 
-            collate_dummy['special_embeddings_mask'] = collate_dummy['attention_mask'].cumsum(-1)
-            collate_dummy['special_embeddings_mask'][ collate_dummy['special_embeddings_mask'] > 1 ] = 0
-            # collate_dummy['special_embeddings_mask'][:, -1] = 1
+            train_dataset = train_dataset.map(tokenize_function, batched=True, num_proc=32)
+            eval_dataset = eval_dataset.map(tokenize_function, batched=True, num_proc=32)
+        else:
+            raise ValueError(f"unknown dataset:{training_args.dataset}")
 
-            if special_tokens is not None:
-                for special_token in special_tokens:
-                    collate_dummy['special_embeddings_mask'][ collate_dummy['input_ids'] == special_token ] = 1
+    nested_data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
-            if stop_words is not None:
-                collate_dummy['stop_words_tokens_mask'] = torch.zeros_like(collate_dummy['attention_mask'])
-                for stop_word in stop_words:
-                    collate_dummy['stop_words_tokens_mask'][ collate_dummy['input_ids'] == stop_word ] = 1
+    special_tokens = None
+    if training_args.prohibit_end_of_sentence_pruning:
+        special_tokens = [ x[0] for x in tokenizer([ '.', '..', '...', '?', '!', ':', ';' ])['input_ids'] ]
 
-            return collate_dummy
+    stop_words = None
+    if training_args.concrete_stop_word_pruning is not None:
+        stop_words = [ x[0] for x in tokenizer([ 'and', 'or', 'the', '.', ',', 'to', 'of', 'has', 'an', 'in', 'we', 'have', 'this'])['input_ids'] ]
 
-        data_collator = crutch_collator
-    else:
-        raise ValueError(f"{training_args.training_dataset} is not supported")
+    def crutch_collator(examples):
+        collate_dummy = nested_data_collator(examples)
+
+        collate_dummy['special_embeddings_mask'] = collate_dummy['attention_mask'].cumsum(-1)
+        collate_dummy['special_embeddings_mask'][ collate_dummy['special_embeddings_mask'] > 1 ] = 0
+        # collate_dummy['special_embeddings_mask'][:, -1] = 1
+
+        if special_tokens is not None:
+            for special_token in special_tokens:
+                collate_dummy['special_embeddings_mask'][ collate_dummy['input_ids'] == special_token ] = 1
+
+        # Mask end_of_sentence tokens if flag is enabled
+        if training_args.add_end_of_sentence_token:
+            end_of_sentence_token_id = tokenizer.convert_tokens_to_ids('<end_of_sentence>')
+            collate_dummy['special_embeddings_mask'][ collate_dummy['input_ids'] == end_of_sentence_token_id ] = 1
+
+        if stop_words is not None:
+            collate_dummy['stop_words_tokens_mask'] = torch.zeros_like(collate_dummy['attention_mask'])
+            for stop_word in stop_words:
+                collate_dummy['stop_words_tokens_mask'][ collate_dummy['input_ids'] == stop_word ] = 1
+
+        return collate_dummy
+
+    data_collator = crutch_collator
 
     trackers_project_name = os.path.basename(training_args.output_dir)
     training_args.run_name = trackers_project_name

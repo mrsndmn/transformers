@@ -201,11 +201,14 @@ class LlamaConfig(PretrainedConfig):
         distributed=False,
         pretrain_fan_out_projection=False,
         fan_out_projection_mlp_intermediate_size=256,
+        end_of_sentence_token_id=None,
         **kwargs,
     ):
         self.vocab_size = vocab_size
         self.max_position_embeddings = max_position_embeddings
         self.mlp_bias = mlp_bias
+
+        self.end_of_sentence_token_id = end_of_sentence_token_id
 
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
