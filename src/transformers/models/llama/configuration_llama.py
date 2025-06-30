@@ -202,6 +202,7 @@ class LlamaConfig(PretrainedConfig):
         pretrain_fan_out_projection=False,
         fan_out_projection_mlp_intermediate_size=256,
         end_of_sentence_token_id=None,
+        force_train_on_trimmed_embeddings=False,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -209,6 +210,7 @@ class LlamaConfig(PretrainedConfig):
         self.mlp_bias = mlp_bias
 
         self.end_of_sentence_token_id = end_of_sentence_token_id
+        self.force_train_on_trimmed_embeddings = force_train_on_trimmed_embeddings
 
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size

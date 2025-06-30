@@ -163,6 +163,7 @@ class NoOpFanIn(nn.Module):
 
 class HardConcreteGate(nn.Module):
     def __init__(self,
+                 config: LlamaConfig,
                  count_log_a=0,
                  log_a=1.0,
                  max_seq_len=2048,
@@ -174,6 +175,8 @@ class HardConcreteGate(nn.Module):
                  eps=1e-9,
                  ):
         super(HardConcreteGate, self).__init__()
+
+        self.config = config
 
         self.eps = eps
         self.max_seq_len = max_seq_len
@@ -223,7 +226,7 @@ class HardConcreteGate(nn.Module):
 
         attention_mask_input_ids = attention_mask[:, :seq_len]
 
-        if self.training:
+        if self.training and not self.config.force_train_on_trimmed_embeddings:
             log_a_dtype = log_a.dtype
             if log_a_dtype != torch.float32:
                 log_a = log_a.to(torch.float32)
@@ -245,6 +248,7 @@ class HardConcreteGate(nn.Module):
             sigmoid_arg = (random_buffer_log - one_minus_rand_log + log_a) / temperature_scale
             concrete = self.activation(sigmoid_arg)
         else:
+            # print("Print 3 force_train_on_trimmed_embeddings")
             concrete = self.activation(log_a)
 
         # concrete = torch.ones_like(input_ids).unsqueeze(-1)
@@ -335,7 +339,7 @@ class AdaptiveFanInHCG(nn.Module):
         self.hidden_size = config.hidden_size
 
         # self.hcg = HardConcreteGate(max_seq_len=config.max_position_embeddings, temperature=config.hcg_temperature, learnt_temperature=config.learnt_temperature)
-        self.hcg = HardConcreteGate(log_a=config.hcg_log_a, count_log_a=config.vocab_size, max_seq_len=config.max_position_embeddings)
+        self.hcg = HardConcreteGate(config=config, log_a=config.hcg_log_a, count_log_a=config.vocab_size, max_seq_len=config.max_position_embeddings)
 
         self.merging_type = self.config.merging_type
         assert self.merging_type == 'hcg'
@@ -433,12 +437,13 @@ class AdaptiveFanInHCG(nn.Module):
 
         merged_embeddings_counts = attention_mask
 
-        if self.training:
+        if self.training and not self.config.force_train_on_trimmed_embeddings:
             residual_hidden_state = ((1 - concrete) * residual_hidden_state)
             hidden_state = concrete * hidden_state
             full_concrete = concrete
             merged_attention_mask = attention_mask
         else:
+            # print("Print 2 force_train_on_trimmed_embeddings")
             PRUNE_PERCENT = 0.0
 
             # concrete[concrete > 0.0] = 1.0
@@ -455,7 +460,8 @@ class AdaptiveFanInHCG(nn.Module):
 
             concrete_bool = (concrete[:, :, 0] > PRUNE_PERCENT)
 
-            print("concrete_bool", concrete_bool.sum().item(), '/', attention_mask.sum().item())
+            if not self.training:
+                print("concrete_bool", concrete_bool.sum().item(), '/', attention_mask.sum().item())
 
             if past_key_values is None or len(past_key_values.merged_attention_masks) == 0:
                 # Prefilling stage
@@ -582,7 +588,7 @@ class AdaptiveFanOutHCG(nn.Module):
         else:
             residual_hidden_states_projection = residual_hidden_states
 
-        if self.training:
+        if self.training and not self.config.force_train_on_trimmed_embeddings:
             hidden_states = hidden_states + residual_hidden_states_projection
         else:
             # print(merged_embeddings_counts.device, hidden_states.device, residual_hidden_states_projection.device, residual_attention_mask.device)
@@ -985,7 +991,8 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
 
         # past_key_values =
 
-        if not self.fan_in.training:
+        if not self.fan_in.training or self.config.force_train_on_trimmed_embeddings:
+            # print("Print 1 force_train_on_trimmed_embeddings")
             # Prefill
             if hidden_states is not None:
 
@@ -1075,7 +1082,7 @@ class AdaptiveLlamaModel(AdaptiveLlamaPreTrainedModel):
                 )
 
                 hidden_states = layer_outputs[0]
-                if self.training and current_concrete is not None:
+                if self.training and current_concrete is not None and not self.config.force_train_on_trimmed_embeddings:
                     hidden_states = hidden_states * current_concrete
 
                 if current_residuals is not None and self.config.forward_residuals:

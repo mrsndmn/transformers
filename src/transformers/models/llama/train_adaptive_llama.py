@@ -17,6 +17,8 @@ from transformers.utils import is_sagemaker_mp_enabled
 from transformers.trainer import _is_peft_model
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 
+from transformers.loss.loss_utils import ForCausalLMLoss
+
 from datasets import load_dataset
 import datasets
 from accelerate import PartialState
@@ -102,6 +104,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
     each_layer_pruning: bool = field(default=False)
 
+    force_train_on_trimmed_embeddings: bool = field(default=False)
 
     weight_decay: float = field(default=0.01)
     eval_strategy: str = field(default="steps")
@@ -139,7 +142,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     pretrain_fan_out_projection: bool = field(default=False)
 
     model_type: str = "dummy" # dummy | pretrained | SmolLM-1.7B
-    
+
     hcg_loss_weight: float = 0.0
     hcg_loss_weight_dynamic: bool = False
 
@@ -152,7 +155,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     concrete_random_mask_proba: Optional[float] = None
     concrete_uniform_pruning: Optional[int] = None
     concrete_stop_word_pruning: Optional[bool] = None
-    
+
     scale_not_pruned_gradients: float = 0.0
 
     generate_merges_transform_impl: str = 'cuda_kernel'
@@ -160,7 +163,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     reverse_dummy_adaptive_fan_in_layers: bool = False
     temperature_schedule: bool = False
     temperature_schedule_max_value: int = field(default=10)
-    
+
     select_train_dataset_items: int = 20000
     fan_out_projection: bool = True
     add_end_of_sentence_token: bool = field(default=False)
@@ -294,7 +297,6 @@ class AdaptiveLlamaTrainer(Trainer):
         return self.optimizer
 
 
-
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None, log_metrics=True, log_prefix='debug', force_log=False):
         """
         How the loss is computed by Trainer. By default, all models return the loss in the first element.
@@ -312,7 +314,6 @@ class AdaptiveLlamaTrainer(Trainer):
         token_frequency = inputs.get('token_frequency', None)
         model_kwargs = {
             "input_ids": inputs['input_ids'],
-            "labels": labels,
             "attention_mask": attention_mask,
             # "token_frequency": token_frequency,
             "use_cache": False,
@@ -331,7 +332,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
         assert special_embeddings_mask.shape == attention_mask.shape
 
-        outputs = model.forward(**model_kwargs)
+        outputs = model(**model_kwargs)
         # [ bs, seq_len, 2 ]
 
         if self.args.past_index >= 0:
@@ -343,9 +344,10 @@ class AdaptiveLlamaTrainer(Trainer):
                 model_name = unwrapped_model.base_model.model._get_name()
             else:
                 model_name = unwrapped_model._get_name()
+
             # User-defined compute_loss function
             if self.compute_loss_func is not None:
-                loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch)
+                loss = self.compute_loss_func(outputs.logits, labels, vocab_size=unwrapped_model.config.vocab_size, num_items_in_batch=num_items_in_batch)
             elif model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
                 loss = self.label_smoother(outputs, labels, shift_labels=True)
             else:
@@ -358,13 +360,6 @@ class AdaptiveLlamaTrainer(Trainer):
                 )
             # We don't use .loss here since the model may return tuples instead of ModelOutput.
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
-
-        if (
-            self.args.average_tokens_across_devices
-            and (self.model_accepts_loss_kwargs or self.compute_loss_func)
-            and num_items_in_batch is not None
-        ):
-            loss *= self.accelerator.num_processes
 
         causal_lm_loss = loss
 
@@ -380,7 +375,7 @@ class AdaptiveLlamaTrainer(Trainer):
         count_hcg_layers = 0
         sum_tokens = 0
         hcg_loss = 0
-        if not self.args.model_type.startswith('SmolLM2') and self.args.hcg_loss_weight != 0.0 and  model_config.merging_type == 'hcg' and model_unwrapped.training:
+        if not self.args.model_type.startswith('SmolLM2') and self.args.hcg_loss_weight != 0.0 and  model_config.merging_type == 'hcg' and model_unwrapped.training and not self.args.force_train_on_trimmed_embeddings:
             for i, (hcg_p_open, hcg_p_open_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                 if hcg_p_open is None:
                     continue
@@ -400,20 +395,34 @@ class AdaptiveLlamaTrainer(Trainer):
             if count_hcg_layers > 0:
                 hcg_loss /= count_hcg_layers
 
+        # if isinstance(hcg_loss, torch.Tensor):
+        #     hcg_loss = self.accelerator.gather(hcg_loss)
+
         if num_items_in_batch is not None:
             hcg_loss /= num_items_in_batch
+        else:
+            if sum_tokens > 0:
+                hcg_loss /= sum_tokens
 
-        loss = causal_lm_loss + hcg_loss
+        loss = causal_lm_loss + hcg_loss * self.args.hcg_loss_weight
+
+        if (
+            self.args.average_tokens_across_devices
+            and (self.model_accepts_loss_kwargs or self.compute_loss_func)
+        ):
+            loss *= self.accelerator.num_processes
+
+        # loss = loss.mean()
 
         outputs.loss = loss
 
         # assert ~ loss.isnan().any(), 'loss cant be none'
         total_tokens = attention_mask.sum().item()
-        sum_pruned_tokens = 0
 
         # print("extra_log_hcg_dynamic", extra_log_hcg_dynamic)
 
-        if not self.args.model_type.startswith('SmolLM2') and (force_log or log_metrics and self.state.global_step % self.args.logging_steps == 0):
+        # TODO where to log?
+        if False and not self.args.model_type.startswith('SmolLM2') and (force_log or log_metrics and self.state.global_step % self.args.logging_steps == 0):
 
             outputs_loss = causal_lm_loss
             if len(outputs_loss.shape) > 0:
@@ -550,10 +559,10 @@ class AdaptiveLlamaTrainer(Trainer):
             Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss,
             logits and labels (each being optional).
         """
-        
+
         # print("inputs", inputs.keys())
         # breakpoint()
-        
+
         # For CLIP-like models capable of returning loss values.
         # If `return_loss` is not specified or being `None` in `inputs`, we check if the default value of `return_loss`
         # is `True` in `model.forward`.
@@ -1060,6 +1069,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
     model.config.concrete_uniform_pruning = training_args.concrete_uniform_pruning
     model.config.concrete_stop_word_pruning = training_args.concrete_stop_word_pruning
     model.config.forward_residuals = training_args.forward_residuals
+    model.config.force_train_on_trimmed_embeddings = training_args.force_train_on_trimmed_embeddings
 
     if training_args.fan_in_idx is not None:
         model.config.fan_in_idx = training_args.fan_in_idx
@@ -1279,12 +1289,12 @@ if __name__ == "__main__":
             def tokenize_function(examples):
                 # 2046 = 2048 - 1 - 1 # eos and bos tokens
                 text = examples['text']
-                
+
                 # Add end_of_sentence tokens if flag is enabled
                 if training_args.add_end_of_sentence_token:
                     for i in range(len(text)):
                         text[i] = text[i].replace('. ', '. <end_of_sentence> ')
-                
+
                 tokenized_inputs = tokenizer(text, truncation=True, padding='max_length', max_length=2046, return_tensors='pt')
 
                 return tokenized_inputs
@@ -1300,7 +1310,11 @@ if __name__ == "__main__":
             eval_dataset = smollm_corpus['test']
         elif training_args.dataset == 'tiny':
             train_dataset = load_dataset("roneneldan/TinyStories", split="train")
+            if training_args.select_train_dataset_items > 0:
+                train_dataset = train_dataset.select(range(training_args.select_train_dataset_items))
+
             eval_dataset = load_dataset("roneneldan/TinyStories", split="validation")
+            eval_dataset = eval_dataset.select(range(1024))
 
             def tokenize_function(examples):
                 # 2046 = 2048 - 1 - 1 # eos and bos tokens
@@ -1421,6 +1435,8 @@ if __name__ == "__main__":
         eval_dataset=eval_dataset,
         data_collator=data_collator,
         compute_metrics=compute_metrics,
+
+        compute_loss_func=ForCausalLMLoss,
     )
 
     if gradual_unfreeze_callback is not None:
@@ -1429,6 +1445,9 @@ if __name__ == "__main__":
     trainer.accelerator.init_trackers(
         project_name=trackers_project_name,
     )
+
+    print("trainer.accelerator.num_processes", trainer.accelerator.num_processes)
+    print("trainer.args.n_gpu", trainer.args.n_gpu)
 
     trainer.train()
 

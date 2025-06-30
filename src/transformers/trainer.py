@@ -503,6 +503,8 @@ class Trainer:
         else:
             self.is_model_parallel = False
 
+        print("self.is_model_parallel", self.is_model_parallel)
+
         if getattr(model, "hf_device_map", None) is not None:
             devices = [device for device in set(model.hf_device_map.values()) if device not in ["cpu", "disk"]]
             if len(devices) > 1:
@@ -518,6 +520,8 @@ class Trainer:
                     "You have loaded a model on multiple GPUs. `is_model_parallel` attribute will be force-set"
                     " to `True` to avoid any unexpected behavior such as device placement mismatching."
                 )
+
+        print("self.is_model_parallel", self.is_model_parallel)
 
         if self.args.use_liger_kernel:
             if is_liger_kernel_available():
@@ -616,6 +620,7 @@ class Trainer:
 
         # Force n_gpu to 1 to avoid DataParallel as MP will manage the GPUs
         if self.is_model_parallel:
+            print("Force n_gpu to 1 due to model parallel")
             self.args._n_gpu = 1
 
         # later use `self.model is self.model_wrapped` to check if it's wrapped or not

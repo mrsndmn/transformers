@@ -59,7 +59,7 @@ def run_eval_experiments(experiments, job_description_prefix="eval", dry=False, 
             n_workers=N_WORKERS,
             # conda_env="test_client_lib",
             processes_per_worker=1,
-            job_desc=f"{job_description_prefix} {pretrained_model} {tasks} #rnd #multimodality",
+            job_desc=f"{job_description_prefix} {pretrained_model} {tasks} #rnd #multimodality @mrsndmn",
             # stop_timer=600, # в минутах, = 10 часов
             env_variables={
                 "PATH": f"{env_bin_path}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/user/conda/bin",
@@ -199,6 +199,8 @@ def eval_hcg_adaptive_pretrain_all_tasks_parallel(**kwargs):
         "./paper_checkpoints/analytical_thshld_0.6/adaptive_hcg_qwen25_7B_l9-20_analytical_pruning_q1/",
     ]
 
+    tasks = "custom|arc|0|1,custom|openbookqa|0|1,custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|wikitext_103|0|1,custom|siqa|0|1,custom|piqa|0|1,custom|hellaswag|0|1,custom|winogrande|0|1".split(",")
+
     checkpoints = [
         "./paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306_calib40",
         "./paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_1.000_l_9-20_J3BTODV3/checkpoint-5306_calib40",
@@ -220,20 +222,32 @@ def eval_hcg_adaptive_pretrain_all_tasks_parallel(**kwargs):
     # ]
 
     # Lora and Full FineTune
+    # checkpoints = [
+    #     "./adaptive_slm2_135M_pretrain_with_end_of_sentence_token_w_0.100_l_10-20_4REEAIIL/checkpoint-12420/",
+    # ]
+    # tasks = "custom|arc|0|1,custom|siqa|0|1,custom|piqa|0|1,custom|hellaswag|0|1,custom|tiny_stories_with_end_of_sentence|0|1".split(",")
+
+    # checkpoints = [
+    #     # Small LLM
+    #     "./adaptive_slm2_135M_pretrain_w_0.100_l_10-20_AZJQ5WL0/checkpoint-12420/",
+    #     "./vanilla_slm2_135M_pretrain_w_0.000_l_-_DFAC2NSB/checkpoint-12420",
+    # ]
+    # tasks = "custom|arc|0|1,custom|siqa|0|1,custom|piqa|0|1,custom|hellaswag|0|1,custom|tiny_stories|0|1".split(",")
+
+
+    # Large LLM
     checkpoints = [
-        "./adaptive_hcg_llama31_8B_lora_finetune_w_1.000_l_18-26_QU5AE7L1/checkpoint-1699",
-        "./adaptive_hcg_llama31_8B_full_finetune_w_1.000_l_18-26_8HMU6OB6/checkpoint-900",
+        # "./adaptive_hcg_llama31_8B_fan_out_projection_w_1.000_l_18-26_R2DI580B/checkpoint-7500/",
+        # "./adaptive_hcg_llama31_8B_fan_out_projection_w_1.000_l_18-26_R2DI580B/checkpoint-10999/",
+        # # "./adaptive_hcg_llama31_8B_lora_finetune_w_1.000_l_18-26_4CL0OO5V/checkpoint-2500/",
+        # "./adaptive_hcg_llama31_8B_finetune_w_1.000_l_18-26_8TOJUP14/checkpoint-7500/"
     ]
 
-
+    # TODO
 
     hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
 
     print('len hcg_experiments:', len(hcg_experiments))
-
-    # task = None
-    # tasks = [ 'custom|wikitext_103|0|1' ]
-    tasks = "custom|arc|0|1,custom|openbookqa|0|1,custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|wikitext_103|0|1,custom|siqa|0|1,custom|piqa|0|1,custom|hellaswag|0|1,custom|winogrande|0|1".split(",")
 
     if kwargs.pop('extract_metrics', False):
         run_extract_metrics(checkpoints, tasks=tasks)
