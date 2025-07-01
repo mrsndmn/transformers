@@ -871,8 +871,8 @@ if __name__ == "__main__":
     save_steps = 5000
 
     # add_end_of_sentence_token
-    if True:
-    # if False:
+    # if True:
+    if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.1,
             hcg_learning_rate=0.01,
@@ -898,8 +898,8 @@ if __name__ == "__main__":
             add_end_of_sentence_token=1,
         )
 
-    if True:
-    # if False:
+    # if True:
+    if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.1,
             hcg_learning_rate=0.01,
@@ -924,8 +924,8 @@ if __name__ == "__main__":
             experiment_prefix_base_name="adaptive_slm2_135M_pretrain",
         )
 
-    if True:
-    # if False:
+    # if True:
+    if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.0,
             hcg_learning_rate=0.00,
@@ -949,6 +949,33 @@ if __name__ == "__main__":
             lr_scheduler_type='cosine',
             experiment_prefix_base_name="vanilla_slm2_135M_pretrain",
         )
+
+    if True:
+    # if False:
+        run_hcg_llama31_8B_hcg(
+            hcg_loss_weight=0.0,
+            hcg_learning_rate=0.00,
+            learning_rate=0.0003,
+            model_type='SmolLM2-135M',
+            optimized_params='full',
+            per_device_train_batch_size=per_device_train_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            # select_train_dataset_items=1510000 * NGPUS,
+            num_train_epochs=num_train_epochs,
+            save_total_limit=13,
+            save_steps=save_steps,
+            instance_type=f'a100.{NGPUS}gpu',
+            llama_checkpoint=f"{workdir_prefix}/paper_checkpoints/pretrain/slm2_127M_random_init_20L/",
+            dataset='tiny',
+            select_train_dataset_items=0,
+            fan_in_idx='',
+            fan_out_idx='',
+            dry=dry,
+            warmup_steps=1000,
+            lr_scheduler_type='cosine',
+            experiment_prefix_base_name="vanilla_slm2_127M_20L_pretrain",
+        )
+
 
     if False:
         for i in range(2, 30):

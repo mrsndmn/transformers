@@ -1,3 +1,4 @@
+from typing import Callable, Optional
 import matplotlib
 import argparse
 import matplotlib.pyplot as plt
@@ -5,51 +6,20 @@ import pandas as pd
 import os
 from brokenaxes import brokenaxes
 
-if __name__ == "__main__":
+def draw_sparsity_ppl_curves(
+        input_files,
+        plot_path,
+        plot_fuffix="",
+        wikitext=True,
+        hellaswag=True,
+        tiny_stories=False,
+        hellaswag_ylim=(0, 1),
+        extra_points: Optional[Callable]=None,
+    ):
+    if len(plot_fuffix) > 0:
+        plot_fuffix = "_" + plot_fuffix
 
-    # Threshold 0.8
-    input_files = [
-        [
-            "results/calibrate_ppl/ppl_results_checkpoint-2500_hcg_llama31_8B_w_1.000.csv",
-            "Llama3.1-8B w1.0",
-        ],
-        [
-            "results/calibrate_ppl/ppl_results_checkpoint-5000_hcg_llama31_8B_w_0.100.csv",
-            "Llama3.1-8B w0.1",
-        ],
-        [
-            'results/calibrate_ppl/ppl_results___adaptive_hcg_llama31_8B_fan_out_projection_w_1_000_l_18-26_R2DI580B_checkpoint-10999___adaptive_hcg_llama31_8B_fan_out_projection_w_1.000_l_18-26_R2DI580B.csv',
-            'Llama3.1-8B w1.0 Fan-Out Projection',
-        ],
-        [
-            "results/calibrate_ppl/ppl_results_checkpoint-7500_hcg_qwen25_7B_w_1.000.csv",
-            "Qwen2.5-7B w1.0",
-        ],
-        [
-            "results/calibrate_ppl/ppl_results_checkpoint-7500_hcg_qwen25_7B_w_0.100.csv",
-            "Qwen2.5-7B w0.1",
-        ],
-    ]
-
-    # Threshold 0.6
-    # input_files = [
-    #     [
-    #         "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_llama31_8B_w_1.000_thshold_0.6.csv",
-    #         "Llama3.1-8B w1.0",
-    #     ],
-    #     [
-    #         "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_llama31_8B_w_0.100_thshold_0.6.csv",
-    #         "Llama3.1-8B w0.1",
-    #     ],
-    #     [
-    #         "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_qwen25_7B_w_1.000_thshold_0.6.csv",
-    #         "Qwen2.5-7B w1.0",
-    #     ],
-    #     [
-    #         "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_qwen25_7B_w_0.100_thshold_0.6.csv",
-    #         "Qwen2.5-7B w0.1",
-    #     ],
-    # ]
+    os.makedirs(plot_path, exist_ok=True)
 
     fontsize = 29
     scale = 2
@@ -57,63 +27,138 @@ if __name__ == "__main__":
 
     plt.style.use('seaborn-v0_8')
 
-    # Threshold 0.8
-    # plt.scatter([ 8.46 ], [ 3.51 ], label="Llama3.1-8B Stat. Vocab", color="blue", marker="x", s=300)
-    # plt.scatter([ 8.43 ], [ 9.03 ], label="Qwen2.5-7B Stat. Vocab", color="red", marker="x", s=300)
+    if extra_points is not None:
+        extra_points()
+
+    if wikitext:
+        for file_path, model_name in input_files:
+            if not os.path.exists(file_path):
+                print(f"File {file_path} does not exist")
+                continue
+
+            df = pd.read_csv(file_path)
+            plt.plot(df['wikitext_pruned_percent'], df['wikitext_ppl'], label=model_name, linewidth=5.0)
+            # plt.errorbar(df['sparsity'], df['wikitext_ppl'], yerr=df['wikitext_ppl_stderr'], label=model_name, linewidth=5.0, capsize=5, capthick=2)
+
+        plt.legend(fontsize=fontsize)
+        plt.xticks(fontsize=fontsize)
+        plt.yticks(fontsize=fontsize)
+        plt.xlabel("Sparsity", fontsize=fontsize)
+        plt.ylabel("PPL", fontsize=fontsize)
+
+        plt.ylim(0, 40)
+
+        plt.title("WikiText: Sparsity vs PPL", fontsize=fontsize)
+        wikitext_plot_path = os.path.join(plot_path, f"sparsity_wikitext_ppl_curves{plot_fuffix}.png")
+        plt.tight_layout()
+        plt.savefig(wikitext_plot_path)
+        print(f"Saved sparsity PPL curves to {wikitext_plot_path}")
+
+        plt.clf()
+
+    if hellaswag:
+
+        for file_path, model_name in input_files:
+            if not os.path.exists(file_path):
+                print(f"File {file_path} does not exist")
+                continue
+
+            df = pd.read_csv(file_path)
+            plt.plot(df['hellaswag_pruned_percent'], df['hellaswag_acc_norm'], label=model_name, linewidth=5.0)
+
+        plt.legend(fontsize=fontsize)
+        plt.xticks(fontsize=fontsize)
+        plt.yticks(fontsize=fontsize)
+        plt.xlabel("Sparsity", fontsize=fontsize)
+        plt.ylabel("Acc", fontsize=fontsize)
+
+        plt.ylim(*hellaswag_ylim)
+
+        plt.title("HellaSwag: Sparsity vs Accuracy", fontsize=fontsize)
+        hellaswag_plot_path = os.path.join(plot_path, f"sparsity_hellaswag_acc_curves{plot_fuffix}.png")
+        plt.tight_layout()
+        plt.savefig(hellaswag_plot_path)
+        print(f"Saved sparsity HellaSwag Acc curves to {hellaswag_plot_path}")
+
+        plt.clf()
+
+    if tiny_stories:
+        for file_path, model_name in input_files:
+            if not os.path.exists(file_path):
+                print(f"File {file_path} does not exist")
+                continue
+
+            df = pd.read_csv(file_path)
+            plt.plot(df['tiny_stories_pruned_percent'], df['tiny_stories_ppl'], label=model_name, linewidth=5.0)
+
+        plt.legend(fontsize=fontsize)
+        plt.xticks(fontsize=fontsize)
+        plt.yticks(fontsize=fontsize)
+        plt.xlabel("Sparsity", fontsize=fontsize)
+        plt.ylabel("PPL", fontsize=fontsize)
+
+        plt.ylim(0, 5)
+
+        plt.title("TinyStories: Sparsity vs PPL", fontsize=fontsize)
+        tiny_stories_plot_path = os.path.join(plot_path, f"sparsity_tiny_stories_ppl_curves{plot_fuffix}.png")
+        plt.tight_layout()
+        plt.savefig(tiny_stories_plot_path)
+        print(f"Saved sparsity TinyStories PPL curves to {tiny_stories_plot_path}")
+
+        plt.clf()
+
+if __name__ == "__main__":
 
     # Threshold 0.6
-    plt.scatter([ 5.58 ], [ 4.71 ], label="Llama3.1-8B Stat. Vocab", color="blue", marker="x", s=300, alpha=0.5)
-    plt.scatter([ 5.85 ], [ 8.97 ], label="Qwen2.5-7B Stat. Vocab", color="red", marker="x", s=300, alpha=0.5)
+    input_files = [
+        [
+            "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_llama31_8B_w_1.000_thshold_0.6.csv",
+            "Llama3.1-8B w1.0",
+        ],
+        [
+            "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_llama31_8B_w_0.100_thshold_0.6.csv",
+            "Llama3.1-8B w0.1",
+        ],
+        [
+            "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_qwen25_7B_w_1.000_thshold_0.6.csv",
+            "Qwen2.5-7B w1.0",
+        ],
+        [
+            "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_qwen25_7B_w_0.100_thshold_0.6.csv",
+            "Qwen2.5-7B w0.1",
+        ],
+    ]
 
-    plt.scatter([ 0 ], [ 5.34 ], label="Llama3.1-8B Orig.", color="blue", marker="o", s=200, alpha=0.5)
-    plt.scatter([ 0 ], [ 9.704 ], label="Qwen2.5-7B Orig.", color="red", marker="o", s=200, alpha=0.5)
+    # Custom points
+    def extra_points():
+        plt.scatter([ 5.58 ], [ 4.71 ], label="Llama3.1-8B Stat. Vocab", color="blue", marker="x", s=300, alpha=0.5)
+        plt.scatter([ 5.85 ], [ 8.97 ], label="Qwen2.5-7B Stat. Vocab", color="red", marker="x", s=300, alpha=0.5)
 
-
-    for file_path, model_name in input_files:
-        if not os.path.exists(file_path):
-            print(f"File {file_path} does not exist")
-            continue
-
-        df = pd.read_csv(file_path)
-        plt.plot(df['wikitext_pruned_percent'], df['wikitext_ppl'], label=model_name, linewidth=5.0)
-        # plt.errorbar(df['sparsity'], df['wikitext_ppl'], yerr=df['wikitext_ppl_stderr'], label=model_name, linewidth=5.0, capsize=5, capthick=2)
-
-    plt.legend(fontsize=fontsize)
-    plt.xticks(fontsize=fontsize)
-    plt.yticks(fontsize=fontsize)
-    plt.xlabel("Sparsity", fontsize=fontsize)
-    plt.ylabel("PPL", fontsize=fontsize)
-
-    plt.ylim(0, 40)
-
-    plt.title("WikiText Sparsity vs PPL", fontsize=fontsize)
-    plot_path = os.path.join("results/calibrate_ppl", f"sparsity_wikitext_ppl_curves.png")
-    plt.tight_layout()
-    plt.savefig(plot_path)
-    print(f"Saved sparsity PPL curves to {plot_path}")
+        plt.scatter([ 0 ], [ 5.34 ], label="Llama3.1-8B Orig.", color="blue", marker="o", s=200, alpha=0.5)
+        plt.scatter([ 0 ], [ 9.704 ], label="Qwen2.5-7B Orig.", color="red", marker="o", s=200, alpha=0.5)
 
 
-    plt.clf()
+    draw_sparsity_ppl_curves(input_files, "results/calibrate_ppl", plot_fuffix="threshold_0.6", extra_points=extra_points)
 
-    for file_path, model_name in input_files:
-        if not os.path.exists(file_path):
-            print(f"File {file_path} does not exist")
-            continue
 
-        df = pd.read_csv(file_path)
-        plt.plot(df['hellaswag_pruned_percent'], df['hellaswag_acc_norm'], label=model_name, linewidth=5.0)
-        # plt.errorbar(df['sparsity'], df['wikitext_ppl'], yerr=df['wikitext_ppl_stderr'], label=model_name, linewidth=5.0, capsize=5, capthick=2)
+    # SLMs
+    input_files = [
+        [
+            "results/calibrate_slm_ppl/ppl_results___adaptive_slm2_135M_pretrain_w_0_100_l_10-20_AZJQ5WL0_checkpoint-12420__adaptive_slm2_135M_pretrain_w_0.100_l_10-20_AZJQ5WL0.csv",
+            "Adaptive SLM2-135M w1.0",
+        ],
+        [
+            "results/calibrate_slm_ppl/ppl_results___adaptive_slm2_135M_pretrain_with_end_of_sentence_token_w_0_100_l_10-20_4REEAIIL_checkpoint-12420__adaptive_slm2_135M_pretrain_with_end_of_sentence_token_w_0.100_l_10-20_4REEAIIL.csv",
+            "Adaptive SLM2-135M w1.0 EoS",
+        ],
+    ]
 
-    plt.legend(fontsize=fontsize)
-    plt.xticks(fontsize=fontsize)
-    plt.yticks(fontsize=fontsize)
-    plt.xlabel("Sparsity", fontsize=fontsize)
-    plt.ylabel("Acc", fontsize=fontsize)
-
-    plt.ylim(0, 1)
-
-    plt.title("WikiText Sparsity vs HellaSwag Acc", fontsize=fontsize)
-    plot_path = os.path.join("results/calibrate_ppl", f"sparsity_hellaswag_acc_curves.png")
-    plt.tight_layout()
-    plt.savefig(plot_path)
-    print(f"Saved sparsity HellaSwag Acc curves to {plot_path}")
+    draw_sparsity_ppl_curves(
+        input_files,
+        "results/calibrate_slm_ppl",
+        plot_fuffix="",
+        wikitext=False,
+        tiny_stories=True,
+        hellaswag_ylim=()
+        hellaswag_ylim=(0, 0.5),
+    )
