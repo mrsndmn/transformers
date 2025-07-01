@@ -19,6 +19,8 @@ from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_N
 
 from transformers.loss.loss_utils import ForCausalLMLoss
 
+from transformers.models.llama.tokenization_llama_fast import EOSTokenizerFast
+
 from datasets import load_dataset
 import datasets
 from accelerate import PartialState
@@ -957,6 +959,12 @@ def unfreeze_fan_out(model: nn.Module):
 
 def build_model(training_args: AdaptiveTrainingArguments):
     tokenizer = None
+    llama_checkpoint = training_args.llama_checkpoint
+
+    if training_args.add_end_of_sentence_token:
+        tokenizer = EOSTokenizerFast.from_pretrained(llama_checkpoint)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
 
     torch_dtype = torch.bfloat16 if training_args.bf16 else torch.float32
     print("build_model torch_dtype", torch_dtype)
@@ -993,7 +1001,6 @@ def build_model(training_args: AdaptiveTrainingArguments):
         llama_checkpoint = training_args.llama_checkpoint
         print("Load model from", llama_checkpoint)
         model = AdaptiveLlamaForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
-        tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
     elif training_args.model_type == 'pretrained':
         from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
 
@@ -1045,11 +1052,9 @@ def build_model(training_args: AdaptiveTrainingArguments):
     elif training_args.model_type == 'SmolLM2-135M':
         llama_checkpoint = training_args.llama_checkpoint
         model = LlamaForCausalLM.from_pretrained(llama_checkpoint)
-        tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
     elif training_args.model_type == 'SmolLM-1.7B':
         llama_checkpoint = "HuggingFaceTB/SmolLM2-1.7B"
         model = LlamaForCausalLM.from_pretrained(llama_checkpoint, )
-        tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
     else:
         raise ValueError(f"{training_args.model_type} is not supported")
 
@@ -1255,14 +1260,7 @@ if __name__ == "__main__":
     tokenizer.pad_token = tokenizer.eos_token
 
     # Add end_of_sentence token if flag is enabled
-    if training_args.add_end_of_sentence_token:
-        end_of_sentence_token = '<end_of_sentence>'
-        tokenizer.add_special_tokens({'additional_special_tokens': [end_of_sentence_token]})
-        print(f"Added {end_of_sentence_token} token with ID: {tokenizer.convert_tokens_to_ids(end_of_sentence_token)}")
-
-        # Resize model embeddings to match new vocabulary size
-        end_of_sentence_token_id = tokenizer.convert_tokens_to_ids(end_of_sentence_token)
-        model.config.end_of_sentence_token_id = end_of_sentence_token_id
+    if training_args.add_end_of_sentence_token and model.config.vocab_size != len(tokenizer):
         model.resize_token_embeddings(len(tokenizer))
         print(f"Resized model embeddings to vocabulary size: {len(tokenizer)}")
 
@@ -1290,11 +1288,6 @@ if __name__ == "__main__":
                 # 2046 = 2048 - 1 - 1 # eos and bos tokens
                 text = examples['text']
 
-                # Add end_of_sentence tokens if flag is enabled
-                if training_args.add_end_of_sentence_token:
-                    for i in range(len(text)):
-                        text[i] = text[i].replace('. ', '. <end_of_sentence> ')
-
                 tokenized_inputs = tokenizer(text, truncation=True, padding='max_length', max_length=2046, return_tensors='pt')
 
                 return tokenized_inputs
@@ -1318,13 +1311,7 @@ if __name__ == "__main__":
 
             def tokenize_function(examples):
                 # 2046 = 2048 - 1 - 1 # eos and bos tokens
-
-                text = examples['text']
-                if training_args.add_end_of_sentence_token:
-                    for i in range(len(text)):
-                        text[i] = text[i].replace('. ', '. <end_of_sentence> ')
-
-                tokenized_inputs = tokenizer(text, truncation=True, padding='max_length', max_length=1152, return_tensors='pt')
+                tokenized_inputs = tokenizer(examples['text'], truncation=True, padding='max_length', max_length=1152, return_tensors='pt')
 
                 return tokenized_inputs
 
