@@ -112,23 +112,6 @@ def compute_pruned_percent(model, bincount):
 
     return pruned_percent, total_tokens_count
 
-# hellaswag preprocessing copy paste
-def compute_pruned_percent_hellaswag(model, bincount):
-    bincount = bincount.clone()
-
-    all_tokens_ids = torch.arange(0, model.config.vocab_size, device=model.model.fan_in.hcg.hcg_log_a.device).unsqueeze(0)
-    pruned_proba = model.model.fan_in.hcg(all_tokens_ids, torch.ones_like(all_tokens_ids, dtype=torch.long))
-
-    not_pruned_tokens_bool_mask = (pruned_proba.cpu() != 0)
-
-    total_tokens_count = bincount.sum().item()
-    bincount[not_pruned_tokens_bool_mask.squeeze(0).squeeze(-1)] = 0
-    pruned_percent = bincount.sum().item() / total_tokens_count * 100
-
-    return pruned_percent, total_tokens_count
-
-
-
 def evaluate_lighteval_task(model, task_name, override_batch_size=1, num_fewshot_seeds=0, max_samples=None):
     evaluation_output_dir = "'/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/exps_evaluation'" # Removed extra quotes
     evaluation_tracker = EvaluationTracker(
@@ -216,7 +199,7 @@ def evaluate_acc_hellaswag(model, bincount=None, sparsity_only=False):
     pruned_percent = None
     total_tokens_count = None
     if bincount is not None:
-        pruned_percent, total_tokens_count = compute_pruned_percent_hellaswag(model, bincount)
+        pruned_percent, total_tokens_count = compute_pruned_percent(model, bincount)
 
     return {
         "acc_norm": acc_norm,
@@ -224,6 +207,35 @@ def evaluate_acc_hellaswag(model, bincount=None, sparsity_only=False):
         "pruned_percent": pruned_percent,
         "total_tokens_count": total_tokens_count,
     }
+
+
+def evaluate_tiny_stories(model, bincount=None, sparsity_only=False):
+
+    ppl = None
+    ppl_stderr = None
+    if not sparsity_only:
+        results = evaluate_lighteval_task(
+            model,
+            'tiny_stories',
+            override_batch_size=128,
+            num_fewshot_seeds=0,
+        )
+
+        ppl = results['results']["custom:tiny_stories:0"]["ppl"]
+        ppl_stderr = results['results']["custom:tiny_stories:0"]["ppl_stderr"]
+
+    pruned_percent = None
+    total_tokens_count = None
+    if bincount is not None:
+        pruned_percent, total_tokens_count = compute_pruned_percent(model, bincount)
+
+    return {
+        "ppl": ppl,
+        "ppl_stderr": ppl_stderr,
+        "pruned_percent": pruned_percent,
+        "total_tokens_count": total_tokens_count,
+    }
+
 
 # ~80 секунд на один проход
 def evaluate_acc_winogrande(model):

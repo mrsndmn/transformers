@@ -69,7 +69,7 @@ def run_explore_pruningability_experiments(experiments, job_description_prefix="
             n_workers=N_WORKERS,
             # conda_env="test_client_lib",
             processes_per_worker=1,
-            job_desc=f"{job_description_prefix} {exp_prefix} #rnd #multimodality",
+            job_desc=f"{job_description_prefix} {exp_prefix} #rnd #multimodality @mrsndmn",
             # stop_timer=600, # в минутах, = 10 часов
             env_variables={
                 "PATH": f"{env_bin_path}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/user/conda/bin",

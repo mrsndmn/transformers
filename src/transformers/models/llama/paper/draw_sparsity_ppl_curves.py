@@ -18,6 +18,10 @@ if __name__ == "__main__":
             "Llama3.1-8B w0.1",
         ],
         [
+            'results/calibrate_ppl/ppl_results___adaptive_hcg_llama31_8B_fan_out_projection_w_1_000_l_18-26_R2DI580B_checkpoint-10999___adaptive_hcg_llama31_8B_fan_out_projection_w_1.000_l_18-26_R2DI580B.csv',
+            'Llama3.1-8B w1.0 Fan-Out Projection',
+        ],
+        [
             "results/calibrate_ppl/ppl_results_checkpoint-7500_hcg_qwen25_7B_w_1.000.csv",
             "Qwen2.5-7B w1.0",
         ],
@@ -28,24 +32,24 @@ if __name__ == "__main__":
     ]
 
     # Threshold 0.6
-    input_files = [
-        [
-            "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_llama31_8B_w_1.000_thshold_0.6.csv",
-            "Llama3.1-8B w1.0",
-        ],
-        [
-            "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_llama31_8B_w_0.100_thshold_0.6.csv",
-            "Llama3.1-8B w0.1",
-        ],
-        [
-            "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_qwen25_7B_w_1.000_thshold_0.6.csv",
-            "Qwen2.5-7B w1.0",
-        ],
-        [
-            "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_qwen25_7B_w_0.100_thshold_0.6.csv",
-            "Qwen2.5-7B w0.1",
-        ],
-    ]
+    # input_files = [
+    #     [
+    #         "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_llama31_8B_w_1.000_thshold_0.6.csv",
+    #         "Llama3.1-8B w1.0",
+    #     ],
+    #     [
+    #         "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_llama31_8B_w_0.100_thshold_0.6.csv",
+    #         "Llama3.1-8B w0.1",
+    #     ],
+    #     [
+    #         "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_qwen25_7B_w_1.000_thshold_0.6.csv",
+    #         "Qwen2.5-7B w1.0",
+    #     ],
+    #     [
+    #         "results/calibrate_ppl/ppl_results_checkpoint-5306_hcg_qwen25_7B_w_0.100_thshold_0.6.csv",
+    #         "Qwen2.5-7B w0.1",
+    #     ],
+    # ]
 
     fontsize = 29
     scale = 2

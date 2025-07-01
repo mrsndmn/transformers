@@ -864,31 +864,33 @@ if __name__ == "__main__":
 
     # Pretrain Fain Out on Tiny Datasets
     # NGPUS = 1
-    NGPUS = 4
-    num_train_epochs = 3
+    NGPUS = 1
+    num_train_epochs = 1
+    per_device_train_batch_size = 32
+    gradient_accumulation_steps = 1
+    save_steps = 5000
 
     # add_end_of_sentence_token
-    # if True:
-    if False:
+    if True:
+    # if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.1,
             hcg_learning_rate=0.01,
             learning_rate=0.0003,
             model_type='pretrained_checkpoint',
             optimized_params='full',
-            per_device_train_batch_size=16,
-            gradient_accumulation_steps=(32 // NGPUS),
+            per_device_train_batch_size=per_device_train_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
             # select_train_dataset_items=1510000 * NGPUS,
             num_train_epochs=num_train_epochs,
             save_total_limit=13,
-            save_steps=1000,
+            save_steps=save_steps,
             instance_type=f'a100.{NGPUS}gpu',
             llama_checkpoint=f'{workdir_prefix}/paper_checkpoints/pretrain/adaptive_slm2_135M_random_init',
             dataset='tiny',
             select_train_dataset_items=0,
             fan_in_idx=10,
             fan_out_idx=20,
-            # logging_steps=10,
             warmup_steps=1000,
             dry=dry,
             lr_scheduler_type='cosine',
@@ -896,20 +898,20 @@ if __name__ == "__main__":
             add_end_of_sentence_token=1,
         )
 
-    # if True:
-    if False:
+    if True:
+    # if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.1,
             hcg_learning_rate=0.01,
             learning_rate=0.0003,
             model_type='pretrained_checkpoint',
             optimized_params='full',
-            per_device_train_batch_size=16,
-            gradient_accumulation_steps=(32 // NGPUS),
+            per_device_train_batch_size=per_device_train_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
             # select_train_dataset_items=1510000 * NGPUS,
             num_train_epochs=num_train_epochs,
             save_total_limit=13,
-            save_steps=1000,
+            save_steps=save_steps,
             instance_type=f'a100.{NGPUS}gpu',
             llama_checkpoint=f'{workdir_prefix}/paper_checkpoints/pretrain/adaptive_slm2_135M_random_init',
             dataset='tiny',
@@ -922,20 +924,20 @@ if __name__ == "__main__":
             experiment_prefix_base_name="adaptive_slm2_135M_pretrain",
         )
 
-    # if True:
-    if False:
+    if True:
+    # if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.0,
             hcg_learning_rate=0.00,
             learning_rate=0.0003,
             model_type='SmolLM2-135M',
             optimized_params='full',
-            per_device_train_batch_size=16,
-            gradient_accumulation_steps=(32 // NGPUS),
+            per_device_train_batch_size=per_device_train_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
             # select_train_dataset_items=1510000 * NGPUS,
             num_train_epochs=num_train_epochs,
             save_total_limit=13,
-            save_steps=1000,
+            save_steps=save_steps,
             instance_type=f'a100.{NGPUS}gpu',
             llama_checkpoint=f"{workdir_prefix}/paper_checkpoints/pretrain/slm2_135M_random_init/",
             dataset='tiny',
@@ -995,8 +997,8 @@ if __name__ == "__main__":
 
 
     llama_calibrated_checkpoints = [
-        (18, 26, './paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306_calib40'),
-        # (18, 26, './paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306_calib90'),
+        # (18, 26, './paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306_calib40'),
+        (18, 26, './paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306_calib90'),
     ]
 
     qwen_calibrated_checkpoints = [
@@ -1005,8 +1007,8 @@ if __name__ == "__main__":
     ]
 
     # Fan out projection
-    if True:
-    # if False:
+    # if True:
+    if False:
 
         gradient_accumulation_steps = 4
         n_gpus = 8
@@ -1025,11 +1027,12 @@ if __name__ == "__main__":
                 hcg_fan_in_from=fan_in_from,
                 llama_checkpoint='unsloth/Meta-Llama-3.1-8B',
                 fan_out_projection=True,
-                experiment_prefix_base_name='adaptive_hcg_llama31_8B_fan_out_projection',
+                experiment_prefix_base_name='adaptive_hcg_llama31_8B_fan_out_projection_trimmed_embeddings',
                 select_train_dataset_items=optim_steps*batch_size*n_gpus*gradient_accumulation_steps,
                 gradient_accumulation_steps=gradient_accumulation_steps,
                 per_device_train_batch_size=batch_size,
                 force_train_on_trimmed_embeddings='1',
+                torch_compile='0',
                 lr_scheduler_type="cosine",
                 instance_type=f"a100.{n_gpus}gpu",
                 save_steps=int(optim_steps // save_total_limit),

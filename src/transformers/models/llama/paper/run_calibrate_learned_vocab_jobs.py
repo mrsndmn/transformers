@@ -35,12 +35,12 @@ def run_eval_experiments(experiments, job_description_prefix="eval calibrate", d
         llama_checkpoint = exp.pop('llama_checkpoint')
         output_suffix = exp.pop('output_suffix')
         output_dir = exp.pop('output_dir', './results/calibrate_ppl')
-
+        calibration_dataset = exp.pop('calibration_dataset', 'wikitext_103')
 
         if len(exp.keys()) > 0:
             raise ValueError("Invalid exp values!")
 
-        script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --output_suffix {output_suffix} --llama_checkpoint {llama_checkpoint} --output_dir {output_dir}\''
+        script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --output_suffix {output_suffix} --llama_checkpoint {llama_checkpoint} --output_dir {output_dir} --calibration_dataset {calibration_dataset}\''
         # script_str = f'python src/transformers/models/llama/paper/calibrate_learned_vocabulary_calc_ppl.py --output_suffix {output_suffix} --llama_checkpoint {llama_checkpoint} --output_dir {output_dir} --sparsity_only'
         # script_str = f'bash -c \'date && cd {workdir_prefix} && {env_bin_path}/python {env_bin_path}/lighteval accelerate --override-batch-size 4 --output-dir {output_dir} --custom-tasks /workspace-SR004.nfs2/d.tarasov/cosmopedia/evaluation/lighteval_tasks.py "pretrained={pretrained_model},dtype=bfloat16,device=cuda" "custom|mmlu_cloze|0|1,custom|mmlu_pro_cloze|0|1,custom|arc|0|1,custom|piqa|0|1,custom|wikitext_103|0|1"\''
 
@@ -56,7 +56,7 @@ def run_eval_experiments(experiments, job_description_prefix="eval calibrate", d
             instance_type=INSTANCE_TYPE,
             n_workers=N_WORKERS,
             processes_per_worker=1,
-            job_desc=f"{job_description_prefix} {output_suffix} #rnd #multimodality",
+            job_desc=f"{job_description_prefix} {output_suffix} #rnd #multimodality @mrsndmn",
             env_variables={
                 "PATH": f"{env_bin_path}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/user/conda/bin",
                 "WANDB_PROJECT": "adaptive_attention",
@@ -105,7 +105,7 @@ def run_eval_experiments_single_layer(experiments, job_description_prefix="eval 
             instance_type=INSTANCE_TYPE,
             n_workers=N_WORKERS,
             processes_per_worker=1,
-            job_desc=f"{job_description_prefix} i={layer_idx} #rnd #multimodality",
+            job_desc=f"{job_description_prefix} i={layer_idx} #rnd #multimodality @mrsndmn",
             env_variables={
                 "PATH": f"{env_bin_path}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/user/conda/bin",
                 "WANDB_PROJECT": "adaptive_attention",
@@ -135,28 +135,54 @@ if __name__ == "__main__":
     print("dry", dry, 'extract_metrics', extract_metrics)
 
 
-    run_eval_experiments([
-        {
-            'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306',
-            'output_suffix': 'hcg_llama31_8B_w_1.000_thshold_0.6',
-            'output_dir': './results/calibrate_ppl/'
-        },
-        {
-            'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_0.100_l_18-26_DAZ0UXGX/checkpoint-5306',
-            'output_suffix': 'hcg_llama31_8B_w_0.100_thshold_0.6',
-            'output_dir': './results/calibrate_ppl/'
-        },
-        {
-            'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_1.000_l_9-20_J3BTODV3/checkpoint-5306',
-            'output_suffix': 'hcg_qwen25_7B_w_1.000_thshold_0.6',
-            'output_dir': './results/calibrate_ppl/'
-        },
-        {
-            'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_0.100_l_9-20_3P72MPZU/checkpoint-5306',
-            'output_suffix': 'hcg_qwen25_7B_w_0.100_thshold_0.6',
-            'output_dir': './results/calibrate_ppl/'
-        },
-    ], dry=dry)
+    # if True:
+    if False:
+        run_eval_experiments([
+            {
+                'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_1.000_l_18-26_M0K275CH/checkpoint-5306',
+                'output_suffix': 'hcg_llama31_8B_w_1.000_thshold_0.6',
+                'output_dir': './results/calibrate_ppl/'
+            },
+            {
+                'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_llama31_8B_learned_vocab_w_0.100_l_18-26_DAZ0UXGX/checkpoint-5306',
+                'output_suffix': 'hcg_llama31_8B_w_0.100_thshold_0.6',
+                'output_dir': './results/calibrate_ppl/'
+            },
+            {
+                'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_1.000_l_9-20_J3BTODV3/checkpoint-5306',
+                'output_suffix': 'hcg_qwen25_7B_w_1.000_thshold_0.6',
+                'output_dir': './results/calibrate_ppl/'
+            },
+            {
+                'llama_checkpoint': './paper_checkpoints/base_thshld_0.6/adaptive_hcg_qwen25_7B_learned_vocab_w_0.100_l_9-20_3P72MPZU/checkpoint-5306',
+                'output_suffix': 'hcg_qwen25_7B_w_0.100_thshold_0.6',
+                'output_dir': './results/calibrate_ppl/'
+            },
+            {
+                'llama_checkpoint': './adaptive_hcg_llama31_8B_fan_out_projection_w_1.000_l_18-26_R2DI580B/checkpoint-10999',
+                'output_suffix': 'adaptive_hcg_llama31_8B_fan_out_projection_w_1.000_l_18-26_R2DI580B',
+                'output_dir': './results/calibrate_ppl/',
+            },
+        ], dry=dry)
+
+    if True:
+    # if False:
+        run_eval_experiments([
+            {
+                'llama_checkpoint': './adaptive_slm2_135M_pretrain_w_0.100_l_10-20_AZJQ5WL0/checkpoint-12420/',
+                'output_suffix': 'adaptive_slm2_135M_pretrain_w_0.100_l_10-20_AZJQ5WL0',
+                'output_dir': './results/calibrate_slm_ppl/',
+                'calibration_dataset': 'tiny_stories'
+            },
+            {
+                'llama_checkpoint': './adaptive_slm2_135M_pretrain_with_end_of_sentence_token_w_0.100_l_10-20_4REEAIIL/checkpoint-12420/',
+                'output_suffix': 'adaptive_slm2_135M_pretrain_with_end_of_sentence_token_w_0.100_l_10-20_4REEAIIL',
+                'output_dir': './results/calibrate_slm_ppl/',
+                'calibration_dataset': 'tiny_stories'
+            },
+        ], dry=dry)
+
+
 
     # run_eval_experiments_single_layer([
     #     {

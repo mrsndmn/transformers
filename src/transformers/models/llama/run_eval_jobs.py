@@ -99,6 +99,8 @@ def run_extract_metrics(checkpoints: list[str], tasks=None):
             'custom|piqa|0|1': 'custom|piqa|0',
             'custom|hellaswag|0|1': 'custom|hellaswag|0',
             'custom|winogrande|0|1': 'custom|winogrande|0',
+            'custom|tiny_stories|0|1': 'custom|tiny_stories|0',
+            'custom|tiny_stories_with_end_of_sentence|0|1': 'custom|tiny_stories_with_end_of_sentence|0',
         }
         tasks = list(map(lambda x: tasks_mapping[x], tasks))
 
@@ -234,13 +236,27 @@ def eval_hcg_adaptive_pretrain_all_tasks_parallel(**kwargs):
     # ]
     # tasks = "custom|arc|0|1,custom|siqa|0|1,custom|piqa|0|1,custom|hellaswag|0|1,custom|tiny_stories|0|1".split(",")
 
+    # checkpoints = [
+    #     "./adaptive_slm2_135M_pretrain_with_end_of_sentence_token_w_0.100_l_10-20_4REEAIIL/checkpoint-12420/",
+    #     "./adaptive_slm2_135M_pretrain_w_0.100_l_10-20_AZJQ5WL0/checkpoint-12420/",
+    #     "./vanilla_slm2_135M_pretrain_w_0.000_l_-_DFAC2NSB/checkpoint-12420",
+    # ]
+    # tasks = "custom|arc|0|1,custom|siqa|0|1,custom|piqa|0|1,custom|hellaswag|0|1,custom|tiny_stories|0|1,custom|tiny_stories_with_end_of_sentence|0|1".split(",")
+
 
     # Large LLM
+    # checkpoints = [
+    #     "./adaptive_hcg_llama31_8B_fan_out_projection_w_1.000_l_18-26_R2DI580B/checkpoint-7500/",
+    #     "./adaptive_hcg_llama31_8B_fan_out_projection_w_1.000_l_18-26_R2DI580B/checkpoint-10999/",
+    #     # "./adaptive_hcg_llama31_8B_lora_finetune_w_1.000_l_18-26_4CL0OO5V/checkpoint-2500/",
+    #     "./adaptive_hcg_llama31_8B_finetune_w_1.000_l_18-26_8TOJUP14/checkpoint-7500/"
+    # ]
+
+    # Checkpoints with hcg in eval mode during training
     checkpoints = [
-        # "./adaptive_hcg_llama31_8B_fan_out_projection_w_1.000_l_18-26_R2DI580B/checkpoint-7500/",
-        # "./adaptive_hcg_llama31_8B_fan_out_projection_w_1.000_l_18-26_R2DI580B/checkpoint-10999/",
-        # # "./adaptive_hcg_llama31_8B_lora_finetune_w_1.000_l_18-26_4CL0OO5V/checkpoint-2500/",
-        # "./adaptive_hcg_llama31_8B_finetune_w_1.000_l_18-26_8TOJUP14/checkpoint-7500/"
+        # "./adaptive_hcg_llama31_8B_fan_out_projection_trimmed_embeddings_w_1.000_l_18-26_653SHN4I/checkpoint-2750/",
+        "./paper_checkpoints/foproj_thrshold0.6/adaptive_hcg_llama31_8B_fan_out_projection_trimmed_embeddings_w_1.000_l_18-26_653SHN4I/checkpoint-5500/"
+        # "./paper_checkpoints/foproj_thrshold0.6/adaptive_hcg_llama31_8B_fan_out_projection_trimmed_embeddings_w_1.000_l_18-26_653SHN4I/checkpoint-10999/"
     ]
 
     # TODO
