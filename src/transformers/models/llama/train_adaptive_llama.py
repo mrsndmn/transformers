@@ -20,6 +20,7 @@ from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_N
 from transformers.loss.loss_utils import ForCausalLMLoss
 
 from transformers.models.llama.tokenization_llama_fast import EOSTokenizerFast
+from transformers.models.gpt2.tokenization_gpt2 import GPT2TokenizerEOS
 
 from datasets import load_dataset
 import datasets
@@ -963,9 +964,14 @@ def build_model(training_args: AdaptiveTrainingArguments):
     llama_checkpoint = training_args.llama_checkpoint
 
     if training_args.add_end_of_sentence_token:
-        tokenizer = EOSTokenizerFast.from_pretrained(llama_checkpoint)
+        if 'slm' in llama_checkpoint:
+            tokenizer = EOSTokenizerFast.from_pretrained(llama_checkpoint)
+        else:
+            tokenizer = GPT2TokenizerEOS.from_pretrained(llama_checkpoint)
     else:
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
+
+    print("tokenizer", tokenizer)
 
     torch_dtype = torch.bfloat16 if training_args.bf16 else torch.float32
     print("build_model torch_dtype", torch_dtype)
