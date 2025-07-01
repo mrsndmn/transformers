@@ -330,5 +330,42 @@ class GPT2Tokenizer(PreTrainedTokenizer):
             text = " " + text
         return (text, kwargs)
 
+class GPT2TokenizerEOS(GPT2Tokenizer):
 
-__all__ = ["GPT2Tokenizer"]
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.end_of_sentence_token = '<end_of_sentence>'
+        if self.end_of_sentence_token not in self.get_vocab():
+            self.add_special_tokens({"additional_special_tokens": [self.end_of_sentence_token]})
+            print(f"Added <end_of_sentence> token with ID: {self.convert_tokens_to_ids(self.end_of_sentence_token)}")
+
+        self.end_of_sentence_token_id = self.convert_tokens_to_ids(self.end_of_sentence_token)
+
+        return
+
+    def prepare_for_tokenization(self, text, is_split_into_words=False, **kwargs):
+        add_prefix_space = kwargs.pop("add_prefix_space", self.add_prefix_space)
+        if is_split_into_words or add_prefix_space:
+            text = " " + text
+
+        end_of_sentence_token = self.end_of_sentence_token
+        patterns = [
+            (r'\. ', f'. {end_of_sentence_token}'),
+            # (r'\? ', f'? {end_of_sentence_token}'),
+            # (r'! ', f'! {end_of_sentence_token}'),
+            # (r'\.\n', f'.\n{end_of_sentence_token}'),
+            # (r'\?\n', f'?\n{end_of_sentence_token}'),
+            # (r'!\n', f'!\n{end_of_sentence_token}'),
+            # (r'\.$', f'. {end_of_sentence_token}'),
+            # (r'!$', f'!{end_of_sentence_token}'),
+            # (r'\?$', f'?{end_of_sentence_token}'),
+        ]
+
+        for pattern, replacement in patterns:
+            text = re.sub(pattern, replacement, text)
+
+        return (text, kwargs)
+
+
+__all__ = ["GPT2Tokenizer", 'GPT2TokenizerEOS']

@@ -242,7 +242,7 @@ def eval_hcg_adaptive_pretrain_all_tasks_parallel(**kwargs):
     #     "./adaptive_slm2_135M_pretrain_w_0.100_l_10-20_AZJQ5WL0/checkpoint-12420/",
     #     "./vanilla_slm2_135M_pretrain_w_0.000_l_-_DFAC2NSB/checkpoint-12420",
     # ]
-    # tasks = "custom|arc|0|1,custom|siqa|0|1,custom|piqa|0|1,custom|hellaswag|0|1,custom|tiny_stories|0|1,custom|tiny_stories_with_end_of_sentence|0|1".split(",")
+    # tasks = "custom|arc|0|1,custom|siqa|0|1,custom|piqa|0|1,custom|hellaswag|0|1,custom|tiny_stories|0|1".split(",")
 
 
     # Large LLM
@@ -257,10 +257,20 @@ def eval_hcg_adaptive_pretrain_all_tasks_parallel(**kwargs):
     checkpoints = [
         # "./adaptive_hcg_llama31_8B_fan_out_projection_trimmed_embeddings_w_1.000_l_18-26_653SHN4I/checkpoint-2750/",
         # "./paper_checkpoints/foproj_thrshold0.6/adaptive_hcg_llama31_8B_fan_out_projection_trimmed_embeddings_w_1.000_l_18-26_653SHN4I/checkpoint-5500/"
-        "./paper_checkpoints/foproj_thrshold0.6/adaptive_hcg_llama31_8B_fan_out_projection_trimmed_embeddings_w_1.000_l_18-26_653SHN4I/checkpoint-10999/",
-        "unsloth/Meta-Llama-3.1-8B",
+        # "./paper_checkpoints/foproj_thrshold0.6/adaptive_hcg_llama31_8B_fan_out_projection_trimmed_embeddings_w_1.000_l_18-26_653SHN4I/checkpoint-10999/",
+        # "unsloth/Meta-Llama-3.1-8B",
+        "./adaptive_hcg_llama31_8B_fan_out_projection_trimmed_embeddings_w_1.000_l_18-26_WRT210U7/checkpoint-10999",
     ]
-    tasks = ["custom|gsm8k|4|1"]
+
+    # SLM small batch
+    checkpoints = [
+        # './adaptive_slm2_135M_pretrain_with_end_of_sentence_token_w_0.100_l_10-20_CN17H8GB/checkpoint-66241',
+        './adaptive_slm2_135M_pretrain_with_end_of_sentence_token_w_0.100_l_10-20_CN17H8GB/checkpoint-66241_eos_tokenizer/',
+        './adaptive_slm2_135M_pretrain_w_0.100_l_10-20_951OTTFF/checkpoint-66241/',
+        './vanilla_slm2_135M_pretrain_w_0.000_l_-_IWQ3X999/checkpoint-66241/',
+        "./vanilla_slm2_127M_20L_pretrain_w_0.000_l_-_STYB64DM/checkpoint-60000/"
+    ]
+    tasks = "custom|arc|0|1,custom|siqa|0|1,custom|piqa|0|1,custom|hellaswag|0|1,custom|tiny_stories|0|1".split(",")
 
     # TODO
 

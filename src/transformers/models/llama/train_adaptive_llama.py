@@ -117,6 +117,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     save_only_model: bool = field(default=True)
 
     prohibit_end_of_sentence_pruning: bool = field(default=False)
+    prune_all_except_end_of_sentence_token: bool = field(default=False)
     # scale_token_frequency: bool = field(default=False)
 
     push_to_hub: bool = field(default=False)
@@ -1075,6 +1076,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
     model.config.concrete_stop_word_pruning = training_args.concrete_stop_word_pruning
     model.config.forward_residuals = training_args.forward_residuals
     model.config.force_train_on_trimmed_embeddings = training_args.force_train_on_trimmed_embeddings
+    model.config.prune_all_except_end_of_sentence_token = training_args.prune_all_except_end_of_sentence_token
 
     if training_args.fan_in_idx is not None:
         model.config.fan_in_idx = training_args.fan_in_idx
