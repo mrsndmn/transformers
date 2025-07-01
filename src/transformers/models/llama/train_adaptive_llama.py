@@ -965,9 +965,9 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
     if training_args.add_end_of_sentence_token:
         if 'slm' in llama_checkpoint:
-            tokenizer = EOSTokenizerFast.from_pretrained(llama_checkpoint)
-        else:
             tokenizer = GPT2TokenizerEOS.from_pretrained(llama_checkpoint)
+        else:
+            tokenizer = EOSTokenizerFast.from_pretrained(llama_checkpoint)
     else:
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
 

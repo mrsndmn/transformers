@@ -224,6 +224,7 @@ class HardConcreteGate(nn.Module):
         if self.config.prune_all_except_end_of_sentence_token:
             concrete = torch.zeros_like(input_ids, dtype=torch.float32)
             concrete[ input_ids == self.config.end_of_sentence_token_id ] = 1
+            concrete = concrete.unsqueeze(-1)
             return concrete
 
         seq_len = input_ids.shape[1]
