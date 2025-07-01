@@ -74,6 +74,7 @@ def test_normalization_equivalence(test_texts, tokenizer, end_of_sentence_token)
         print(f"  Tokenizer: '{tokenizer_result}'")
         print(f"  Dummy: '{dummy_result}'")
         print(f"  Match: {tokenizer_result == dummy_result}")
+        assert tokenizer_result == dummy_result, f"Tokenizer and dummy implementations do not match for test {i+1}"
         print()
 
 
