@@ -867,15 +867,72 @@ if __name__ == "__main__":
 
     # Pretrain Fain Out on Tiny Datasets
     # NGPUS = 1
-    NGPUS = 8
+    NGPUS = 4
     num_train_epochs = 1
-    per_device_train_batch_size = int(32 // NGPUS)
-    gradient_accumulation_steps = 1
-    save_steps = 5000
+    per_device_train_batch_size = 16
+    gradient_accumulation_steps = (64 // NGPUS)
+    save_steps = 1000
 
-    # prune_all_except_end_of_sentence_token
+    # prune_all_except_end_of_sentence_token 1.7B Model
     if True:
     # if False:
+        run_hcg_llama31_8B_hcg(
+            hcg_loss_weight=0.1,
+            hcg_learning_rate=0.01,
+            learning_rate=0.0003,
+            model_type='pretrained_checkpoint',
+            optimized_params='full',
+            per_device_train_batch_size=per_device_train_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            # select_train_dataset_items=1510000 * NGPUS,
+            num_train_epochs=num_train_epochs,
+            save_total_limit=100,
+            save_steps=save_steps,
+            instance_type=f'a100.{NGPUS}gpu',
+            llama_checkpoint=f'{workdir_prefix}/paper_checkpoints/pretrain/adaptive_slm2_1.7B_random_init',
+            dataset='smollm-corpus',
+            select_train_dataset_items=0,
+            fan_in_idx=8,
+            fan_out_idx=16,
+            warmup_steps=1000,
+            dry=dry,
+            lr_scheduler_type='cosine',
+            force_train_on_trimmed_embeddings='1',
+            add_end_of_sentence_token=1,
+            prune_all_except_end_of_sentence_token=1,
+            experiment_prefix_base_name="adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte",
+        )
+
+    #  Vanilla 1.7B Model
+    if True:
+    # if False:
+        run_hcg_llama31_8B_hcg(
+            hcg_loss_weight=0.0,
+            hcg_learning_rate=0.00,
+            learning_rate=0.0003,
+            model_type='SmolLM2',
+            optimized_params='full',
+            per_device_train_batch_size=per_device_train_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            # select_train_dataset_items=1510000 * NGPUS,
+            num_train_epochs=num_train_epochs,
+            save_total_limit=100,
+            save_steps=save_steps,
+            instance_type=f'a100.{NGPUS}gpu',
+            llama_checkpoint=f"{workdir_prefix}/paper_checkpoints/pretrain/slm2_1.7B_random_init/",
+            dataset='smollm-corpus',
+            select_train_dataset_items=0,
+            fan_in_idx='',
+            fan_out_idx='',
+            dry=dry,
+            warmup_steps=1000,
+            lr_scheduler_type='cosine',
+            experiment_prefix_base_name="vanilla_slm2_1.7B_pretrain",
+        )
+
+    # prune_all_except_end_of_sentence_token
+    # if True:
+    if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.1,
             hcg_learning_rate=0.01,
@@ -902,7 +959,6 @@ if __name__ == "__main__":
             add_end_of_sentence_token=1,
             prune_all_except_end_of_sentence_token=1,
         )
-
 
     # add_end_of_sentence_token
     # if True:
@@ -964,7 +1020,7 @@ if __name__ == "__main__":
             hcg_loss_weight=0.0,
             hcg_learning_rate=0.00,
             learning_rate=0.0003,
-            model_type='SmolLM2-135M',
+            model_type='SmolLM2',
             optimized_params='full',
             per_device_train_batch_size=per_device_train_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
@@ -990,7 +1046,7 @@ if __name__ == "__main__":
             hcg_loss_weight=0.0,
             hcg_learning_rate=0.00,
             learning_rate=0.0003,
-            model_type='SmolLM2-135M',
+            model_type='SmolLM2',
             optimized_params='full',
             per_device_train_batch_size=per_device_train_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,

@@ -188,3 +188,5 @@ exps_evaluation/
 paper_checkpoints/
 vanilla_slm2*
 test_test_*
+
+fineweb_edu_tokenized_gpt2_eos/

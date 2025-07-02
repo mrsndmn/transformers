@@ -7,7 +7,15 @@ if __name__ == "__main__":
 
     # llama_checkpoint = "HuggingFaceTB/SmolLM2-1.7B"
     # llama_checkpoint = "HuggingFaceTB/SmolLM2-135M"
-    llama_checkpoint = "HuggingFaceTB/SmolLM2-135M"
+
+    # llama_checkpoint = "HuggingFaceTB/SmolLM2-135M"
+    # output_dir = f"paper_checkpoints/pretrain/slm2_135M_random_init"
+    # adaptive_output_dir = f"paper_checkpoints/pretrain/adaptive_slm2_135M_random_init"
+
+    llama_checkpoint = "HuggingFaceTB/SmolLM2-1.7B"
+    output_dir = f"paper_checkpoints/pretrain/slm2_1.7B_random_init"
+    adaptive_output_dir = f"paper_checkpoints/pretrain/adaptive_slm2_1.7B_random_init"
+
 
     llama_config = LlamaConfig.from_pretrained(llama_checkpoint)
     num_layers = llama_config.num_hidden_layers // 2
@@ -32,12 +40,10 @@ if __name__ == "__main__":
 
     print("tokenizer", len(tokenizer))
 
-    output_dir = f"paper_checkpoints/pretrain/slm2_135M_random_init"
 
     llama_model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
 
-    output_dir = f"paper_checkpoints/pretrain/adaptive_slm2_135M_random_init"
 
-    model.save_pretrained(output_dir)
-    tokenizer.save_pretrained(output_dir)
+    model.save_pretrained(adaptive_output_dir)
+    tokenizer.save_pretrained(adaptive_output_dir)

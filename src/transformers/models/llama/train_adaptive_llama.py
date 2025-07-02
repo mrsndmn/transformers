@@ -20,9 +20,9 @@ from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_N
 from transformers.loss.loss_utils import ForCausalLMLoss
 
 from transformers.models.llama.tokenization_llama_fast import EOSTokenizerFast
-from transformers.models.gpt2.tokenization_gpt2 import GPT2TokenizerEOS
+from transformers.models.gpt2.tokenization_gpt2_fast import GPT2TokenizerFastEOS
 
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 import datasets
 from accelerate import PartialState
 
@@ -965,7 +965,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
     if training_args.add_end_of_sentence_token:
         if 'slm' in llama_checkpoint:
-            tokenizer = GPT2TokenizerEOS.from_pretrained(llama_checkpoint)
+            tokenizer = GPT2TokenizerFastEOS.from_pretrained(llama_checkpoint)
         else:
             tokenizer = EOSTokenizerFast.from_pretrained(llama_checkpoint)
     else:
@@ -1056,16 +1056,14 @@ def build_model(training_args: AdaptiveTrainingArguments):
         )
 
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
-    elif training_args.model_type == 'SmolLM2-135M':
+    elif training_args.model_type == 'SmolLM2':
         llama_checkpoint = training_args.llama_checkpoint
         model = LlamaForCausalLM.from_pretrained(llama_checkpoint)
-    elif training_args.model_type == 'SmolLM-1.7B':
-        llama_checkpoint = "HuggingFaceTB/SmolLM2-1.7B"
-        model = LlamaForCausalLM.from_pretrained(llama_checkpoint, )
     else:
         raise ValueError(f"{training_args.model_type} is not supported")
 
     tokenizer.padding_side = 'left'
+    tokenizer.pad_token = tokenizer.eos_token
 
     # model.config.scale_token_frequency = training_args.scale_token_frequency
 
@@ -1089,7 +1087,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
     if training_args.fan_out_idx is not None:
         model.config.fan_out_idx = training_args.fan_out_idx
 
-    if training_args.model_type != 'SmolLM2-135M':
+    if training_args.model_type != 'SmolLM2':
         model.model.recalc_fan_in_fan_out_idx()
 
         print("model.config.fan_in_idx", model.config.fan_in_idx)
@@ -1270,9 +1268,6 @@ if __name__ == "__main__":
     compute_metrics = None
     data_collator = None
 
-
-    tokenizer.pad_token = tokenizer.eos_token
-
     # from tokenizers.processors import TemplateProcessing
     # tokenizer.post_processor = TemplateProcessing(
     #     single=f"{tokenizer.bos_token} $A {tokenizer.eos_token}",
@@ -1290,26 +1285,37 @@ if __name__ == "__main__":
     with state.local_main_process_first():
 
         if training_args.dataset == 'smollm-corpus':
-            data_files = [ f"data/CC-MAIN-2024-10/000_{i:05}.parquet" for i in range(21) ]
-            smollm_corpus = load_dataset("HuggingFaceFW/fineweb", split="train", data_files=data_files, num_proc=16)
+            # data_files = [ f"data/CC-MAIN-2024-10/000_{i:05}.parquet" for i in range(50) ]
+            # smollm_corpus = load_dataset("HuggingFaceFW/fineweb", split="train", data_files=data_files, num_proc=16)
 
-            def tokenize_function(examples):
-                # 2046 = 2048 - 1 - 1 # eos and bos tokens
-                text = examples['text']
+            if isinstance(tokenizer, GPT2TokenizerFastEOS):
+                smollm_corpus = Dataset.load_from_disk('./fineweb_edu_tokenized_gpt2_eos')
+            else:
+                data_files = []
+                for i in range(6):
+                    for j in range(10):
+                        data_files.append(f"sample/100BT/{i:03}_{j:05}.parquet")
 
-                tokenized_inputs = tokenizer(text, truncation=True, padding='max_length', max_length=2046, return_tensors='pt')
+                smollm_corpus = load_dataset("HuggingFaceFW/fineweb-edu", data_files=data_files, num_proc=48)
+                smollm_corpus = smollm_corpus['train']
 
-                return tokenized_inputs
+
+                def tokenize_function(examples):
+                    text = examples['text']
+
+                    tokenized_inputs = tokenizer(text, truncation=True, padding='max_length', max_length=1024, return_tensors='pt')
+
+                    return tokenized_inputs
+
+                smollm_corpus = smollm_corpus.map(tokenize_function, batched=True, num_proc=48)
 
             print("training_args.select_train_dataset_items", training_args.select_train_dataset_items)
             if training_args.select_train_dataset_items > 0:
                 smollm_corpus = smollm_corpus.select(range(training_args.select_train_dataset_items))
 
-            smollm_corpus = smollm_corpus.map(tokenize_function, batched=True, num_proc=32)
-
-            smollm_corpus = smollm_corpus.train_test_split(test_size=100, seed=1)
-            train_dataset = smollm_corpus['train']
-            eval_dataset = smollm_corpus['test']
+            # smollm_corpus = smollm_corpus.train_test_split(test_size=100, seed=1)
+            train_dataset = smollm_corpus
+            eval_dataset = smollm_corpus.select(range(100))
         elif training_args.dataset == 'tiny':
             train_dataset = load_dataset("roneneldan/TinyStories", split="train")
             if training_args.select_train_dataset_items > 0:
