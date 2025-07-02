@@ -1,16 +1,22 @@
 import argparse
 import os
+from transformers import AutoTokenizer
 from transformers.models.gpt2.tokenization_gpt2_fast import GPT2TokenizerFastEOS
 from datasets import load_dataset
 
 if __name__ == "__main__":
 
     args = argparse.ArgumentParser()
+    args.add_argument("--tokenizer", type=str, default='gpt2_eos')
     args.add_argument("--data_file", type=str)
+    args.add_argument("--output_dir", type=str)
     args.add_argument("--num_proc", type=int, default=48)
     args = args.parse_args()
 
-    tokenizer = GPT2TokenizerFastEOS.from_pretrained("HuggingFaceTB/SmolLM2-1.7B")
+    if args.tokenizer == 'gpt2_eos':
+        tokenizer = GPT2TokenizerFastEOS.from_pretrained("HuggingFaceTB/SmolLM2-1.7B")
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
 
     tokenizer.padding_side = 'left'
     tokenizer.pad_token = tokenizer.eos_token
@@ -33,6 +39,7 @@ if __name__ == "__main__":
 
     smollm_corpus = smollm_corpus.map(tokenize_function, batched=True, num_proc=48)
 
-    output_dir = f'./fineweb_edu_tokenized_gpt2_eos/{os.path.basename(args.data_file)}'
+    os.makedirs(args.output_dir, exist_ok=True)
+    output_dir = f'{args.output_dir}/{os.path.basename(args.data_file)}'
     smollm_corpus.save_to_disk(output_dir)
     print(f"Saved to {output_dir}")

@@ -11,16 +11,14 @@ if __name__ == "__main__":
 
     author_name = "d.tarasov"
 
-    # for i in range(6):
-    #     for j in range(10):
-    for i in range(1):
-        for j in range(2):
+    for i in range(6):
+        for j in range(10):
             data_file = f"sample/100BT/{i:03}_{j:05}.parquet"
 
             result = client.run_job(
                 payload={
-                    'script': f"bash -c 'cd {workdir} && /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python src/transformers/models/llama/tmp/tokenize_fineweb_edu.py --data_file {data_file} --tokenizer HuggingFaceTB/SmolLM2-1.7B --output_dir ./fineweb_edu_tokenized_gpt2'",
-                    'job_desc': f'Tokenize fineweb edu gpt2 {data_file} #{author_name} #rnd #multimodal @mrsndmn',
+                    'script': f"bash -c 'cd {workdir} && /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python src/transformers/models/llama/tmp/tokenize_fineweb_edu.py --data_file {data_file} --tokenizer gpt2_eos --output_dir ./fineweb_edu_tokenized_gpt2_eos'",
+                    'job_desc': f'Tokenize fineweb edu gpt2_eos {data_file} #{author_name} #rnd #multimodal @mrsndmn',
                     'instance_type': 'a100.1gpu',
                     'region': extra_options['region'],
                     'env_variables': {

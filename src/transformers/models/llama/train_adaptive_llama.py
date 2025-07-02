@@ -1,3 +1,4 @@
+from tqdm import tqdm
 import pytest
 from dataclasses import dataclass, field
 import math
@@ -20,7 +21,7 @@ from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_N
 from transformers.loss.loss_utils import ForCausalLMLoss
 
 from transformers.models.llama.tokenization_llama_fast import EOSTokenizerFast
-from transformers.models.gpt2.tokenization_gpt2_fast import GPT2TokenizerFastEOS
+from transformers.models.gpt2.tokenization_gpt2_fast import GPT2TokenizerFastEOS, GPT2TokenizerFast
 
 from datasets import load_dataset, Dataset
 import datasets
@@ -1289,7 +1290,31 @@ if __name__ == "__main__":
             # smollm_corpus = load_dataset("HuggingFaceFW/fineweb", split="train", data_files=data_files, num_proc=16)
 
             if isinstance(tokenizer, GPT2TokenizerFastEOS):
-                smollm_corpus = Dataset.load_from_disk('./fineweb_edu_tokenized_gpt2_eos')
+                print("Loading fineweb edu tokenized with gpt2_eos")
+                current_dir = '/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out'
+
+                output_dir = os.listdir(f'{current_dir}/fineweb_edu_tokenized_gpt2_eos/')
+                print(output_dir)
+
+                all_datasets = []
+                for data_file in tqdm(output_dir, desc='Loading datasets'):
+                    dataset = Dataset.load_from_disk(f'{current_dir}/fineweb_edu_tokenized_gpt2_eos/{data_file}')
+                    all_datasets.append(dataset)
+
+                smollm_corpus = datasets.concatenate_datasets(all_datasets)
+            elif isinstance(tokenizer, GPT2TokenizerFast) and isinstance(model, LlamaForCausalLM) and 'slm2' in training_args.output_dir:
+                print("Loading fineweb edu tokenized with gpt2")
+                current_dir = '/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out'
+
+                output_dir = os.listdir(f'{current_dir}/fineweb_edu_tokenized_gpt2_eos/')
+                print(output_dir)
+
+                all_datasets = []
+                for data_file in tqdm(output_dir, desc='Loading datasets'):
+                    dataset = Dataset.load_from_disk(f'{current_dir}/fineweb_edu_tokenized_gpt2_eos/{data_file}')
+                    all_datasets.append(dataset)
+
+                smollm_corpus = datasets.concatenate_datasets(all_datasets)
             else:
                 data_files = []
                 for i in range(6):
