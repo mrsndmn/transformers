@@ -264,11 +264,15 @@ def eval_hcg_adaptive_pretrain_all_tasks_parallel(**kwargs):
 
     # SLM small batch
     checkpoints = [
-        # './adaptive_slm2_135M_pretrain_with_end_of_sentence_token_w_0.100_l_10-20_CN17H8GB/checkpoint-66241',
-        './adaptive_slm2_135M_pretrain_with_end_of_sentence_token_w_0.100_l_10-20_CN17H8GB/checkpoint-66241_eos_tokenizer/',
         './adaptive_slm2_135M_pretrain_w_0.100_l_10-20_951OTTFF/checkpoint-66241/',
+        './adaptive_slm2_135M_pretrain_with_end_of_sentence_token_w_0.100_l_10-20_CN17H8GB/checkpoint-66241_eos_tokenizer/',
+        "./adaptive_slm2_135M_pretrain_with_end_of_sentence_token_w_0.100_l_10-20_8WUWMNL1/checkpoint-66241/"
+        "./adaptive_slm2_135M_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_10-20_YLMXOZZP/checkpoint-66241/",
         './vanilla_slm2_135M_pretrain_w_0.000_l_-_IWQ3X999/checkpoint-66241/',
-        "./vanilla_slm2_127M_20L_pretrain_w_0.000_l_-_STYB64DM/checkpoint-60000/"
+        "./vanilla_slm2_127M_20L_pretrain_w_0.000_l_-_STYB64DM/checkpoint-60000/",
+
+        # With Large Batch Size
+        # "./adaptive_slm2_135M_pretrain_with_end_of_sentence_token_w_0.100_l_10-20_O8T0D1OA/checkpoint-4140/",
     ]
     tasks = "custom|arc|0|1,custom|siqa|0|1,custom|piqa|0|1,custom|hellaswag|0|1,custom|tiny_stories|0|1".split(",")
 

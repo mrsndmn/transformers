@@ -1208,6 +1208,12 @@ def build_model(training_args: AdaptiveTrainingArguments):
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
     print("num freezed model parameters:", sum(p.numel() for p in model.parameters() if not p.requires_grad))
 
+    if training_args.add_end_of_sentence_token and model.config.vocab_size != len(tokenizer):
+        model.resize_token_embeddings(len(tokenizer))
+        print(f"Resized model embeddings to vocabulary size: {len(tokenizer)}")
+        model.config.end_of_sentence_token_id = tokenizer.convert_tokens_to_ids('<end_of_sentence>')
+        print("model.config.end_of_sentence_token_id", model.config.end_of_sentence_token_id)
+
     # breakpoint()
 
     return model, tokenizer
@@ -1266,11 +1272,6 @@ if __name__ == "__main__":
 
 
     tokenizer.pad_token = tokenizer.eos_token
-
-    # Add end_of_sentence token if flag is enabled
-    if training_args.add_end_of_sentence_token and model.config.vocab_size != len(tokenizer):
-        model.resize_token_embeddings(len(tokenizer))
-        print(f"Resized model embeddings to vocabulary size: {len(tokenizer)}")
 
     # from tokenizers.processors import TemplateProcessing
     # tokenizer.post_processor = TemplateProcessing(

@@ -867,10 +867,10 @@ if __name__ == "__main__":
 
     # Pretrain Fain Out on Tiny Datasets
     # NGPUS = 1
-    NGPUS = 2
+    NGPUS = 8
     num_train_epochs = 1
-    per_device_train_batch_size = 16
-    gradient_accumulation_steps = int(32//NGPUS)
+    per_device_train_batch_size = int(32 // NGPUS)
+    gradient_accumulation_steps = 1
     save_steps = 5000
 
     # prune_all_except_end_of_sentence_token
@@ -897,12 +897,12 @@ if __name__ == "__main__":
             warmup_steps=1000,
             dry=dry,
             lr_scheduler_type='cosine',
-            experiment_prefix_base_name="adaptive_slm2_135M_pretrain_with_end_of_sentence_token",
+            experiment_prefix_base_name="adaptive_slm2_135M_pretrain_with_end_of_sentence_token_ftte",
+            force_train_on_trimmed_embeddings='1',
             add_end_of_sentence_token=1,
             prune_all_except_end_of_sentence_token=1,
         )
 
-    
 
     # add_end_of_sentence_token
     # if True:

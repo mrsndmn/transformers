@@ -308,7 +308,7 @@ def evaluate_acc_openbookqa(model):
 
 
 @torch.no_grad()
-def evaluate_different_percents(model, percent_step=10, max_percent=100, min_percent=0, count_pruned_percent=True):
+def evaluate_different_percents(model, percent_step=10, max_percent=100, min_percent=0, count_pruned_percent=True, dataset='wikitext_103'):
     global total_initial_tokens, total_pruned_tokens, pruned_input_ids_counts
 
     assert percent_step > 0
@@ -335,7 +335,13 @@ def evaluate_different_percents(model, percent_step=10, max_percent=100, min_per
             print("Registered forward hook on model.model.fan_in")
 
         start_time = time.time()
-        ppl_results = evaluate_ppl_wikitext_103(model)
+        if dataset == 'wikitext_103':
+            ppl_results = evaluate_ppl_wikitext_103(model)
+        elif dataset == 'tiny_stories':
+            ppl_results = evaluate_tiny_stories(model)
+        else:
+            raise ValueError(f"Unknown dataset: {dataset}")
+
         ppl = ppl_results['ppl']
         end_time = time.time()
         print(f"Time taken for PPL evaluation: {end_time - start_time} seconds")
@@ -518,8 +524,8 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_base_path", type=str, required=True)
     parser.add_argument("--task_name", type=str, default=None)
     parser.add_argument("--analyze_most_confident_pruned_tokens", action='store_true', default=False)
-    parser.add_argument("--percent_step", type=int, default=0)
-    parser.add_argument("--min_percent", type=int, default=70)
+    parser.add_argument("--percent_step", type=int, default=10)
+    parser.add_argument("--min_percent", type=int, default=0)
     parser.add_argument("--max_percent", type=int, default=95)
     parser.add_argument("--normalize_hcg_log_a", action='store_true', default=False)
     parser.add_argument("--fan_in_idxs", default=None)
@@ -529,6 +535,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_samples", default=None, type=int)
     parser.add_argument("--fan_out_projection", default=None, type=int)
     parser.add_argument("--count_pruned_percent", default=False, action='store_true')
+    parser.add_argument("--dataset", default='wikitext_103', type=str)
 
     args = parser.parse_args()
 
@@ -569,98 +576,8 @@ if __name__ == "__main__":
         model_class = AutoModelForCausalLM
     elif 'qwen' in last_checkpoint_path:
         model_class = AdaptiveQwen2ForCausalLM
-    elif 'llama' in last_checkpoint_path:
+    elif 'llama' in last_checkpoint_path or 'slm2' in last_checkpoint_path:
         model_class = AdaptiveLlamaForCausalLM
-        if '70B' in last_checkpoint_path:
-            device_map = {
-                "model.embed_tokens": 0,
-                "model.fan_in": 0,
-                "model.layers.0": 0,
-                "model.layers.1": 0,
-                "model.layers.2": 0,
-                "model.layers.3": 0,
-                "model.layers.4": 0,
-                "model.layers.5": 0,
-                "model.layers.6": 0,
-                "model.layers.7": 0,
-                "model.layers.8": 0,
-                "model.layers.9": 0,
-                "model.layers.10": 0,
-                "model.layers.11": 0,
-                "model.layers.12": 0,
-                "model.layers.13": 0,
-                "model.layers.14": 0,
-                "model.layers.15": 0,
-                "model.layers.16": 0,
-                "model.layers.17": 0,
-                "model.layers.18": 0,
-                "model.layers.19": 1,
-                "model.layers.20": 1,
-                "model.layers.21": 1,
-                "model.layers.22": 1,
-                "model.layers.23": 1,
-                "model.layers.24": 1,
-                "model.layers.25": 1,
-                "model.layers.26": 1,
-                "model.layers.27": 1,
-                "model.layers.28": 1,
-                "model.layers.29": 1,
-                "model.layers.30": 1,
-                "model.layers.31": 1,
-                "model.layers.32": 1,
-                "model.layers.33": 1,
-                "model.layers.34": 1,
-                "model.layers.35": 1,
-                "model.layers.36": 1,
-                "model.layers.37": 1,
-                "model.layers.38": 1,
-                "model.layers.39": 1,
-                "model.layers.40": 2,
-                "model.layers.41": 2,
-                "model.layers.42": 2,
-                "model.layers.43": 2,
-                "model.layers.44": 2,
-                "model.layers.45": 2,
-                "model.layers.46": 2,
-                "model.layers.47": 2,
-                "model.layers.48": 2,
-                "model.layers.49": 2,
-                "model.layers.50": 2,
-                "model.layers.51": 2,
-                "model.layers.52": 2,
-                "model.layers.53": 2,
-                "model.layers.54": 2,
-                "model.layers.55": 2,
-                "model.layers.56": 2,
-                "model.layers.57": 2,
-                "model.layers.58": 2,
-                "model.layers.59": 2,
-                "model.layers.60": 2,
-                "model.layers.61": 3,
-                "model.layers.62": 3,
-                "model.layers.63": 3,
-                "model.layers.64": 3,
-                "model.layers.65": 3,
-                "model.layers.66": 3,
-                "model.layers.67": 3,
-                "model.layers.68": 3,
-                "model.layers.69": 3,
-                "model.layers.70": 3,
-                "model.layers.71": 3,
-                "model.layers.72": 3,
-                "model.layers.73": 3,
-                "model.layers.74": 3,
-                "model.layers.75": 3,
-                "model.layers.76": 3,
-                "model.layers.77": 3,
-                "model.layers.78": 3,
-                "model.layers.79": 3,
-                "model.fan_out": 0,
-                "model.norm": 3,
-                "model.rotary_emb": 3,
-                "lm_head": 3,
-            }
-
     else:
         raise ValueError(f"Unknown model type: {last_checkpoint_path}")
 
@@ -691,7 +608,14 @@ if __name__ == "__main__":
 
     if args.percent_step > 0:
         print(f"Evaluating different percents with percent_step={args.percent_step} and max_percent={args.max_percent}")
-        evaluate_different_percents(model, percent_step=args.percent_step, max_percent=args.max_percent, min_percent=args.min_percent, count_pruned_percent=args.count_pruned_percent)
+        evaluate_different_percents(
+            model,
+            percent_step=args.percent_step,
+            max_percent=args.max_percent,
+            min_percent=args.min_percent,
+            count_pruned_percent=args.count_pruned_percent,
+            dataset=args.dataset,
+        )
     elif args.analyze_most_confident_pruned_tokens:
         most_confident_pruned_tokens = analyze_most_confident_pruned_tokens(model, checkpoint_base_path=checkpoint_base_path)
     else:
