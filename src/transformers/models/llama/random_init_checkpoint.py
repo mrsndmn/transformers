@@ -22,9 +22,9 @@ if __name__ == "__main__":
     dummy_adaptive_fan_in = [ True ] * num_layers
     dummy_adaptive_fan_in[10] = False
 
-    torch_dtype = torch.bfloat16
+    torch_dtype = torch.float32
 
-    torch.set_default_dtype(torch.bfloat16)
+    torch.set_default_dtype(torch_dtype)
     llama_model = LlamaForCausalLM(llama_config)
     torch.set_default_dtype(torch.float32)
 

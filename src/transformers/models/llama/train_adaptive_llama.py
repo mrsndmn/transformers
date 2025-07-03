@@ -974,7 +974,9 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
     print("tokenizer", tokenizer)
 
-    torch_dtype = torch.bfloat16 if training_args.bf16 else torch.float32
+    # torch_dtype = torch.float32
+    torch_dtype = torch.bfloat16
+    # torch_dtype = torch.bfloat16 if training_args.bf16 else torch.float32
     print("build_model torch_dtype", torch_dtype)
 
     if training_args.init_hcg_a is not None:
@@ -1059,7 +1061,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
         tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
     elif training_args.model_type == 'SmolLM2':
         llama_checkpoint = training_args.llama_checkpoint
-        model = LlamaForCausalLM.from_pretrained(llama_checkpoint)
+        model = LlamaForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
     else:
         raise ValueError(f"{training_args.model_type} is not supported")
 
@@ -1106,7 +1108,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
         optimized_params = training_args.optimized_params.split(',')
 
         for param_name in optimized_params:
-            assert param_name in AVAILABLE_OPTIMIZED_PARAMS, f'{param_name} is not in {available_optimized_params}'
+            assert param_name in AVAILABLE_OPTIMIZED_PARAMS, f'{param_name} is not in {AVAILABLE_OPTIMIZED_PARAMS}'
 
         if 'full' in optimized_params:
             assert len(optimized_params) == 1

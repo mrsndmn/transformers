@@ -191,3 +191,4 @@ test_test_*
 
 fineweb_edu_tokenized_gpt2_eos/
 fineweb_edu_tokenized_gpt2/
+test_init_checkpoint_adaptive_with_end_of_sentence_token/
