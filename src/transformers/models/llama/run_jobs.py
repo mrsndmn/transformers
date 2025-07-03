@@ -897,15 +897,15 @@ if __name__ == "__main__":
             warmup_steps=1000,
             dry=dry,
             lr_scheduler_type='cosine',
-            force_train_on_trimmed_embeddings='1',
+            force_train_on_trimmed_embeddings='0',
             add_end_of_sentence_token=1,
             prune_all_except_end_of_sentence_token=1,
             experiment_prefix_base_name="adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte",
         )
 
     #  Vanilla 1.7B Model
-    if True:
-    # if False:
+    # if True:
+    if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.0,
             hcg_learning_rate=0.00,
