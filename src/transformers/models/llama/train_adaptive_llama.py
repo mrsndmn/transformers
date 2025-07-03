@@ -1292,13 +1292,13 @@ if __name__ == "__main__":
             if isinstance(tokenizer, GPT2TokenizerFastEOS):
                 print("Loading fineweb edu tokenized with gpt2_eos")
                 current_dir = '/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out'
-
-                output_dir = os.listdir(f'{current_dir}/fineweb_edu_tokenized_gpt2_eos/')
+                dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2_eos'
+                output_dir = os.listdir(dataset_path)
                 print(output_dir)
 
                 all_datasets = []
                 for data_file in tqdm(output_dir, desc='Loading datasets'):
-                    dataset = Dataset.load_from_disk(f'{current_dir}/fineweb_edu_tokenized_gpt2_eos/{data_file}')
+                    dataset = Dataset.load_from_disk(f'{dataset_path}/{data_file}')
                     all_datasets.append(dataset)
 
                 smollm_corpus = datasets.concatenate_datasets(all_datasets)
@@ -1306,12 +1306,13 @@ if __name__ == "__main__":
                 print("Loading fineweb edu tokenized with gpt2")
                 current_dir = '/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out'
 
-                output_dir = os.listdir(f'{current_dir}/fineweb_edu_tokenized_gpt2_eos/')
+                dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2'
+                output_dir = os.listdir(dataset_path)
                 print(output_dir)
 
                 all_datasets = []
                 for data_file in tqdm(output_dir, desc='Loading datasets'):
-                    dataset = Dataset.load_from_disk(f'{current_dir}/fineweb_edu_tokenized_gpt2_eos/{data_file}')
+                    dataset = Dataset.load_from_disk(f'{dataset_path}/{data_file}')
                     all_datasets.append(dataset)
 
                 smollm_corpus = datasets.concatenate_datasets(all_datasets)

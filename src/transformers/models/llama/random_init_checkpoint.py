@@ -1,5 +1,5 @@
 import torch
-from transformers import LlamaConfig, AutoTokenizer, AutoModelForCausalLM
+from transformers import LlamaConfig, AutoTokenizer, AutoModelForCausalLM, LlamaForCausalLM
 from transformers.models.llama.convert_hf_llama_to_adaptive_llama import build_adaptive_llama_from_llama_checkpoint
 
 if __name__ == "__main__":
@@ -24,7 +24,10 @@ if __name__ == "__main__":
 
     torch_dtype = torch.bfloat16
 
-    llama_model = AutoModelForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype, device_map='cpu')
+    torch.set_default_dtype(torch.bfloat16)
+    llama_model = LlamaForCausalLM(llama_config)
+    torch.set_default_dtype(torch.float32)
+
     llama_model_state_dict = llama_model.state_dict()
 
     model = build_adaptive_llama_from_llama_checkpoint(
