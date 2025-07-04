@@ -9,7 +9,7 @@ import torch
 from transformers import LlamaForCausalLM
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
 
-from transformers.models.llama.interpretation.explore_eval_hard_concrete_percent import evaluate_acc_hellaswag, evaluate_acc_winogrande, evaluate_acc_piqa, evaluate_acc_siqa, evaluate_acc_openbookqa
+from transformers.models.llama.interpretation.explore_eval_hard_concrete_percent import evaluate_acc_hellaswag, evaluate_acc_winogrande, evaluate_acc_piqa, evaluate_acc_siqa, evaluate_acc_openbookqa, evaluate_acc_mmlu_0_shot, evaluate_acc_mmlu_5_shot
 
 class ContinuousEvaluator:
     def __init__(self):
@@ -29,6 +29,8 @@ class ContinuousEvaluator:
             ("piqa", evaluate_acc_piqa),
             ("siqa", evaluate_acc_siqa),
             ("openbookqa", evaluate_acc_openbookqa),
+            ("mmlu_0_shot", evaluate_acc_mmlu_0_shot),
+            # ("mmlu_5_shot", evaluate_acc_mmlu_5_shot),
         ]
 
         self.results_file = "slm_checkpoints_benchmarks_results.json"
@@ -91,7 +93,9 @@ class ContinuousEvaluator:
                     if pending_benchmarks:
                         new_checkpoints.append((model_name, model_class, checkpoint_dir, dir_name, pending_benchmarks))
 
-        return new_checkpoints
+        new_checkpoints_sorted = list(reversed(sorted(new_checkpoints, key=lambda x: self.get_checkpoint_number(x[3]))))
+
+        return new_checkpoints_sorted
 
     def evaluate_checkpoint(self, model_name, model_class, checkpoint_dir, dir_name, pending_benchmarks):
         """Evaluate a single checkpoint on pending benchmarks"""
@@ -184,7 +188,7 @@ class ContinuousEvaluator:
             plt.tight_layout()
 
             # Save plot
-            plot_filename = f"{benchmark_name}_performance.png"
+            plot_filename = f"slm_results/{benchmark_name}_performance.png"
             plt.savefig(plot_filename, dpi=300, bbox_inches='tight')
             plt.close()
 
@@ -207,6 +211,8 @@ class ContinuousEvaluator:
 
                 if new_checkpoints:
                     print(f"Found {len(new_checkpoints)} new checkpoint(s) to evaluate")
+                    for model_name, model_class, checkpoint_dir, dir_name, pending_benchmarks in new_checkpoints:
+                        print(f"{model_name} / {dir_name} : {pending_benchmarks}")
 
                     # Evaluate each new checkpoint
                     for model_name, model_class, checkpoint_dir, dir_name, pending_benchmarks in new_checkpoints:
@@ -222,4 +228,5 @@ class ContinuousEvaluator:
 
 if __name__ == "__main__":
     evaluator = ContinuousEvaluator()
+    evaluator.update_plots()
     evaluator.run_continuous_evaluation()

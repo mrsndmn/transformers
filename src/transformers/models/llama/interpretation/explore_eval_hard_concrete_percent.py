@@ -209,6 +209,64 @@ def evaluate_acc_hellaswag(model, bincount=None, sparsity_only=False):
     }
 
 
+def evaluate_acc_mmlu_0_shot(model, bincount=None, sparsity_only=False):
+
+    acc_norm = None
+    acc_norm_stderr = None
+    if not sparsity_only:
+        results = evaluate_lighteval_task(
+            model,
+            'mmlu_cloze',
+            override_batch_size=128,
+            num_fewshot_seeds=0,
+            # max_samples=100,
+        )
+
+        acc_norm = results['results']["custom:mmlu_cloze:0"]["acc_norm"]
+        acc_norm_stderr = results['results']["custom:mmlu_cloze:0"]["acc_norm_stderr"]
+
+    pruned_percent = None
+    total_tokens_count = None
+    if bincount is not None:
+        pruned_percent, total_tokens_count = compute_pruned_percent(model, bincount)
+
+    return {
+        "acc_norm": acc_norm,
+        "acc_norm_stderr": acc_norm_stderr,
+        "pruned_percent": pruned_percent,
+        "total_tokens_count": total_tokens_count,
+    }
+
+def evaluate_acc_mmlu_5_shot(model, bincount=None, sparsity_only=False):
+
+    acc_norm = None
+    acc_norm_stderr = None
+    if not sparsity_only:
+        results = evaluate_lighteval_task(
+            model,
+            'mmlu_cloze',
+            override_batch_size=32,
+            num_fewshot_seeds=5,
+            # max_samples=100,
+        )
+
+        acc_norm = results['results']["custom:mmlu_cloze:5"]["acc_norm"]
+        acc_norm_stderr = results['results']["custom:mmlu_cloze:5"]["acc_norm_stderr"]
+
+    pruned_percent = None
+    total_tokens_count = None
+    if bincount is not None:
+        pruned_percent, total_tokens_count = compute_pruned_percent(model, bincount)
+
+    return {
+        "acc_norm": acc_norm,
+        "acc_norm_stderr": acc_norm_stderr,
+        "pruned_percent": pruned_percent,
+        "total_tokens_count": total_tokens_count,
+    }
+
+
+
 def evaluate_tiny_stories(model, bincount=None, sparsity_only=False):
 
     ppl = None
