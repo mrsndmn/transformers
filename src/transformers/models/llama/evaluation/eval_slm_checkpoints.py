@@ -103,8 +103,8 @@ class ContinuousEvaluator:
 
         try:
             # Load model
-            # model = model_class.from_pretrained(checkpoint_dir, torch_dtype=torch.bfloat16)
-            model = model_class.from_pretrained(checkpoint_dir)
+            model = model_class.from_pretrained(checkpoint_dir, torch_dtype=torch.bfloat16)
+            # model = model_class.from_pretrained(checkpoint_dir)
             model.eval()
             model.to("cuda")
 

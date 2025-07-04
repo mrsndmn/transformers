@@ -222,8 +222,8 @@ def evaluate_acc_mmlu_0_shot(model, bincount=None, sparsity_only=False):
             # max_samples=100,
         )
 
-        acc_norm = results['results']["custom:mmlu_cloze:0"]["acc_norm"]
-        acc_norm_stderr = results['results']["custom:mmlu_cloze:0"]["acc_norm_stderr"]
+        acc_norm = results['results']["custom:mmlu_cloze:_average:0"]["acc_norm"]
+        acc_norm_stderr = results['results']["custom:mmlu_cloze:_average:0"]["acc_norm_stderr"]
 
     pruned_percent = None
     total_tokens_count = None
