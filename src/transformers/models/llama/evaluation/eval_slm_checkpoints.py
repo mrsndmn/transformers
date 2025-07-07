@@ -166,6 +166,12 @@ class ContinuousEvaluator:
 
         df = pd.DataFrame(df_data)
 
+        model_name_to_color = {
+            "vanilla": "blue",
+            "vanilla_16L": "red",
+            "adaptive": "green",
+        }
+
         # Create plots for each benchmark
         for benchmark_name in df['benchmark'].unique():
             benchmark_df = df[df['benchmark'] == benchmark_name]
@@ -178,7 +184,7 @@ class ContinuousEvaluator:
                 model_df = model_df.sort_values('checkpoint_num')
 
                 plt.plot(model_df['checkpoint_num'], model_df['acc_norm'],
-                        marker='o', label=model_name, linewidth=2, markersize=6)
+                        marker='o', label=model_name, linewidth=2, markersize=6, color=model_name_to_color[model_name])
 
             plt.xlabel('Checkpoint Number')
             plt.ylabel('Accuracy (Normalized)')

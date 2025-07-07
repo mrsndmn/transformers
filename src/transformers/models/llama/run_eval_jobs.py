@@ -276,6 +276,14 @@ def eval_hcg_adaptive_pretrain_all_tasks_parallel(**kwargs):
     ]
     tasks = "custom|arc|0|1,custom|siqa|0|1,custom|piqa|0|1,custom|hellaswag|0|1,custom|tiny_stories|0|1".split(",")
 
+
+    checkpoints = [
+        "./vanilla_slm2_1.7B_pretrain_w_0.000_l_-_BM2DG7DH/checkpoint-19000_for_4shot_mmlu/",
+        "./vanilla_slm2_1.7B_pretrain_16L_w_0.000_l_-_X3NTEOHS/checkpoint-19000_for_4shot_mmlu/",
+        "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_K6WC5X8F/checkpoint-19000_for_4shot_mmlu/",
+    ]
+    tasks = "custom|mmlu_cloze|4|1".split(",")
+
     # TODO
 
     hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]

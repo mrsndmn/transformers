@@ -6,7 +6,7 @@ from transformers.models.gpt2.tokenization_gpt2_fast import GPT2TokenizerFastEOS
 
 
 def test_init_checkpoint_adaptive():
-    checkpoint_path = "./paper_checkpoints/pretrain/adaptive_slm2_1.7B_random_init"
+    checkpoint_path = "./paper_checkpoints/pretrain2/adaptive_slm2_1.7B_random_init"
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
 
@@ -25,7 +25,7 @@ def test_init_checkpoint_adaptive():
     assert outputs.loss < 20
 
 def test_init_checkpoint_adaptive_with_end_of_sentence_token():
-    checkpoint_path = "./paper_checkpoints/pretrain/adaptive_slm2_1.7B_random_init"
+    checkpoint_path = "./paper_checkpoints/pretrain2/adaptive_slm2_1.7B_random_init"
     # checkpoint_path = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_9U63C2LF/checkpoint-1000/"
 
     tokenizer = GPT2TokenizerFastEOS.from_pretrained(checkpoint_path)
@@ -60,7 +60,7 @@ def test_init_checkpoint_adaptive_with_end_of_sentence_token():
 
 
 def test_init_checkpoint_vanilla():
-    checkpoint_path = "./paper_checkpoints/pretrain/slm2_1.7B_random_init/"
+    checkpoint_path = "./paper_checkpoints/pretrain2/slm2_1.7B_random_init/"
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
 
@@ -81,7 +81,7 @@ def test_init_checkpoint_vanilla():
 
 
 def test_init_checkpoint_vanilla_16L():
-    checkpoint_path = "./paper_checkpoints/pretrain/slm2_1.7B_random_init_16L/"
+    checkpoint_path = "./paper_checkpoints/pretrain2/slm2_1.7B_random_init_16L/"
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
 

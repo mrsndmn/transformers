@@ -977,7 +977,6 @@ def build_model(training_args: AdaptiveTrainingArguments):
     # torch_dtype = torch.float32
     torch_dtype = torch.bfloat16
     # torch_dtype = torch.bfloat16 if training_args.bf16 else torch.float32
-    print("build_model torch_dtype", torch_dtype)
 
     if training_args.init_hcg_a is not None:
         assert training_args.hcg_fan_in_from is None, 'hcg_fan_in_from must be None if init_hcg_a is not None'
@@ -1295,7 +1294,7 @@ if __name__ == "__main__":
                 print("Loading fineweb edu tokenized with gpt2_eos")
                 current_dir = '/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out'
                 dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2_eos'
-                output_dir = os.listdir(dataset_path)
+                output_dir = sorted(os.listdir(dataset_path))[:30]
                 print(output_dir)
 
                 all_datasets = []
@@ -1309,7 +1308,7 @@ if __name__ == "__main__":
                 current_dir = '/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out'
 
                 dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2'
-                output_dir = os.listdir(dataset_path)
+                output_dir = sorted(os.listdir(dataset_path))[:30]
                 print(output_dir)
 
                 all_datasets = []

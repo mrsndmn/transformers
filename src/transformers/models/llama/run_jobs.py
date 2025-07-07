@@ -878,8 +878,8 @@ if __name__ == "__main__":
     save_steps = 1000
 
     # prune_all_except_end_of_sentence_token 1.7B Model
-    # if True:
-    if False:
+    if True:
+    # if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.1,
             hcg_learning_rate=0.01,
@@ -893,7 +893,7 @@ if __name__ == "__main__":
             save_total_limit=100,
             save_steps=save_steps,
             instance_type=f'a100.{NGPUS}gpu',
-            llama_checkpoint=f'{workdir_prefix}/paper_checkpoints/pretrain/adaptive_slm2_1.7B_random_init',
+            llama_checkpoint=f'{workdir_prefix}/paper_checkpoints/pretrain2/adaptive_slm2_1.7B_random_init',
             dataset='smollm-corpus',
             select_train_dataset_items=0,
             fan_in_idx=8,
@@ -909,8 +909,8 @@ if __name__ == "__main__":
         )
 
     #  Vanilla 1.7B Model
-    # if True:
-    if False:
+    if True:
+    # if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.0,
             hcg_learning_rate=0.00,
@@ -924,7 +924,7 @@ if __name__ == "__main__":
             save_total_limit=100,
             save_steps=save_steps,
             instance_type=f'a100.{NGPUS}gpu',
-            llama_checkpoint=f"{workdir_prefix}/paper_checkpoints/pretrain/slm2_1.7B_random_init/",
+            llama_checkpoint=f"{workdir_prefix}/paper_checkpoints/pretrain2/slm2_1.7B_random_init/",
             dataset='smollm-corpus',
             select_train_dataset_items=0,
             fan_in_idx='',
@@ -952,7 +952,7 @@ if __name__ == "__main__":
             save_total_limit=100,
             save_steps=save_steps,
             instance_type=f'a100.{NGPUS}gpu',
-            llama_checkpoint=f"{workdir_prefix}/paper_checkpoints/pretrain/slm2_1.7B_random_init_16L/",
+            llama_checkpoint=f"{workdir_prefix}/paper_checkpoints/pretrain2/slm2_1.7B_random_init_16L/",
             dataset='smollm-corpus',
             select_train_dataset_items=0,
             fan_in_idx='',
@@ -981,7 +981,7 @@ if __name__ == "__main__":
             save_total_limit=13,
             save_steps=save_steps,
             instance_type=f'a100.{NGPUS}gpu',
-            llama_checkpoint=f'{workdir_prefix}/paper_checkpoints/pretrain/adaptive_slm2_135M_random_init',
+            llama_checkpoint=f'{workdir_prefix}/paper_checkpoints/pretrain2/adaptive_slm2_135M_random_init',
             dataset='tiny',
             select_train_dataset_items=0,
             fan_in_idx=10,

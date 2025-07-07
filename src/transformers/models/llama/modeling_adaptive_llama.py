@@ -650,7 +650,7 @@ class AdaptiveLlamaPreTrainedModel(PreTrainedModel):
     _supports_static_cache = True
 
     def _init_weights(self, module):
-        return
+        # return
         std = self.config.initializer_range
         if isinstance(module, nn.Linear):
             module.weight.data.normal_(mean=0.0, std=std)
