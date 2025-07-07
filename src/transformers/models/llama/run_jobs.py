@@ -871,7 +871,7 @@ if __name__ == "__main__":
 
     # Pretrain Fain Out on Tiny Datasets
     # NGPUS = 1
-    NGPUS = 4
+    NGPUS = 8
     num_train_epochs = 1
     per_device_train_batch_size = 8
     gradient_accumulation_steps = (128 // NGPUS)
@@ -909,8 +909,8 @@ if __name__ == "__main__":
         )
 
     #  Vanilla 1.7B Model
-    if True:
-    # if False:
+    # if True:
+    if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.0,
             hcg_learning_rate=0.00,
@@ -962,6 +962,35 @@ if __name__ == "__main__":
             warmup_steps=1000,
             lr_scheduler_type='cosine',
             experiment_prefix_base_name="vanilla_slm2_1.7B_pretrain_16L",
+        )
+
+    # if True:
+    if False:
+        run_hcg_llama31_8B_hcg(
+            hcg_loss_weight=0.0,
+            hcg_learning_rate=0.00,
+            learning_rate=0.0003,
+            model_type='SmolLM2',
+            optimized_params='full',
+            per_device_train_batch_size=per_device_train_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            # dummy_adaptive_fan_in_layers_str="1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1",
+            # select_train_dataset_items=1510000 * NGPUS,
+            num_train_epochs=num_train_epochs,
+            save_total_limit=100,
+            save_steps=save_steps,
+            instance_type=f'a100.{NGPUS}gpu',
+            llama_checkpoint=f"{workdir_prefix}/paper_checkpoints/pretrain2/slm2_1.7B_random_init_16L/",
+            dataset='smollm-corpus',
+            select_train_dataset_items=0,
+            fan_in_idx='',
+            fan_out_idx='',
+            add_end_of_sentence_token='1',
+            bf16='0',
+            dry=dry,
+            warmup_steps=1000,
+            lr_scheduler_type='cosine',
+            experiment_prefix_base_name="vanilla_slm2_1.7B_pretrain_16L_eos_token",
         )
 
 

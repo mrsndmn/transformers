@@ -13,12 +13,18 @@ from transformers.models.llama.interpretation.explore_eval_hard_concrete_percent
 
 class ContinuousEvaluator:
     def __init__(self):
-        self.vanilla_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_w_0.000_l_-_BM2DG7DH"
-        self.vanilla_16L_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_w_0.000_l_-_X3NTEOHS"
-        self.adaptive_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_K6WC5X8F"
+        # Pretrain 1
+        # self.vanilla_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_w_0.000_l_-_BM2DG7DH"
+        # self.vanilla_16L_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_w_0.000_l_-_X3NTEOHS"
+        # self.adaptive_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_K6WC5X8F"
+
+        # Pretrain 2
+        self.vanilla_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_eos_token_w_0.000_l_-_MRO5LLCN/"
+        self.vanilla_16L_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_w_0.000_l_-_F0UCD5QW/"
+        self.adaptive_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_8MTABS8F/"
 
         self.model_to_checkpoints = [
-            ("vanilla", LlamaForCausalLM, self.vanilla_checkpoints_dir),
+            ("vanilla eos", LlamaForCausalLM, self.vanilla_checkpoints_dir),
             ("vanilla_16L", LlamaForCausalLM, self.vanilla_16L_checkpoints_dir),
             ("adaptive", AdaptiveLlamaForCausalLM, self.adaptive_checkpoints_dir),
         ]
