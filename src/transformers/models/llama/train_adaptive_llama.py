@@ -83,6 +83,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
     output_dir: str = field(default="llama_for_sequential_numbers",)
     learning_rate: float = field(default=2e-4)
+    mid_layers_learning_rate: Optional[float] = field(default=None)
     hcg_learning_rate: float = field(default=0.1)
     max_grad_norm: float = field(default=None)
     init_hcg_a: Optional[float] = field(default=None)
@@ -205,9 +206,19 @@ class AdaptiveLlamaTrainer(Trainer):
             decay_parameters = set(decay_parameters)
 
             hcg_lr = self.args.hcg_learning_rate
+            mid_layers_lr = None
+
+            optimizer_mid_layers_separately = False
+
+            if self.args.force_train_on_trimmed_embeddings and self.args.fan_in_idx is not None and self.args.fan_out_idx is not None:
+                optimizer_mid_layers_separately = True
+                assert self.args.mid_layers_learning_rate is not None, "mid_layers_learning_rate is required for force_train_on_trimmed_embeddings"
+                mid_layers_lr = self.args.mid_layers_learning_rate
+                print("use mid_layers_learning_rate", mid_layers_lr)
 
             print("hcg_lr", hcg_lr)
             print("lr", self.args.learning_rate)
+            print("mid_layers_lr", mid_layers_lr)
 
             hcg_params = []
             hcg_params = set([ n for n, p in opt_model.named_parameters() if "hcg_log_a" in n ])
@@ -223,35 +234,104 @@ class AdaptiveLlamaTrainer(Trainer):
 
                 return True
 
+            regular_lr_params = set([ n for n, _ in opt_model.named_parameters()])
+
+            mid_layer_lr_params = set([ n for n, _ in opt_model.named_parameters()])
+            if optimizer_mid_layers_separately:
+                mid_layer_lr_params = set()
+                for n, _ in opt_model.named_parameters():
+                    if n.startswith('model.layers.'):
+                        layer_idx = int(n.removeprefix('model.layers.').split('.')[0])
+                        if layer_idx >= self.args.fan_in_idx and layer_idx < self.args.fan_out_idx:
+                            mid_layer_lr_params.add(n)
+
+                regular_lr_params = regular_lr_params - mid_layer_lr_params
+
+
+            params_to_optimize_processed = []
+
+            optimizer_grouped_parameters = []
+
+            # LM params with Weight Decay
+            lm_with_weight_decay_params = []
+            for n, p in opt_model.named_parameters():
+                if n in regular_lr_params and (n in decay_parameters and n not in hcg_params and p.requires_grad and check_need_optim_fan_out(n)):
+                    params_to_optimize_processed.append(n)
+                    lm_with_weight_decay_params.append(p)
+
+            # LM params without Weight Decay
+            lm_without_weight_decay_params = []
+            for n, p in opt_model.named_parameters():
+                if n in regular_lr_params and (n not in decay_parameters and n not in hcg_params and p.requires_grad and check_need_optim_fan_out(n)):
+                    params_to_optimize_processed.append(n)
+                    lm_without_weight_decay_params.append(p)
+
+            # Mid layer optimizer params with Weight Decay
+            mid_layer_with_weight_decay_params = []
+            for n, p in opt_model.named_parameters():
+                if optimizer_mid_layers_separately and n in mid_layer_lr_params and (n in decay_parameters and n not in hcg_params and p.requires_grad and check_need_optim_fan_out(n)):
+                    params_to_optimize_processed.append(n)
+                    mid_layer_with_weight_decay_params.append(p)
+
+            # Mid layer optimizer params without Weight Decay
+            mid_layer_without_weight_decay_params = []
+            for n, p in opt_model.named_parameters():
+                if optimizer_mid_layers_separately and n in mid_layer_lr_params and (n not in decay_parameters and n not in hcg_params and p.requires_grad and check_need_optim_fan_out(n)):
+                    params_to_optimize_processed.append(n)
+                    mid_layer_without_weight_decay_params.append(p)
+
+            # HCG params
+            hcg_params_to_optimize = []
+            for n, p in opt_model.named_parameters():
+                if n in hcg_params and (p.requires_grad or self.args.each_layer_pruning) and check_need_optim_fan_out(n):
+                    params_to_optimize_processed.append(n)
+                    hcg_params_to_optimize.append(p)
 
             optimizer_grouped_parameters = [
                 # LM params with Weight Decay
                 {
-                    "params": [
-                        p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in hcg_params and p.requires_grad and check_need_optim_fan_out(n))
-                    ],
+                    "params": lm_with_weight_decay_params,
                     "weight_decay": self.args.weight_decay,
                     "lr": self.args.learning_rate,
                 },
                 # LM params without Weight Decay
                 {
-                    "params": [
-                        p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in hcg_params and p.requires_grad and check_need_optim_fan_out(n))
-                    ],
+                    "params": lm_without_weight_decay_params,
                     "weight_decay": 0.0,
                     "lr": self.args.learning_rate,
                 },
+                # Mid layer optimizer params with Weight Decay
+                {
+                    "params": mid_layer_with_weight_decay_params,
+                    "weight_decay": self.args.weight_decay,
+                    "lr": mid_layers_lr,
+                },
+                # Mid layer optimizer params without Weight Decay
+                {
+                    "params": mid_layer_without_weight_decay_params,
+                    "weight_decay": 0.0,
+                    "lr": mid_layers_lr,
+                },
                 # HCG params without Weight Decay
                 {
-                    "params": [
-                        p for n, p in opt_model.named_parameters() if (n in hcg_params and (p.requires_grad or self.args.each_layer_pruning) and check_need_optim_fan_out(n))
-                    ],
+                    "params": hcg_params_to_optimize,
                     "weight_decay": 0.0,
                     "lr": hcg_lr,
                 },
             ]
 
-            # assert sum(sum(p.numel() for p in group['params']) for group in optimizer_grouped_parameters) == sum(p.numel() for p in opt_model.parameters() if p.requires_grad)
+            assert len(params_to_optimize_processed) == len(set(params_to_optimize_processed)), "params_to_optimize_processed is not unique"
+
+            not_optimized_params = set(n for n, p in opt_model.named_parameters()) - set(params_to_optimize_processed)
+            print('not_optimized_params', not_optimized_params)
+
+            optim_params_count = sum(sum(p.numel() for p in group['params']) for group in optimizer_grouped_parameters)
+            total_model_params = sum(p.numel() for p in opt_model.parameters() if p.requires_grad)
+            if not opt_model.config.fan_out_projection:
+                fan_out_params_count = sum([ p.numel() for p in opt_model.model.fan_out.parameters()])
+                total_model_params -= fan_out_params_count
+
+            assert optim_params_count == total_model_params, f"optim_params_count: {optim_params_count}, total_model_params: {total_model_params}"
 
             optimizer_cls, optimizer_kwargs = self.get_optimizer_cls_and_kwargs(self.args, opt_model)
 
@@ -1405,6 +1485,19 @@ if __name__ == "__main__":
     callbacks = []
     if training_args.early_stopping_for_pretraining:
         callbacks.append(EarlyStoppingCallbacForPretraining())
+
+
+    class LogModelLayersGradNorm(TrainerCallback):
+
+        def __init__(self, model):
+            self.model = model
+
+        def on_pre_optimizer_step(self, args, state, control, **kwargs):
+            print("model layers up proj grad", [ (i, self.model.model.layers[i].mlp.up_proj.weight.grad.norm(2).item()) for i in range(self.model.config.num_hidden_layers) ])
+            print("model layers down proj grad", [ (i, self.model.model.layers[i].mlp.down_proj.weight.grad.norm(2).item()) for i in range(self.model.config.num_hidden_layers) ])
+            return control
+
+    # callbacks.append(LogModelLayersGradNorm(model=model))
 
     gradual_unfreeze_callback = None
 
