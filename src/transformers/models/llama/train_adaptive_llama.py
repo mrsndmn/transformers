@@ -267,18 +267,20 @@ class AdaptiveLlamaTrainer(Trainer):
                     lm_without_weight_decay_params.append(p)
 
             # Mid layer optimizer params with Weight Decay
-            mid_layer_with_weight_decay_params = []
-            for n, p in opt_model.named_parameters():
-                if optimizer_mid_layers_separately and n in mid_layer_lr_params and (n in decay_parameters and n not in hcg_params and p.requires_grad and check_need_optim_fan_out(n)):
-                    params_to_optimize_processed.append(n)
-                    mid_layer_with_weight_decay_params.append(p)
 
-            # Mid layer optimizer params without Weight Decay
-            mid_layer_without_weight_decay_params = []
-            for n, p in opt_model.named_parameters():
-                if optimizer_mid_layers_separately and n in mid_layer_lr_params and (n not in decay_parameters and n not in hcg_params and p.requires_grad and check_need_optim_fan_out(n)):
-                    params_to_optimize_processed.append(n)
-                    mid_layer_without_weight_decay_params.append(p)
+            if optimizer_mid_layers_separately:
+                mid_layer_with_weight_decay_params = []
+                for n, p in opt_model.named_parameters():
+                    if optimizer_mid_layers_separately and n in mid_layer_lr_params and (n in decay_parameters and n not in hcg_params and p.requires_grad and check_need_optim_fan_out(n)):
+                        params_to_optimize_processed.append(n)
+                        mid_layer_with_weight_decay_params.append(p)
+
+                # Mid layer optimizer params without Weight Decay
+                mid_layer_without_weight_decay_params = []
+                for n, p in opt_model.named_parameters():
+                    if optimizer_mid_layers_separately and n in mid_layer_lr_params and (n not in decay_parameters and n not in hcg_params and p.requires_grad and check_need_optim_fan_out(n)):
+                        params_to_optimize_processed.append(n)
+                        mid_layer_without_weight_decay_params.append(p)
 
             # HCG params
             hcg_params_to_optimize = []
@@ -300,18 +302,6 @@ class AdaptiveLlamaTrainer(Trainer):
                     "weight_decay": 0.0,
                     "lr": self.args.learning_rate,
                 },
-                # Mid layer optimizer params with Weight Decay
-                {
-                    "params": mid_layer_with_weight_decay_params,
-                    "weight_decay": self.args.weight_decay,
-                    "lr": mid_layers_lr,
-                },
-                # Mid layer optimizer params without Weight Decay
-                {
-                    "params": mid_layer_without_weight_decay_params,
-                    "weight_decay": 0.0,
-                    "lr": mid_layers_lr,
-                },
                 # HCG params without Weight Decay
                 {
                     "params": hcg_params_to_optimize,
@@ -320,6 +310,22 @@ class AdaptiveLlamaTrainer(Trainer):
                 },
             ]
 
+            if optimizer_mid_layers_separately:
+                optimizer_grouped_parameters.extend([
+                    # Mid layer optimizer params with Weight Decay
+                    {
+                        "params": mid_layer_with_weight_decay_params,
+                        "weight_decay": self.args.weight_decay,
+                        "lr": mid_layers_lr,
+                    },
+                    # Mid layer optimizer params without Weight Decay
+                    {
+                        "params": mid_layer_without_weight_decay_params,
+                        "weight_decay": 0.0,
+                        "lr": mid_layers_lr,
+                    },
+                ])
+
             assert len(params_to_optimize_processed) == len(set(params_to_optimize_processed)), "params_to_optimize_processed is not unique"
 
             not_optimized_params = set(n for n, p in opt_model.named_parameters()) - set(params_to_optimize_processed)
@@ -327,7 +333,7 @@ class AdaptiveLlamaTrainer(Trainer):
 
             optim_params_count = sum(sum(p.numel() for p in group['params']) for group in optimizer_grouped_parameters)
             total_model_params = sum(p.numel() for p in opt_model.parameters() if p.requires_grad)
-            if not opt_model.config.fan_out_projection:
+            if not opt_model.config.fan_out_projection and hasattr(opt_model.model, 'fan_out'):
                 fan_out_params_count = sum([ p.numel() for p in opt_model.model.fan_out.parameters()])
                 total_model_params -= fan_out_params_count
 
