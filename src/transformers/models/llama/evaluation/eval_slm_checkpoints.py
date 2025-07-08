@@ -19,9 +19,9 @@ class ContinuousEvaluator:
         # self.adaptive_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_K6WC5X8F"
 
         # Pretrain 2
-        self.vanilla_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_eos_token_w_0.000_l_-_MRO5LLCN/"
-        self.vanilla_16L_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_w_0.000_l_-_F0UCD5QW/"
-        self.adaptive_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_8MTABS8F/"
+        self.vanilla_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_eos_token_w_0.000_l_-_MRO5LLCN"
+        self.vanilla_16L_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_w_0.000_l_-_F0UCD5QW"
+        self.adaptive_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_8MTABS8F"
 
         self.model_to_checkpoints = [
             ("vanilla eos", LlamaForCausalLM, self.vanilla_checkpoints_dir),
@@ -176,6 +176,7 @@ class ContinuousEvaluator:
             "vanilla": "blue",
             "vanilla_16L": "red",
             "adaptive": "green",
+            "vanilla eos": "purple",
         }
 
         # Create plots for each benchmark
