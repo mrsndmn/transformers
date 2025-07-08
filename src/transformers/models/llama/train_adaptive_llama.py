@@ -85,7 +85,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     learning_rate: float = field(default=2e-4)
     mid_layers_learning_rate: Optional[float] = field(default=None)
     hcg_learning_rate: float = field(default=0.1)
-    max_grad_norm: float = field(default=None)
+    max_grad_norm: float = field(default=1.0)
     init_hcg_a: Optional[float] = field(default=None)
     clip_hcg_log_a: Optional[float] = field(default=None)
     hard_hcg_log_a: Optional[bool] = field(default=None)

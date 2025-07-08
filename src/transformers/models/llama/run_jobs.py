@@ -882,7 +882,7 @@ if __name__ == "__main__":
     NGPUS = 8
     num_train_epochs = 1
     per_device_train_batch_size = 8
-    gradient_accumulation_steps = (128 // NGPUS)
+    gradient_accumulation_steps = (1024 // NGPUS)
     save_steps = 1000
 
     # prune_all_except_end_of_sentence_token 1.7B Model
@@ -892,7 +892,7 @@ if __name__ == "__main__":
             hcg_loss_weight=0.1,
             hcg_learning_rate=0.01,
             learning_rate=0.0003,
-            mid_layers_learning_rate=0.003,
+            mid_layers_learning_rate=0.0003,
             model_type='pretrained_checkpoint',
             optimized_params='full',
             per_device_train_batch_size=per_device_train_batch_size,
@@ -973,8 +973,8 @@ if __name__ == "__main__":
             experiment_prefix_base_name="vanilla_slm2_1.7B_pretrain_16L",
         )
 
-    if True:
-    # if False:
+    # if True:
+    if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.0,
             hcg_learning_rate=0.00,

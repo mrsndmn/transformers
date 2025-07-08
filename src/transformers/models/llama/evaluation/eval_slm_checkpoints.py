@@ -19,15 +19,28 @@ class ContinuousEvaluator:
         # self.adaptive_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_K6WC5X8F"
 
         # Pretrain 2
-        self.vanilla_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_eos_token_w_0.000_l_-_MRO5LLCN"
-        self.vanilla_16L_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_w_0.000_l_-_F0UCD5QW"
-        self.adaptive_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_8MTABS8F"
+        vanilla_16L_eos_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_eos_token_w_0.000_l_-_5U28SEN5"
+        vanilla_16L_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_w_0.000_l_-_F0UCD5QW"
+        adaptive_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_8MTABS8F"
+        adaptive_mid_lr_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_QVDLIG38"
 
         self.model_to_checkpoints = [
-            ("vanilla eos", LlamaForCausalLM, self.vanilla_checkpoints_dir),
-            ("vanilla_16L", LlamaForCausalLM, self.vanilla_16L_checkpoints_dir),
-            ("adaptive", AdaptiveLlamaForCausalLM, self.adaptive_checkpoints_dir),
+            ("vanilla_16L eos", LlamaForCausalLM, vanilla_16L_eos_checkpoints_dir),
+            ("vanilla_16L", LlamaForCausalLM, vanilla_16L_checkpoints_dir),
+            ("adaptive", AdaptiveLlamaForCausalLM, adaptive_checkpoints_dir),
+            ("adaptive mid lr", AdaptiveLlamaForCausalLM, adaptive_mid_lr_checkpoints_dir),
         ]
+
+        self.model_name_to_color = {
+            "vanilla": "blue",
+            "vanilla_16L": "red",
+            "vanilla_16L eos": "purple",
+            "adaptive": "green",
+            "adaptive mid lr": "orange",
+        }
+
+        for model_name, _, _ in self.model_to_checkpoints:
+            assert model_name in self.model_name_to_color, f"Model name {model_name} not found in model_name_to_color"
 
         self.benchmarks = [
             ("hellaswag", evaluate_acc_hellaswag),
@@ -172,12 +185,6 @@ class ContinuousEvaluator:
 
         df = pd.DataFrame(df_data)
 
-        model_name_to_color = {
-            "vanilla": "blue",
-            "vanilla_16L": "red",
-            "adaptive": "green",
-            "vanilla eos": "purple",
-        }
 
         # Create plots for each benchmark
         for benchmark_name in df['benchmark'].unique():
@@ -187,11 +194,15 @@ class ContinuousEvaluator:
 
             # Plot for each model
             for model_name in benchmark_df['model'].unique():
+                if model_name not in self.model_name_to_color:
+                    print(f"Model name {model_name} not found in model_name_to_color")
+                    continue
+
                 model_df = benchmark_df[benchmark_df['model'] == model_name]
                 model_df = model_df.sort_values('checkpoint_num')
 
                 plt.plot(model_df['checkpoint_num'], model_df['acc_norm'],
-                        marker='o', label=model_name, linewidth=2, markersize=6, color=model_name_to_color[model_name])
+                        marker='o', label=model_name, linewidth=2, markersize=6, color=self.model_name_to_color[model_name])
 
             plt.xlabel('Checkpoint Number')
             plt.ylabel('Accuracy (Normalized)')
