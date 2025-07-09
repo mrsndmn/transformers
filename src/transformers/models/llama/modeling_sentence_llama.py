@@ -244,15 +244,11 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         # assert (len(is_dummy_fan_in) - sum(is_dummy_fan_in)) == 1, 'only one not dummy fan in'
         # not dummy index
 
-        self.recalc_fan_in_fan_out_idx()
-        print(f"fan_in_idx: {self.fan_in_idx}, fan_out_idx: {self.fan_out_idx}")
-
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
 
         self.layers = nn.ModuleList(
             [LlamaDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
-
 
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.rotary_emb = LlamaRotaryEmbedding(config=config)
