@@ -20,6 +20,7 @@ from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_N
 
 from transformers.loss.loss_utils import ForCausalLMLoss
 
+from transformers.models.llama.modeling_sentence_llama import SentenceLlamaForCausalLM
 from transformers.models.llama.tokenization_llama_fast import EOSTokenizerFast
 from transformers.models.gpt2.tokenization_gpt2_fast import GPT2TokenizerFastEOS, GPT2TokenizerFast
 
@@ -466,7 +467,7 @@ class AdaptiveLlamaTrainer(Trainer):
         count_hcg_layers = 0
         sum_tokens = 0
         hcg_loss = 0
-        if not self.args.model_type.startswith('SmolLM2') and self.args.hcg_loss_weight != 0.0 and  model_config.merging_type == 'hcg' and model_unwrapped.training and not self.args.force_train_on_trimmed_embeddings:
+        if (not self.args.model_type.startswith('SmolLM2') and self.args.model_type != 'sentence_pretrained_checkpoint') and self.args.hcg_loss_weight != 0.0 and  model_config.merging_type == 'hcg' and model_unwrapped.training and not self.args.force_train_on_trimmed_embeddings:
             for i, (hcg_p_open, hcg_p_open_attention_mask) in enumerate(zip(outputs.fan_in_merging_logits, outputs.fan_in_merging_logits_attention_mask)):
                 if hcg_p_open is None:
                     continue
@@ -1051,7 +1052,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
     llama_checkpoint = training_args.llama_checkpoint
 
     if training_args.add_end_of_sentence_token:
-        if 'slm' in llama_checkpoint:
+        if 'slm' in llama_checkpoint or 'HuggingFaceTB/SmolLM' in llama_checkpoint:
             tokenizer = GPT2TokenizerFastEOS.from_pretrained(llama_checkpoint)
         else:
             tokenizer = EOSTokenizerFast.from_pretrained(llama_checkpoint)
@@ -1092,6 +1093,10 @@ def build_model(training_args: AdaptiveTrainingArguments):
         )
 
         model = AdaptiveLlamaForCausalLM(llama_config)
+    elif training_args.model_type == 'sentence_pretrained_checkpoint':
+        llama_checkpoint = training_args.llama_checkpoint
+        print("Load sentence llama model from", llama_checkpoint)
+        model = SentenceLlamaForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
     elif training_args.model_type == 'pretrained_checkpoint':
         llama_checkpoint = training_args.llama_checkpoint
         print("Load model from", llama_checkpoint)
@@ -1175,7 +1180,7 @@ def build_model(training_args: AdaptiveTrainingArguments):
     if training_args.fan_out_idx is not None:
         model.config.fan_out_idx = training_args.fan_out_idx
 
-    if training_args.model_type != 'SmolLM2':
+    if training_args.model_type != 'SmolLM2' and training_args.model_type != "sentence_pretrained_checkpoint":
         model.model.recalc_fan_in_fan_out_idx()
 
         print("model.config.fan_in_idx", model.config.fan_in_idx)

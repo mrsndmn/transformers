@@ -140,6 +140,10 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
 
         forward_residuals = exp.pop('forward_residuals', 0)
         fan_in_idx = exp.pop('fan_in_idx', '')
+        if fan_in_idx is None:
+            fan_in_idx = ''
+        if fan_out_idx is None:
+            fan_out_idx = ''
         if fan_in_idx != '':
             fan_in_idx = f"--fan_in_idx {fan_in_idx}"
         fan_out_idx = exp.pop('fan_out_idx', '')
@@ -888,6 +892,39 @@ if __name__ == "__main__":
     # prune_all_except_end_of_sentence_token 1.7B Model
     if True:
     # if False:
+        run_hcg_llama31_8B_hcg(
+            hcg_loss_weight=0.1,
+            hcg_learning_rate=0.01,
+            learning_rate=0.0003,
+            mid_layers_learning_rate=0.0003,
+            model_type='sentence_pretrained_checkpoint',
+            optimized_params='full',
+            per_device_train_batch_size=per_device_train_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            # select_train_dataset_items=1510000 * NGPUS,
+            num_train_epochs=num_train_epochs,
+            save_total_limit=100,
+            save_steps=save_steps,
+            instance_type=f'a100.{NGPUS}gpu',
+            llama_checkpoint=f'HuggingFaceTB/SmolLM2-1.7B',
+            dataset='smollm-corpus',
+            select_train_dataset_items=0,
+            fan_in_idx=None,
+            fan_out_idx=None,
+            warmup_steps=1000,
+            dry=dry,
+            lr_scheduler_type='cosine',
+            force_train_on_trimmed_embeddings='0',
+            bf16='0',
+            add_end_of_sentence_token=1,
+            prune_all_except_end_of_sentence_token=1,
+            experiment_prefix_base_name="sentence_slm2_1.7B_pretrain_with_end_of_sentence_token",
+        )
+
+
+    # prune_all_except_end_of_sentence_token 1.7B Model
+    # if True:
+    if False:
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.1,
             hcg_learning_rate=0.01,
