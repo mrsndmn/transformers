@@ -1384,7 +1384,12 @@ if __name__ == "__main__":
             if isinstance(tokenizer, GPT2TokenizerFastEOS):
                 print("Loading fineweb edu tokenized with gpt2_eos")
                 current_dir = '/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out'
-                dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2_eos'
+
+                if training_args.model_type == 'sentence_pretrained_checkpoint':
+                    dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2_with_special_embedding_mask_clothest_eos_token_idx'
+                else:
+                    dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2_eos'
+
                 output_dir = sorted(os.listdir(dataset_path))[:30]
                 print(output_dir)
 
@@ -1466,18 +1471,19 @@ if __name__ == "__main__":
     def crutch_collator(examples):
         collate_dummy = nested_data_collator(examples)
 
-        collate_dummy['special_embeddings_mask'] = collate_dummy['attention_mask'].cumsum(-1)
-        collate_dummy['special_embeddings_mask'][ collate_dummy['special_embeddings_mask'] > 1 ] = 0
-        # collate_dummy['special_embeddings_mask'][:, -1] = 1
+        if 'special_embeddings_mask' not in collate_dummy:
+            collate_dummy['special_embeddings_mask'] = collate_dummy['attention_mask'].cumsum(-1)
+            collate_dummy['special_embeddings_mask'][ collate_dummy['special_embeddings_mask'] > 1 ] = 0
+            # collate_dummy['special_embeddings_mask'][:, -1] = 1
 
-        if special_tokens is not None:
-            for special_token in special_tokens:
-                collate_dummy['special_embeddings_mask'][ collate_dummy['input_ids'] == special_token ] = 1
+            if special_tokens is not None:
+                for special_token in special_tokens:
+                    collate_dummy['special_embeddings_mask'][ collate_dummy['input_ids'] == special_token ] = 1
 
-        # Mask end_of_sentence tokens if flag is enabled
-        if training_args.add_end_of_sentence_token:
-            end_of_sentence_token_id = tokenizer.convert_tokens_to_ids('<end_of_sentence>')
-            collate_dummy['special_embeddings_mask'][ collate_dummy['input_ids'] == end_of_sentence_token_id ] = 1
+            # Mask end_of_sentence tokens if flag is enabled
+            if training_args.add_end_of_sentence_token:
+                end_of_sentence_token_id = tokenizer.convert_tokens_to_ids('<end_of_sentence>')
+                collate_dummy['special_embeddings_mask'][ collate_dummy['input_ids'] == end_of_sentence_token_id ] = 1
 
         if stop_words is not None:
             collate_dummy['stop_words_tokens_mask'] = torch.zeros_like(collate_dummy['attention_mask'])

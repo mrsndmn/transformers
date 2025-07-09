@@ -192,3 +192,4 @@ test_test_*
 fineweb_edu_tokenized_gpt2_eos/
 fineweb_edu_tokenized_gpt2/
 test_init_checkpoint_adaptive_with_end_of_sentence_token/
+fineweb_edu_tokenized_gpt2_with_special_embedding_mask_clothest_eos_token_idx/
