@@ -882,8 +882,8 @@ if __name__ == "__main__":
     NGPUS = 8
     num_train_epochs = 1
     per_device_train_batch_size = 16
-    gradient_accumulation_steps = (1024 // NGPUS)
-    save_steps = 500
+    gradient_accumulation_steps = (64 // NGPUS)
+    save_steps = 1000
 
     # prune_all_except_end_of_sentence_token 1.7B Model
     if True:
@@ -907,7 +907,7 @@ if __name__ == "__main__":
             select_train_dataset_items=0,
             fan_in_idx=8,
             fan_out_idx=16,
-            warmup_steps=300,
+            warmup_steps=1000,
             dry=dry,
             lr_scheduler_type='cosine',
             force_train_on_trimmed_embeddings='1',
