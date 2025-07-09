@@ -8,6 +8,7 @@ import torch
 
 from transformers import LlamaForCausalLM
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
+from transformers.models.llama.modeling_sentence_llama import SentenceLlamaForCausalLM
 
 from transformers.models.llama.interpretation.explore_eval_hard_concrete_percent import evaluate_acc_hellaswag, evaluate_acc_winogrande, evaluate_acc_piqa, evaluate_acc_siqa, evaluate_acc_openbookqa, evaluate_acc_mmlu_0_shot, evaluate_acc_mmlu_5_shot
 
@@ -26,12 +27,15 @@ class ContinuousEvaluator:
 
         adaptive_huge_bs_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_HEQTAX1C"
 
+        sentence_llama_checkpoints_dir = "./sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__ME65Z1L5"
+
         self.model_to_checkpoints = [
             ("vanilla_16L eos", LlamaForCausalLM, vanilla_16L_eos_checkpoints_dir),
             ("vanilla_16L", LlamaForCausalLM, vanilla_16L_checkpoints_dir),
             ("adaptive", AdaptiveLlamaForCausalLM, adaptive_checkpoints_dir),
             ("adaptive mid lr", AdaptiveLlamaForCausalLM, adaptive_mid_lr_checkpoints_dir),
             ("adaptive huge bs", AdaptiveLlamaForCausalLM, adaptive_huge_bs_checkpoints_dir),
+            ("sentence llama", SentenceLlamaForCausalLM, sentence_llama_checkpoints_dir),
         ]
 
         self.model_name_to_color = {
@@ -41,6 +45,7 @@ class ContinuousEvaluator:
             "adaptive": "green",
             "adaptive mid lr": "orange",
             "adaptive huge bs": "brown",
+            "sentence llama": "pink",
         }
 
         for model_name, _, _ in self.model_to_checkpoints:
