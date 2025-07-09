@@ -4,6 +4,8 @@ from torch.nn.attention.flex_attention import flex_attention, create_block_mask
 import torch.nn as nn
 import torch.nn.functional as F
 
+from transformers.models.llama.modeling_sentence_llama import special_token_mask_to_clothest_token_idx_slow
+
 def test_flex_attention_full():
     # Create a random tensor of shape (batch_size, seq_len, hidden_size)
     batch_size = 1
@@ -66,8 +68,8 @@ def test_flex_attention_custom():
 
     # Create a FlexAttention layer
 
-    eos_tokens_mask = torch.tensor([ 0, 1, 0, 0, 1, 0, 0, 1, 0, 1 ]).bool()
-    clothest_eos_token_idx = torch.tensor([ 0, 0, 1, 1, 1, 4, 4, 4, 7, 7 ])
+    eos_tokens_mask = torch.tensor([[ 0, 1, 0, 0, 1, 0, 0, 1, 0, 1 ]]).repeat(batch_size, 1).bool()
+    clothest_eos_token_idx = torch.tensor([[ 0, 0, 1, 1, 1, 4, 4, 4, 7, 7 ]]).repeat(batch_size, 1)
 
     expected_mask = torch.tensor([
         [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -84,9 +86,9 @@ def test_flex_attention_custom():
     expected_mask = torch.where(expected_mask.bool(), 1, -float("inf"))
 
     def custom_mask(score, b, h, q_idx, kv_idx):
-        eos_token_idx = clothest_eos_token_idx[q_idx]
+        eos_token_idx = clothest_eos_token_idx[b, q_idx]
 
-        eos_sync_tokens = (kv_idx <= q_idx) & eos_tokens_mask[kv_idx]
+        eos_sync_tokens = (kv_idx <= q_idx) & eos_tokens_mask[b, kv_idx]
         causal_triu_mask = (kv_idx <= q_idx) & (kv_idx >= eos_token_idx)
 
         # return torch.where(causal_triu_mask, score, -float("inf"))
@@ -95,7 +97,7 @@ def test_flex_attention_custom():
     generated_mask = torch.zeros(seq_len, seq_len)
     for q_idx in range(seq_len):
         for kv_idx in range(seq_len):
-            generated_mask[q_idx, kv_idx] = custom_mask(1, None, None, q_idx, kv_idx)
+            generated_mask[q_idx, kv_idx] = custom_mask(1, 0, None, q_idx, kv_idx)
 
     assert torch.allclose(expected_mask, generated_mask)
 
@@ -105,34 +107,21 @@ def test_flex_attention_custom():
     print("output", output.shape)
 
 
-def special_token_mask_to_clothest_token_idx(special_token_mask):
-    special_token_mask_bool = special_token_mask.bool()
 
-    clothest_token_idx = torch.zeros_like(special_token_mask, dtype=torch.long)
-
-    current_clothest_token_idx = 0
-    for i in range(len(special_token_mask_bool)):
-        if special_token_mask_bool[i].item():
-            clothest_token_idx[i] = current_clothest_token_idx
-            current_clothest_token_idx = i
-        else:
-            clothest_token_idx[i] = current_clothest_token_idx
-
-    return clothest_token_idx
 
 def test_special_token_mask_to_clothest_token_idx():
 
     # Simple
-    eos_tokens_mask = torch.tensor([ 0, 1, 0, 0, 1, 0, 0, 1, 0, 1 ]).bool()
-    clothest_eos_token_idx = torch.tensor([ 0, 0, 1, 1, 1, 4, 4, 4, 7, 7 ])
-    assert torch.allclose(clothest_eos_token_idx, special_token_mask_to_clothest_token_idx(eos_tokens_mask))
+    eos_tokens_mask = torch.tensor([[ 0, 1, 0, 0, 1, 0, 0, 1, 0, 1 ]]).bool()
+    clothest_eos_token_idx = torch.tensor([[ 0, 0, 1, 1, 1, 4, 4, 4, 7, 7 ]])
+    assert torch.allclose(clothest_eos_token_idx, special_token_mask_to_clothest_token_idx_slow(eos_tokens_mask))
 
     # With multiple eos tokens
-    eos_tokens_mask = torch.tensor([ 0, 1, 1, 0, 1, 0, 0, 1, 0, 1 ]).bool()
-    clothest_eos_token_idx = torch.tensor([ 0, 0, 1, 2, 2, 4, 4, 4, 7, 7 ])
-    assert torch.allclose(clothest_eos_token_idx, special_token_mask_to_clothest_token_idx(eos_tokens_mask))
+    eos_tokens_mask = torch.tensor([[ 0, 1, 1, 0, 1, 0, 0, 1, 0, 1 ]]).bool()
+    clothest_eos_token_idx = torch.tensor([[ 0, 0, 1, 2, 2, 4, 4, 4, 7, 7 ]])
+    assert torch.allclose(clothest_eos_token_idx, special_token_mask_to_clothest_token_idx_slow(eos_tokens_mask))
 
     # With first token being eos
-    eos_tokens_mask = torch.tensor([ 1, 1, 0, 0, 1, 0, 0, 1, 0, 1 ]).bool()
-    clothest_eos_token_idx = torch.tensor([ 0, 0, 1, 1, 1, 4, 4, 4, 7, 7 ])
-    assert torch.allclose(clothest_eos_token_idx, special_token_mask_to_clothest_token_idx(eos_tokens_mask))
+    eos_tokens_mask = torch.tensor([[ 1, 1, 0, 0, 1, 0, 0, 1, 0, 1 ]]).bool()
+    clothest_eos_token_idx = torch.tensor([[ 0, 0, 1, 1, 1, 4, 4, 4, 7, 7 ]])
+    assert torch.allclose(clothest_eos_token_idx, special_token_mask_to_clothest_token_idx_slow(eos_tokens_mask))

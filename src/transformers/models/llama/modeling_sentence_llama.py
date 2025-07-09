@@ -84,10 +84,59 @@ from torch.distributions.categorical import Categorical
 CHECK_WITH_PYTHON = False
 
 if is_torch_flex_attn_available():
-    from torch.nn.attention.flex_attention import BlockMask
+    from torch.nn.attention.flex_attention import BlockMask, flex_attention
 
     from ...integrations.flex_attention import make_flex_block_causal_mask
 
+def special_token_mask_to_clothest_token_idx_slow(special_token_mask):
+    # [ bs, seq_len ]
+    special_token_mask_bool = special_token_mask.bool()
+
+    clothest_token_idx = torch.zeros_like(special_token_mask, dtype=torch.long)
+
+    current_clothest_token_idx = 0
+    for batch_i in range(special_token_mask_bool.shape[0]):
+        for seq_len_i in range(special_token_mask_bool.shape[1]):
+            if special_token_mask_bool[batch_i, seq_len_i].item():
+                clothest_token_idx[batch_i, seq_len_i] = current_clothest_token_idx
+                current_clothest_token_idx = seq_len_i
+            else:
+                clothest_token_idx[batch_i, seq_len_i] = current_clothest_token_idx
+
+    return clothest_token_idx
+
+def sentence_attention_forward(
+    module: nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
+    scaling: float,
+    dropout: float = 0.0,
+    **kwargs,
+):
+    clothest_end_of_sentence_token_idx = kwargs['clothest_end_of_sentence_token_idx']
+    special_embeddings_mask = kwargs['special_embeddings_mask'].bool()
+
+    assert len(clothest_end_of_sentence_token_idx.shape) == 2, 'clothest_end_of_sentence_token_idx must be 2D'
+    assert len(special_embeddings_mask.shape) == 2, 'special_embeddings_mask must be 2D'
+
+    assert dropout == 0.0, 'dropout is not supported'
+
+    def custom_mask(score, b, h, q_idx, kv_idx):
+        eos_token_idx = clothest_end_of_sentence_token_idx[b, q_idx]
+
+        eos_sync_tokens = (kv_idx <= q_idx) & special_embeddings_mask[b, kv_idx]
+        causal_triu_mask = (kv_idx <= q_idx) & (kv_idx >= eos_token_idx)
+
+        return torch.where(causal_triu_mask | eos_sync_tokens, score, -float("inf"))
+
+    output = flex_attention(query, key, value, score_mod=custom_mask, scale=scaling)
+
+    return output, None
+
+
+ALL_ATTENTION_FUNCTIONS["sentence_attention"] = sentence_attention_forward
 
 
 @dataclass
@@ -195,6 +244,8 @@ class SentenceLlamaDecoderLayer(nn.Module):
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        special_embeddings_mask: Optional[torch.Tensor] = None,
+        clothest_end_of_sentence_token_idx: Optional[torch.Tensor] = None,
         **kwargs: Unpack[FlashAttentionKwargs],
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         residual = hidden_states
@@ -211,6 +262,8 @@ class SentenceLlamaDecoderLayer(nn.Module):
             use_cache=use_cache,
             cache_position=cache_position,
             position_embeddings=position_embeddings,
+            special_embeddings_mask=special_embeddings_mask,
+            clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx,
             **kwargs,
         )
 
@@ -373,14 +426,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         self.vocab_size = config.vocab_size
 
         assert config.num_hidden_layers % 2 == 0
-        # num_hidden_layers_half = config.num_hidden_layers // 2
 
-        is_dummy_fan_in = config.dummy_adaptive_fan_in
-        if is_dummy_fan_in is None:
-            is_dummy_fan_in = [ False ] * config.num_hidden_layers
-
-        # assert (len(is_dummy_fan_in) - sum(is_dummy_fan_in)) == 1, 'only one not dummy fan in'
-        # not dummy index
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
 
@@ -401,7 +447,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
     def set_input_embeddings(self, value):
         self.embed_tokens = value
 
-    def forward_decoder_layer(self, decoder_layer, hidden_states, attention_mask, position_ids, past_key_values, output_attentions, use_cache, cache_position, position_embeddings):
+    def forward_decoder_layer(self, decoder_layer, hidden_states, attention_mask, position_ids, past_key_values, output_attentions, use_cache, cache_position, position_embeddings, special_embeddings_mask, clothest_end_of_sentence_token_idx):
         if self.gradient_checkpointing and self.training:
             layer_outputs = self._gradient_checkpointing_func(
                 decoder_layer.__call__,
@@ -413,6 +459,8 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
                 use_cache,
                 cache_position,
                 position_embeddings,
+                special_embeddings_mask,
+                clothest_end_of_sentence_token_idx,
             )
         else:
             layer_outputs = decoder_layer(
@@ -424,11 +472,13 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
                 use_cache=use_cache,
                 cache_position=cache_position,
                 position_embeddings=position_embeddings,
+                special_embeddings_mask=special_embeddings_mask,
+                clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx,
             )
 
         return layer_outputs
 
-    def forward_decoder_layers(self, decoder_layers, hidden_states, attention_mask, position_ids, past_key_values, output_attentions, output_hidden_states, use_cache, cache_position, position_embeddings, all_hidden_states, all_self_attns):
+    def forward_decoder_layers(self, decoder_layers, hidden_states, attention_mask, position_ids, past_key_values, output_attentions, output_hidden_states, use_cache, cache_position, position_embeddings, all_hidden_states, all_self_attns, special_embeddings_mask, clothest_end_of_sentence_token_idx):
 
         for decoder_layer in decoder_layers:
             if output_hidden_states:
@@ -444,6 +494,8 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
                 use_cache,
                 cache_position,
                 position_embeddings,
+                special_embeddings_mask,
+                clothest_end_of_sentence_token_idx,
             )
 
             hidden_states = layer_outputs[0]
@@ -461,6 +513,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         attention_mask: Optional[torch.Tensor] = None,
         token_frequency: Optional[torch.Tensor] = None,
         special_embeddings_mask: Optional[torch.Tensor] = None,
+        clothest_end_of_sentence_token_idx: Optional[torch.Tensor] = None,
         stop_words_tokens_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
@@ -540,6 +593,8 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
             position_embeddings,
             all_hidden_states,
             all_self_attns,
+            special_embeddings_mask,
+            clothest_end_of_sentence_token_idx,
         )
 
 
@@ -716,16 +771,9 @@ class SentenceLlamaForCausalLM(SentenceLlamaPreTrainedModel, GenerationMixin):
             special_embeddings_mask[input_ids == self.config.end_of_sentence_token_id] = 1
 
         outputs['special_embeddings_mask'] = special_embeddings_mask
+        outputs['clothest_end_of_sentence_token_idx'] = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask)
 
         return outputs
-
-    def resize_token_embeddings(self, new_num_tokens: Optional[int] = None, pad_to_multiple_of: Optional[int] = None, mean_resizing: bool = True):
-        embeds = super().resize_token_embeddings(new_num_tokens, pad_to_multiple_of, mean_resizing)
-
-        self.model.fan_in.hcg.resize_hcg_log_a(new_num_tokens)
-        print(f"Resized HCG log a to {new_num_tokens}")
-
-        return embeds
 
     def _init_adaptive_layers(self):
         return self.model._init_adaptive_layers()
@@ -756,6 +804,7 @@ class SentenceLlamaForCausalLM(SentenceLlamaPreTrainedModel, GenerationMixin):
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         special_embeddings_mask: Optional[torch.Tensor] = None,
+        clothest_end_of_sentence_token_idx: Optional[torch.Tensor] = None,
         stop_words_tokens_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Cache] = None,
@@ -818,12 +867,16 @@ class SentenceLlamaForCausalLM(SentenceLlamaPreTrainedModel, GenerationMixin):
 
         assert special_embeddings_mask is not None
 
+        if clothest_end_of_sentence_token_idx is None:
+            clothest_end_of_sentence_token_idx = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask)
+
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         # print("use_cache", use_cache)
         outputs: SentenceBaseModelOutputWithPast = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             special_embeddings_mask=special_embeddings_mask,
+            clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx,
             stop_words_tokens_mask=stop_words_tokens_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
