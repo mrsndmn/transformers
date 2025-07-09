@@ -24,11 +24,14 @@ class ContinuousEvaluator:
         adaptive_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_8MTABS8F"
         adaptive_mid_lr_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_QVDLIG38"
 
+        adaptive_huge_bs_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_HEQTAX1C"
+
         self.model_to_checkpoints = [
             ("vanilla_16L eos", LlamaForCausalLM, vanilla_16L_eos_checkpoints_dir),
             ("vanilla_16L", LlamaForCausalLM, vanilla_16L_checkpoints_dir),
             ("adaptive", AdaptiveLlamaForCausalLM, adaptive_checkpoints_dir),
             ("adaptive mid lr", AdaptiveLlamaForCausalLM, adaptive_mid_lr_checkpoints_dir),
+            ("adaptive huge bs", AdaptiveLlamaForCausalLM, adaptive_huge_bs_checkpoints_dir),
         ]
 
         self.model_name_to_color = {
@@ -37,6 +40,7 @@ class ContinuousEvaluator:
             "vanilla_16L eos": "purple",
             "adaptive": "green",
             "adaptive mid lr": "orange",
+            "adaptive huge bs": "brown",
         }
 
         for model_name, _, _ in self.model_to_checkpoints:
