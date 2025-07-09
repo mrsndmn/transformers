@@ -422,6 +422,8 @@ class AdaptiveLlamaTrainer(Trainer):
         assert special_embeddings_mask is not None
         model_kwargs["special_embeddings_mask"] = special_embeddings_mask
 
+        model_kwargs['clothest_end_of_sentence_token_idx'] = inputs['clothest_end_of_sentence_token_idx']
+
         assert special_embeddings_mask.shape == attention_mask.shape
 
         outputs = model(**model_kwargs)

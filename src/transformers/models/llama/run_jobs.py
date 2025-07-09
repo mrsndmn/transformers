@@ -142,11 +142,11 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         fan_in_idx = exp.pop('fan_in_idx', '')
         if fan_in_idx is None:
             fan_in_idx = ''
-        if fan_out_idx is None:
-            fan_out_idx = ''
         if fan_in_idx != '':
             fan_in_idx = f"--fan_in_idx {fan_in_idx}"
         fan_out_idx = exp.pop('fan_out_idx', '')
+        if fan_out_idx is None:
+            fan_out_idx = ''
         if fan_out_idx != '':
             fan_out_idx = f"--fan_out_idx {fan_out_idx}"
 
@@ -559,11 +559,17 @@ def run_hcg_llama31_8B_hcg(
         in_layers_str = "1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1"
         exp_config = {
             "dummy_adaptive_fan_in_layers_str": in_layers_str,
-            "fan_in_idx": _fan_in_idx,
-            "fan_out_idx": _fan_out_idx,
             "hcg_loss_weight": hcg_loss_weight,
             **common_params,
         }
+        if fan_in_idx is not None:
+            exp_config["fan_in_idx"] = _fan_in_idx
+        if fan_out_idx is not None:
+            exp_config["fan_out_idx"] = _fan_out_idx
+
+        if fan_in_idx is None and fan_out_idx is None:
+            suffix = ''
+
         exp_config["output_dir"] = f"{experiment_prefix_base_name}_w_{float(hcg_loss_weight):.3f}_l_{suffix}"
 
         hcg_experiments.append(exp_config)
@@ -886,7 +892,7 @@ if __name__ == "__main__":
     NGPUS = 4
     num_train_epochs = 1
     per_device_train_batch_size = 16
-    gradient_accumulation_steps = (64 // NGPUS)
+    gradient_accumulation_steps = (16 // NGPUS)
     save_steps = 1000
 
     # prune_all_except_end_of_sentence_token 1.7B Model
