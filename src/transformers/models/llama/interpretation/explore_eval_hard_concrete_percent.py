@@ -209,7 +209,7 @@ def evaluate_acc_hellaswag(model, bincount=None, sparsity_only=False):
     }
 
 
-def evaluate_acc_mmlu_0_shot(model, bincount=None, sparsity_only=False):
+def evaluate_acc_mmlu_0_shot(model, bincount=None, sparsity_only=False, override_batch_size=128):
 
     acc_norm = None
     acc_norm_stderr = None
@@ -217,7 +217,7 @@ def evaluate_acc_mmlu_0_shot(model, bincount=None, sparsity_only=False):
         results = evaluate_lighteval_task(
             model,
             'mmlu_cloze',
-            override_batch_size=128,
+            override_batch_size=override_batch_size,
             num_fewshot_seeds=0,
             # max_samples=100,
         )

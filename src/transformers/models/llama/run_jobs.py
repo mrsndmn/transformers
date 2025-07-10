@@ -1,3 +1,4 @@
+import math
 import time
 import string
 import random
@@ -889,10 +890,10 @@ if __name__ == "__main__":
 
     # Pretrain Fain Out on Tiny Datasets
     # NGPUS = 1
-    NGPUS = 4
+    NGPUS = 6
     num_train_epochs = 1
     per_device_train_batch_size = 16
-    gradient_accumulation_steps = (16 // NGPUS)
+    gradient_accumulation_steps = math.ceil(16 / NGPUS)
     save_steps = 1000
 
     # prune_all_except_end_of_sentence_token 1.7B Model

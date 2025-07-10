@@ -29,7 +29,7 @@ class ContinuousEvaluator:
 
         # sentence_llama_fa_checkpoints_dir = "./sentence_slm2_1.7B_flash_attention_pretrain_with_end_of_sentence_token_w_0.100_l__ME65Z1L5"
 
-        sentence_llama_checkpoints_dir = "./sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__0YSRLW15"
+        sentence_llama_checkpoints_dir = "./"
 
 
         self.model_to_checkpoints = [
@@ -50,7 +50,7 @@ class ContinuousEvaluator:
             "adaptive mid lr": "orange",
             "adaptive huge bs": "brown",
             "sentence llama fa": "pink",
-            "sentence llama": "pink",
+            "sentence llama": "black",
         }
 
         for model_name, _, _ in self.model_to_checkpoints:

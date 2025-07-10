@@ -70,18 +70,19 @@ def test_flex_attention_custom():
 
     eos_tokens_mask = torch.tensor([[ 0, 1, 0, 0, 1, 0, 0, 1, 0, 1 ]]).repeat(batch_size, 1).bool()
     clothest_eos_token_idx = torch.tensor([[ 0, 0, 1, 1, 1, 4, 4, 4, 7, 7 ]]).repeat(batch_size, 1)
+    attention_mask_bool = torch.tensor([[ 0, 0, 1, 1, 1, 1, 1, 1, 1, 1 ]]).repeat(batch_size, 1).bool()
 
     expected_mask = torch.tensor([
-        [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
-        [0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-        [0, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-        [0, 1, 0, 0, 1, 1, 0, 0, 0, 0],
-        [0, 1, 0, 0, 1, 1, 1, 0, 0, 0],
-        [0, 1, 0, 0, 1, 1, 1, 1, 0, 0],
-        [0, 1, 0, 0, 1, 0, 0, 1, 1, 0],
-        [0, 1, 0, 0, 1, 0, 0, 1, 1, 1],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
+        [0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
+        [0, 0, 0, 0, 1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 0, 1, 1, 1, 1, 0, 0],
+        [0, 0, 0, 0, 1, 0, 0, 1, 1, 0],
+        [0, 0, 0, 0, 1, 0, 0, 1, 1, 1],
     ])
     expected_mask = torch.where(expected_mask.bool(), 1, -float("inf"))
 
@@ -90,9 +91,11 @@ def test_flex_attention_custom():
 
         eos_sync_tokens = (kv_idx <= q_idx) & eos_tokens_mask[b, kv_idx]
         causal_triu_mask = (kv_idx <= q_idx) & (kv_idx >= eos_token_idx)
+        attention_mask_result_kv = attention_mask_bool[b, kv_idx]
+        attention_mask_result_q = attention_mask_bool[b, q_idx]
 
         # return torch.where(causal_triu_mask, score, -float("inf"))
-        return torch.where(causal_triu_mask | eos_sync_tokens, score, -float("inf"))
+        return torch.where(attention_mask_result_kv & attention_mask_result_q & (causal_triu_mask | eos_sync_tokens), score, -float("inf"))
 
     generated_mask = torch.zeros(seq_len, seq_len)
     for q_idx in range(seq_len):

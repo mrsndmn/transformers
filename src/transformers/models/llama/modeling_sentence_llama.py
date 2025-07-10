@@ -118,6 +118,9 @@ def sentence_attention_forward(
     clothest_end_of_sentence_token_idx = kwargs['clothest_end_of_sentence_token_idx']
     special_embeddings_mask = kwargs['special_embeddings_mask'].bool()
 
+    # bs
+    attention_mask_bool = attention_mask.bool()
+
     assert len(clothest_end_of_sentence_token_idx.shape) == 2, 'clothest_end_of_sentence_token_idx must be 2D'
     assert len(special_embeddings_mask.shape) == 2, 'special_embeddings_mask must be 2D'
 
@@ -126,10 +129,11 @@ def sentence_attention_forward(
     def custom_mask(score, b, h, q_idx, kv_idx):
         eos_token_idx = clothest_end_of_sentence_token_idx[b, q_idx]
 
-        eos_sync_tokens = (kv_idx <= q_idx) & special_embeddings_mask[b, kv_idx]
-        causal_triu_mask = (kv_idx <= q_idx) & (kv_idx >= eos_token_idx)
+        causal_mask = (kv_idx <= q_idx) & attention_mask_bool[b, q_idx]
+        eos_sync_tokens = causal_mask & special_embeddings_mask[b, kv_idx]
+        causal_triu_mask = causal_mask & (kv_idx >= eos_token_idx)
 
-        return torch.where(causal_triu_mask | eos_sync_tokens, score, -float("inf"))
+        return torch.where((causal_triu_mask | eos_sync_tokens), score, -float("inf"))
 
     output = flex_attention(query, key, value, score_mod=custom_mask, scale=scaling)
 
@@ -451,6 +455,10 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         self.embed_tokens = value
 
     def forward_decoder_layer(self, decoder_layer, hidden_states, attention_mask, position_ids, past_key_values, output_attentions, use_cache, cache_position, position_embeddings, special_embeddings_mask, clothest_end_of_sentence_token_idx):
+
+        # if decoder_layer.layer_idx == 0:
+        #     breakpoint()
+
         if self.gradient_checkpointing and self.training:
             layer_outputs = self._gradient_checkpointing_func(
                 decoder_layer.__call__,
@@ -628,6 +636,9 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
             if attention_mask is not None and (attention_mask == 0.0).any():
                 return attention_mask
             return None
+
+        if self.config._attn_implementation == "sentence_attention":
+            return attention_mask
 
         if self.config._attn_implementation == "flex_attention":
             if isinstance(attention_mask, torch.Tensor):
