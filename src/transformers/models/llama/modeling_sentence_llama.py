@@ -130,7 +130,7 @@ def sentence_attention_forward(
     def custom_mask(score, b, h, q_idx, kv_idx):
         eos_token_idx = clothest_end_of_sentence_token_idx[b, q_idx]
 
-        causal_mask = (kv_idx <= q_idx) & attention_mask_bool[b, q_idx]
+        causal_mask = (kv_idx <= q_idx) & attention_mask_bool[b, q_idx] & attention_mask_bool[b, kv_idx]
         eos_sync_tokens = causal_mask & special_embeddings_mask[b, kv_idx]
         causal_triu_mask = causal_mask & (kv_idx >= eos_token_idx)
 

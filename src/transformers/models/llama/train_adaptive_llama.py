@@ -161,7 +161,6 @@ class AdaptiveTrainingArguments(TrainingArguments):
     dummy_adaptive_fan_in_layers_str: Optional[str] = None
     concrete_random_mask_proba: Optional[float] = None
     concrete_uniform_pruning: Optional[int] = None
-    concrete_stop_word_pruning: Optional[bool] = None
 
     scale_not_pruned_gradients: float = 0.0
 
@@ -410,7 +409,6 @@ class AdaptiveLlamaTrainer(Trainer):
             # "token_frequency": token_frequency,
             "use_cache": False,
             "output_attentions": False,
-            "stop_words_tokens_mask": inputs.get('stop_words_tokens_mask', None),
         }
 
         if self.model_accepts_loss_kwargs:
@@ -456,6 +454,7 @@ class AdaptiveLlamaTrainer(Trainer):
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
         causal_lm_loss = loss
+        breakpoint()
 
         # fan_in_merging_logits_sum = sum(x.sum(dim=[0, 1]) for x in fan_in_merging_logits)
         model_unwrapped = model
@@ -1175,7 +1174,6 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
     model.config.concrete_random_mask_proba = training_args.concrete_random_mask_proba
     model.config.concrete_uniform_pruning = training_args.concrete_uniform_pruning
-    model.config.concrete_stop_word_pruning = training_args.concrete_stop_word_pruning
     model.config.forward_residuals = training_args.forward_residuals
     model.config.force_train_on_trimmed_embeddings = training_args.force_train_on_trimmed_embeddings
     model.config.prune_all_except_end_of_sentence_token = training_args.prune_all_except_end_of_sentence_token
@@ -1195,7 +1193,6 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
         print("model.config.concrete_random_mask_proba", model.config.concrete_random_mask_proba)
         print("model.config.concrete_uniform_pruning", model.config.concrete_uniform_pruning)
-        print("model.config.concrete_stop_word_pruning", model.config.concrete_stop_word_pruning)
         print("model.config.forward_residuals", model.config.forward_residuals)
         print("model.config.fan_in_idx", model.config.fan_in_idx)
         print("model.config.fan_out_idx", model.config.fan_out_idx)
@@ -1469,10 +1466,6 @@ if __name__ == "__main__":
     if training_args.prohibit_end_of_sentence_pruning:
         special_tokens = [ x[0] for x in tokenizer([ '.', '..', '...', '?', '!', ':', ';' ])['input_ids'] ]
 
-    stop_words = None
-    if training_args.concrete_stop_word_pruning is not None:
-        stop_words = [ x[0] for x in tokenizer([ 'and', 'or', 'the', '.', ',', 'to', 'of', 'has', 'an', 'in', 'we', 'have', 'this'])['input_ids'] ]
-
     def crutch_collator(examples):
         collate_dummy = nested_data_collator(examples)
 
@@ -1490,10 +1483,6 @@ if __name__ == "__main__":
                 end_of_sentence_token_id = tokenizer.convert_tokens_to_ids('<end_of_sentence>')
                 collate_dummy['special_embeddings_mask'][ collate_dummy['input_ids'] == end_of_sentence_token_id ] = 1
 
-        if stop_words is not None:
-            collate_dummy['stop_words_tokens_mask'] = torch.zeros_like(collate_dummy['attention_mask'])
-            for stop_word in stop_words:
-                collate_dummy['stop_words_tokens_mask'][ collate_dummy['input_ids'] == stop_word ] = 1
 
         return collate_dummy
 

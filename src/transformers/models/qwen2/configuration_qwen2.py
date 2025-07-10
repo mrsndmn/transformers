@@ -177,7 +177,6 @@ class Qwen2Config(PretrainedConfig):
         scale_not_pruned_gradients=0.0,
         concrete_random_mask_proba=0.0,
         concrete_uniform_pruning=0,
-        concrete_stop_word_pruning=0,
         eval_hard_concrete_percent=0.0,
         single_layer_hopping=False,
         # scale_token_frequency=False,
@@ -226,7 +225,6 @@ class Qwen2Config(PretrainedConfig):
 
         self.concrete_random_mask_proba = concrete_random_mask_proba
         self.concrete_uniform_pruning = concrete_uniform_pruning
-        self.concrete_stop_word_pruning = concrete_stop_word_pruning
 
         self.hcg_log_a = hcg_log_a
         self.hcg_temperature = hcg_temperature

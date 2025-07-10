@@ -1,0 +1,14 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Use full python interpreter path for scripts lanuching:
+```
+/home/jovyan/.mlspace/envs/tokens_pruning/bin/python
+```
+
+For pytest use this path:
+```
+/home/jovyan/.mlspace/envs/tokens_pruning/bin/pytest
+```

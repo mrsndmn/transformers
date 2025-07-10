@@ -59,7 +59,6 @@ def test_eval_adaptive_hcg_llama():
         scale_not_pruned_gradients=0.0,
         concrete_random_mask_proba=None,
         concrete_uniform_pruning=None,
-        concrete_stop_word_pruning=None,
         pretrain_fan_out_projection=False,
     )
 

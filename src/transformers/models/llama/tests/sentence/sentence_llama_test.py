@@ -139,8 +139,7 @@ def test_sentence_attention_attention_mask():
 
     special_embeddings_mask2 = torch.zeros(batch_size, seq_len2, dtype=torch.long)
     special_embeddings_mask2[:, :seq_len] = special_embeddings_mask
-    clothest_end_of_sentence_token_idx2 = torch.zeros(batch_size, seq_len2, dtype=torch.long)
-    clothest_end_of_sentence_token_idx2[:, :seq_len] = clothest_end_of_sentence_token_idx
+    clothest_end_of_sentence_token_idx2 = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask2, attention_mask2)
 
     output2, _ = sentence_attention_forward(
         None,
@@ -151,11 +150,9 @@ def test_sentence_attention_attention_mask():
         special_embeddings_mask=special_embeddings_mask2,
     )
 
-    print("diff", (output1 - output2[:, :, seq_len:, :]).norm())
-
-    assert torch.allclose(output1, output2[:, :, seq_len:, :]), "output1 and output2 are not equal"
+    assert torch.allclose(output1, output2[:, :, :seq_len, :]), "output1 and output2 are not equal"
 
 
 if __name__ == "__main__":
-    # test_sentence_llama_model_generate_with_eos_token_and_attention_mask()
+    test_sentence_llama_model_generate_with_eos_token_and_attention_mask()
     test_sentence_attention_attention_mask()
