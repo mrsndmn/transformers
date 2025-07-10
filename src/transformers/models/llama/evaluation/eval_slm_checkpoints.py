@@ -27,7 +27,10 @@ class ContinuousEvaluator:
 
         adaptive_huge_bs_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_HEQTAX1C"
 
-        sentence_llama_checkpoints_dir = "./sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__ME65Z1L5"
+        sentence_llama_fa_checkpoints_dir = "./sentence_slm2_1.7B_flash_attention_pretrain_with_end_of_sentence_token_w_0.100_l__ME65Z1L5"
+
+        sentence_llama_checkpoints_dir = "./sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__0YSRLW15"
+
 
         self.model_to_checkpoints = [
             ("vanilla_16L eos", LlamaForCausalLM, vanilla_16L_eos_checkpoints_dir),
@@ -35,6 +38,7 @@ class ContinuousEvaluator:
             ("adaptive", AdaptiveLlamaForCausalLM, adaptive_checkpoints_dir),
             ("adaptive mid lr", AdaptiveLlamaForCausalLM, adaptive_mid_lr_checkpoints_dir),
             ("adaptive huge bs", AdaptiveLlamaForCausalLM, adaptive_huge_bs_checkpoints_dir),
+            ("sentence llama fa", SentenceLlamaForCausalLM, sentence_llama_fa_checkpoints_dir),
             ("sentence llama", SentenceLlamaForCausalLM, sentence_llama_checkpoints_dir),
         ]
 
@@ -45,6 +49,7 @@ class ContinuousEvaluator:
             "adaptive": "green",
             "adaptive mid lr": "orange",
             "adaptive huge bs": "brown",
+            "sentence llama fa": "pink",
             "sentence llama": "pink",
         }
 
@@ -104,6 +109,19 @@ class ContinuousEvaluator:
         new_checkpoints = []
 
         for model_name, model_class, checkpoints_dir in self.model_to_checkpoints:
+            if checkpoints_dir.startswith("HuggingFaceTB/"):
+                pending_benchmarks = []
+                for benchmark_name, benchmark_fn in self.benchmarks:
+                    if (model_name, "HuggingFaceTB", benchmark_name) not in self.evaluated_combinations:
+                        pending_benchmarks.append((benchmark_name, benchmark_fn))
+
+                if pending_benchmarks:
+                    # Fake checkpoint
+                    new_checkpoints.append((model_name, model_class, checkpoint_dir, 'checkpoint-1000', pending_benchmarks))
+
+                continue
+
+
             if not os.path.exists(checkpoints_dir):
                 print(f"Warning: Directory {checkpoints_dir} does not exist")
                 continue
