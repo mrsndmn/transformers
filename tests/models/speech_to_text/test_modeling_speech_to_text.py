@@ -271,7 +271,6 @@ class Speech2TextModelTester:
 @require_torch
 class Speech2TextModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMixin, unittest.TestCase):
     all_model_classes = (Speech2TextModel, Speech2TextForConditionalGeneration) if is_torch_available() else ()
-    all_generative_model_classes = (Speech2TextForConditionalGeneration,) if is_torch_available() else ()
     pipeline_model_mapping = (
         {"automatic-speech-recognition": Speech2TextForConditionalGeneration, "feature-extraction": Speech2TextModel}
         if is_torch_available()
@@ -325,13 +324,13 @@ class Speech2TextModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTest
         pass
 
     @unittest.skip(
-        reason="This architecure seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
     )
     def test_training_gradient_checkpointing_use_reentrant(self):
         pass
 
     @unittest.skip(
-        reason="This architecure seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
+        reason="This architecture seem to not compute gradients properly when using GC, check: https://github.com/huggingface/transformers/pull/27124"
     )
     def test_training_gradient_checkpointing_use_reentrant_false(self):
         pass
@@ -618,14 +617,6 @@ class Speech2TextModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTest
     def test_generate_without_input_ids(self):
         pass
 
-    def _check_outputs(self, output, main_input, config, use_cache=False, num_return_sequences=1):
-        # In this model, the index of `batch_size` and `sequence_length`` in `main_input` is different: they are the
-        # first two dimensions of the tensor.
-        main_input = main_input[:, :, 0]
-        super()._check_outputs(
-            output, main_input, config, use_cache=use_cache, num_return_sequences=num_return_sequences
-        )
-
     def _create_and_check_torchscript(self, config, inputs_dict):
         if not self.test_torchscript:
             self.skipTest(reason="test_torchscript is set to False")
@@ -701,10 +692,6 @@ class Speech2TextModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTest
                     models_equal = False
 
             self.assertTrue(models_equal)
-
-    def test_pt_tf_model_equivalence(self, allow_missing_keys=True):
-        # Allow missing keys since TF doesn't cache the sinusoidal embeddings in an attribute
-        super().test_pt_tf_model_equivalence(allow_missing_keys=allow_missing_keys)
 
     @unittest.skip(reason="Test failing,  @RocketNight is looking into it")
     def test_tf_from_pt_safetensors(self):

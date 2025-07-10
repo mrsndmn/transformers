@@ -284,7 +284,6 @@ class BioGptModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMix
         if is_torch_available()
         else ()
     )
-    all_generative_model_classes = (BioGptForCausalLM,) if is_torch_available() else ()
     pipeline_model_mapping = (
         {
             "feature-extraction": BioGptModel,
@@ -432,10 +431,10 @@ class BioGptModelIntegrationTest(unittest.TestCase):
             [[[-9.5236, -9.8918, 10.4557], [-11.0469, -9.6423, 8.1022], [-8.8664, -7.8826, 5.5325]]]
         )
 
-        self.assertTrue(torch.allclose(output[:, :3, :3], expected_slice, atol=1e-4))
+        torch.testing.assert_close(output[:, :3, :3], expected_slice, rtol=1e-4, atol=1e-4)
 
     @slow
-    def test_biogpt_generation(self):
+    def test_biogpt_generation_beam_search(self):
         tokenizer = BioGptTokenizer.from_pretrained("microsoft/biogpt")
         model = BioGptForCausalLM.from_pretrained("microsoft/biogpt")
         model.to(torch_device)
@@ -449,13 +448,15 @@ class BioGptModelIntegrationTest(unittest.TestCase):
             num_beams=5,
             early_stopping=True,
         )
-        output_str = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        output_str = tokenizer.decode(output_ids[0])
 
         EXPECTED_OUTPUT_STR = (
+            "</s>"
             "COVID-19 is a global pandemic caused by severe acute respiratory syndrome coronavirus 2 (SARS-CoV-2), the"
             " causative agent of coronavirus disease 2019 (COVID-19), which has spread to more than 200 countries and"
             " territories, including the United States (US), Canada, Australia, New Zealand, the United Kingdom (UK),"
             " and the United States of America (USA), as of March 11, 2020, with more than 800,000 confirmed cases and"
-            " more than 800,000 deaths."
+            " more than 800,000 deaths. "
+            "</s>"
         )
         self.assertEqual(output_str, EXPECTED_OUTPUT_STR)

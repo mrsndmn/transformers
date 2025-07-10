@@ -129,6 +129,22 @@ class Qwen2Config(PretrainedConfig):
     model_type = "qwen2"
     keys_to_ignore_at_inference = ["past_key_values"]
 
+    # Default tensor parallel plan for base model `Qwen2`
+    base_model_tp_plan = {
+        "layers.*.self_attn.q_proj": "colwise",
+        "layers.*.self_attn.k_proj": "colwise",
+        "layers.*.self_attn.v_proj": "colwise",
+        "layers.*.self_attn.o_proj": "rowwise",
+        "layers.*.mlp.gate_proj": "colwise",
+        "layers.*.mlp.up_proj": "colwise",
+        "layers.*.mlp.down_proj": "rowwise",
+    }
+    base_model_pp_plan = {
+        "embed_tokens": (["input_ids"], ["inputs_embeds"]),
+        "layers": (["hidden_states", "attention_mask"], ["hidden_states"]),
+        "norm": (["hidden_states"], ["hidden_states"]),
+    }
+
     def __init__(
         self,
         vocab_size=151936,
@@ -149,6 +165,25 @@ class Qwen2Config(PretrainedConfig):
         sliding_window=4096,
         max_window_layers=28,
         attention_dropout=0.0,
+        dummy_adaptive_fan_in=None,
+        fan_in_idx=None,
+        fan_out_idx=None,
+        generate_merges_transform_impl='python',
+        fan_out_projection=True,
+        merging_type='hcg',
+        hcg_temperature=1.0,
+        hcg_log_a=1.0,
+        learnt_temperature=False,
+        scale_not_pruned_gradients=0.0,
+        concrete_random_mask_proba=0.0,
+        concrete_uniform_pruning=0,
+        concrete_stop_word_pruning=0,
+        eval_hard_concrete_percent=0.0,
+        single_layer_hopping=False,
+        # scale_token_frequency=False,
+        distributed=False,
+        pretrain_fan_out_projection=False,
+        fan_out_projection_mlp_intermediate_size=224,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -158,7 +193,7 @@ class Qwen2Config(PretrainedConfig):
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
         self.use_sliding_window = use_sliding_window
-        self.sliding_window = sliding_window if use_sliding_window else None
+        self.sliding_window = sliding_window  # we check `use_sliding_window` in the modeling code
         self.max_window_layers = max_window_layers
 
         # for backward compatibility
@@ -179,7 +214,42 @@ class Qwen2Config(PretrainedConfig):
             self.rope_scaling["rope_type"] = self.rope_scaling["type"]
         rope_config_validation(self)
 
+        # Adaptive params
+        if dummy_adaptive_fan_in is None:
+            dummy_adaptive_fan_in = [ True ] * (num_hidden_layers // 2)
+        self.dummy_adaptive_fan_in = dummy_adaptive_fan_in
+
+        assert len(self.dummy_adaptive_fan_in) == (num_hidden_layers // 2)
+
+        self.fan_in_idx = fan_in_idx
+        self.fan_out_idx = fan_out_idx
+
+        self.concrete_random_mask_proba = concrete_random_mask_proba
+        self.concrete_uniform_pruning = concrete_uniform_pruning
+        self.concrete_stop_word_pruning = concrete_stop_word_pruning
+
+        self.hcg_log_a = hcg_log_a
+        self.hcg_temperature = hcg_temperature
+        self.learnt_temperature = learnt_temperature
+        self.distributed = distributed
+
+        self.scale_not_pruned_gradients = scale_not_pruned_gradients
+
+        self.generate_merges_transform_impl = generate_merges_transform_impl
+        self.fan_out_projection = fan_out_projection
+        self.merging_type = merging_type
+
+        self.single_layer_hopping = single_layer_hopping
+        self.eval_hard_concrete_percent = eval_hard_concrete_percent
+
+        print("Pretrain fan out projection", pretrain_fan_out_projection)
+        self.pretrain_fan_out_projection = pretrain_fan_out_projection
+        self.fan_out_projection_mlp_intermediate_size = fan_out_projection_mlp_intermediate_size
+
         super().__init__(
             tie_word_embeddings=tie_word_embeddings,
             **kwargs,
         )
+
+        self.max_length = max_position_embeddings
+

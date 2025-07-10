@@ -124,7 +124,7 @@ class LlamaConfig(PretrainedConfig):
         mlp_bias (`bool`, *optional*, defaults to `False`):
             Whether to use a bias in up_proj, down_proj and gate_proj layers in the MLP layers.
         head_dim (`int`, *optional*):
-            The attention head dimension. If None, it will default to hidden_size // num_heads
+            The attention head dimension. If None, it will default to hidden_size // num_attention_heads
 
     ```python
     >>> from transformers import LlamaModel, LlamaConfig
@@ -141,6 +141,21 @@ class LlamaConfig(PretrainedConfig):
 
     model_type = "llama"
     keys_to_ignore_at_inference = ["past_key_values"]
+    # Default tensor parallel plan for base model `LlamaModel`
+    base_model_tp_plan = {
+        "layers.*.self_attn.q_proj": "colwise",
+        "layers.*.self_attn.k_proj": "colwise",
+        "layers.*.self_attn.v_proj": "colwise",
+        "layers.*.self_attn.o_proj": "rowwise",
+        "layers.*.mlp.gate_proj": "colwise",
+        "layers.*.mlp.up_proj": "colwise",
+        "layers.*.mlp.down_proj": "rowwise",
+    }
+    base_model_pp_plan = {
+        "embed_tokens": (["input_ids"], ["inputs_embeds"]),
+        "layers": (["hidden_states", "attention_mask"], ["hidden_states"]),
+        "norm": (["hidden_states"], ["hidden_states"]),
+    }
 
     def __init__(
         self,
@@ -166,14 +181,83 @@ class LlamaConfig(PretrainedConfig):
         attention_dropout=0.0,
         mlp_bias=False,
         head_dim=None,
+        dummy_adaptive_fan_in=None,
+        fan_in_idx=None,
+        fan_out_idx=None,
+        generate_merges_transform_impl='python',
+        fan_out_projection=False,
+        merging_type='hcg',
+        hcg_temperature=1.0,
+        hcg_log_a=1.0,
+        learnt_temperature=False,
+        scale_not_pruned_gradients=0.0,
+        concrete_random_mask_proba=0.0,
+        concrete_uniform_pruning=0,
+        concrete_stop_word_pruning=0,
+        eval_hard_concrete_percent=0.0,
+        single_layer_hopping=False,
+        forward_residuals=False,
+        # scale_token_frequency=False,
+        distributed=False,
+        pretrain_fan_out_projection=False,
+        fan_out_projection_mlp_intermediate_size=256,
+        end_of_sentence_token_id=None,
+        force_train_on_trimmed_embeddings=False,
+        prune_all_except_end_of_sentence_token=False,
         **kwargs,
     ):
         self.vocab_size = vocab_size
         self.max_position_embeddings = max_position_embeddings
+        self.mlp_bias = mlp_bias
+
+        self.end_of_sentence_token_id = end_of_sentence_token_id
+        self.prune_all_except_end_of_sentence_token = prune_all_except_end_of_sentence_token
+
+        if prune_all_except_end_of_sentence_token:
+            assert end_of_sentence_token_id is not None
+
+        self.force_train_on_trimmed_embeddings = force_train_on_trimmed_embeddings
+
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
+
+        self.single_layer_hopping = single_layer_hopping
+        self.eval_hard_concrete_percent = eval_hard_concrete_percent
+
+        print("Pretrain fan out projection", pretrain_fan_out_projection)
+        self.pretrain_fan_out_projection = pretrain_fan_out_projection
+
+        if dummy_adaptive_fan_in is None:
+            dummy_adaptive_fan_in = [ True ] * (num_hidden_layers // 2)
+        self.dummy_adaptive_fan_in = dummy_adaptive_fan_in
+
+        self.fan_out_projection_mlp_intermediate_size = fan_out_projection_mlp_intermediate_size
+        
+        assert len(self.dummy_adaptive_fan_in) == (num_hidden_layers // 2)
+
+        # assert fan_in_idx is not None and fan_out_idx is not None
+        self.fan_in_idx = fan_in_idx
+        self.fan_out_idx = fan_out_idx
+
+        self.concrete_random_mask_proba = concrete_random_mask_proba
+        self.concrete_uniform_pruning = concrete_uniform_pruning
+        self.concrete_stop_word_pruning = concrete_stop_word_pruning
+
+        self.hcg_log_a = hcg_log_a
+        self.hcg_temperature = hcg_temperature
+        self.learnt_temperature = learnt_temperature
+        self.distributed = distributed
+        self.forward_residuals = forward_residuals
+
+        self.scale_not_pruned_gradients = scale_not_pruned_gradients
+
+        # self.scale_token_frequency = scale_token_frequency
+
+        self.generate_merges_transform_impl = generate_merges_transform_impl
+        self.fan_out_projection = fan_out_projection
+        self.merging_type = merging_type
 
         # for backward compatibility
         if num_key_value_heads is None:
@@ -189,7 +273,6 @@ class LlamaConfig(PretrainedConfig):
         self.rope_scaling = rope_scaling
         self.attention_bias = attention_bias
         self.attention_dropout = attention_dropout
-        self.mlp_bias = mlp_bias
         self.head_dim = head_dim if head_dim is not None else self.hidden_size // self.num_attention_heads
         # Validate the correctness of rotary position embeddings parameters
         # BC: if there is a 'type' field, copy it it to 'rope_type'.
@@ -204,3 +287,9 @@ class LlamaConfig(PretrainedConfig):
             tie_word_embeddings=tie_word_embeddings,
             **kwargs,
         )
+
+        self.max_length = max_position_embeddings
+
+
+
+__all__ = ["LlamaConfig"]

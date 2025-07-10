@@ -1,4 +1,5 @@
 # Initially taken from Github's Python gitignore file
+.nfs*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -53,6 +54,9 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
+llama_for_sequential_numbers/
+
+
 .hypothesis/
 .pytest_cache/
 
@@ -167,3 +171,26 @@ tags
 
 # ruff
 .ruff_cache
+
+data
+/adaptive_*
+/vanilla-llama
+results/
+random_hcg_*
+*.pt
+*.json
+run_hcg_*
+*.png
+exps_evaluation/
+*.gif
+*.mp4
+
+paper_checkpoints/
+vanilla_slm2*
+test_test_*
+
+fineweb_edu_tokenized_gpt2_eos/
+fineweb_edu_tokenized_gpt2/
+test_init_checkpoint_adaptive_with_end_of_sentence_token/
+fineweb_edu_tokenized_gpt2_with_special_embedding_mask_clothest_eos_token_idx/
+sentence_slm*

@@ -65,6 +65,8 @@ class VivitModelTester:
         layer_norm_eps=1e-06,
         qkv_bias=True,
         scope=None,
+        attn_implementation="eager",
+        mask_ratio=0.5,
     ):
         self.parent = parent
         self.batch_size = batch_size
@@ -86,12 +88,15 @@ class VivitModelTester:
         self.layer_norm_eps = layer_norm_eps
         self.qkv_bias = qkv_bias
         self.scope = scope
+        self.attn_implementation = attn_implementation
 
         self.seq_length = (
             (self.image_size // self.tubelet_size[2])
             * (self.image_size // self.tubelet_size[1])
             * (self.num_frames // self.tubelet_size[0])
         ) + 1  # CLS token
+        self.mask_ratio = mask_ratio
+        self.num_masks = int(mask_ratio * self.seq_length)
 
     def prepare_config_and_inputs(self):
         pixel_values = floats_tensor(
@@ -122,6 +127,7 @@ class VivitModelTester:
             initializer_range=self.initializer_range,
             layer_norm_eps=self.layer_norm_eps,
             qkv_bias=self.qkv_bias,
+            attn_implementation=self.attn_implementation,
         )
         config.num_labels = self.num_labels
         return config
@@ -169,6 +175,7 @@ class VivitModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase):
     test_torchscript = False
     test_resize_embeddings = False
     test_head_masking = False
+    test_torch_exportable = True
 
     def setUp(self):
         self.model_tester = VivitModelTester(self)
@@ -351,7 +358,7 @@ class VivitModelIntegrationTest(unittest.TestCase):
         # taken from original model
         expected_slice = torch.tensor([-0.9498, 2.7971, -1.4049, 0.1024, -1.8353]).to(torch_device)
 
-        self.assertTrue(torch.allclose(outputs.logits[0, :5], expected_slice, atol=1e-4))
+        torch.testing.assert_close(outputs.logits[0, :5], expected_slice, rtol=1e-4, atol=1e-4)
 
     @slow
     def test_inference_interpolate_pos_encoding(self):

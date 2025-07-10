@@ -462,7 +462,7 @@ class SPMTokenizer:
 
         return ["".join(x) for x in output]
 
-    def save_pretrained(self, path: str, filename_prefix: str = None):
+    def save_pretrained(self, path: str, filename_prefix: Optional[str] = None):
         filename = VOCAB_FILES_NAMES[list(VOCAB_FILES_NAMES.keys())[0]]
         if filename_prefix is not None:
             filename = filename_prefix + "-" + filename
@@ -519,3 +519,6 @@ def convert_to_unicode(text):
         return text.decode("utf-8", "ignore")
     else:
         raise TypeError(f"Unsupported string type: {type(text)}")
+
+
+__all__ = ["DebertaV2Tokenizer"]

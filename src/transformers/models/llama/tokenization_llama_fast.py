@@ -14,14 +14,15 @@
 # limitations under the License.
 import os
 from shutil import copyfile
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
+import re
 
 from tokenizers import processors
+
 
 from ...tokenization_utils_fast import PreTrainedTokenizerFast
 from ...utils import is_sentencepiece_available, logging
 from ...utils.versions import require_version
-
 
 require_version("tokenizers>=0.13.3")
 
@@ -192,8 +193,8 @@ class LlamaTokenizerFast(PreTrainedTokenizerFast):
         if eos is None and self.add_eos_token:
             raise ValueError("add_eos_token = True but eos_token = None")
 
-        single = f"{(bos+':0 ') if self.add_bos_token else ''}$A:0{(' '+eos+':0') if self.add_eos_token else ''}"
-        pair = f"{single}{(' '+bos+':1') if self.add_bos_token else ''} $B:1{(' '+eos+':1') if self.add_eos_token else ''}"
+        single = f"{(bos + ':0 ') if self.add_bos_token else ''}$A:0{(' ' + eos + ':0') if self.add_eos_token else ''}"
+        pair = f"{single}{(' ' + bos + ':1') if self.add_bos_token else ''} $B:1{(' ' + eos + ':1') if self.add_eos_token else ''}"
 
         special_tokens = []
         if self.add_bos_token:
@@ -253,3 +254,58 @@ class LlamaTokenizerFast(PreTrainedTokenizerFast):
             output = output + bos_token_id + token_ids_1 + eos_token_id
 
         return output
+
+class EOSTokenizerFast(LlamaTokenizerFast):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.end_of_sentence_token = '<end_of_sentence>'
+        if self.end_of_sentence_token not in self.get_vocab():
+            self.add_special_tokens({"additional_special_tokens": [self.end_of_sentence_token]})
+            print(f"Added <end_of_sentence> token with ID: {self.convert_tokens_to_ids(self.end_of_sentence_token)}")
+
+        self.end_of_sentence_token_id = self.convert_tokens_to_ids(self.end_of_sentence_token)
+
+        return
+
+    @property
+    def can_save_slow_tokenizer(self) -> bool:
+        """
+        `bool`: Whether or not the slow tokenizer can be saved. Usually for sentencepiece based slow tokenizer, this
+        can only be `True` if the original `"sentencepiece.model"` was not deleted.
+        """
+        return False
+
+    def encode_plus(self, text: str, **kwargs):
+        text = self.prepare_for_tokenization(text)
+        return super().encode_plus(text, **kwargs)
+
+    def batch_encode_plus(self, batch_text_or_text_pairs: str, **kwargs):
+        batch_text_or_text_pairs = [self.prepare_for_tokenization(x) for x in batch_text_or_text_pairs]
+        return super().batch_encode_plus(batch_text_or_text_pairs, **kwargs)
+
+    def prepare_for_tokenization(
+        self, text: str
+    ) -> tuple[str, dict[str, Any]]:
+
+        end_of_sentence_token = self.end_of_sentence_token
+        patterns = [
+            (r'\. ', f'. {end_of_sentence_token}'),
+            (r'\? ', f'? {end_of_sentence_token}'),
+            (r'! ', f'! {end_of_sentence_token}'),
+            (r'\.\n', f'.\n{end_of_sentence_token}'),
+            (r'\?\n', f'?\n{end_of_sentence_token}'),
+            (r'!\n', f'!\n{end_of_sentence_token}'),
+            (r'\.$', f'. {end_of_sentence_token}'),
+            (r'!$', f'!{end_of_sentence_token}'),
+            (r'\?$', f'?{end_of_sentence_token}'),
+        ]
+
+        for pattern, replacement in patterns:
+            text = re.sub(pattern, replacement, text)
+
+        return text
+
+
+__all__ = ["LlamaTokenizerFast", "EOSTokenizerFast"]
