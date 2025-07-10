@@ -27,7 +27,7 @@ class ContinuousEvaluator:
 
         adaptive_huge_bs_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_HEQTAX1C"
 
-        sentence_llama_fa_checkpoints_dir = "./sentence_slm2_1.7B_flash_attention_pretrain_with_end_of_sentence_token_w_0.100_l__ME65Z1L5"
+        # sentence_llama_fa_checkpoints_dir = "./sentence_slm2_1.7B_flash_attention_pretrain_with_end_of_sentence_token_w_0.100_l__ME65Z1L5"
 
         sentence_llama_checkpoints_dir = "./sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__0YSRLW15"
 
@@ -38,7 +38,7 @@ class ContinuousEvaluator:
             ("adaptive", AdaptiveLlamaForCausalLM, adaptive_checkpoints_dir),
             ("adaptive mid lr", AdaptiveLlamaForCausalLM, adaptive_mid_lr_checkpoints_dir),
             ("adaptive huge bs", AdaptiveLlamaForCausalLM, adaptive_huge_bs_checkpoints_dir),
-            ("sentence llama fa", SentenceLlamaForCausalLM, sentence_llama_fa_checkpoints_dir),
+            # ("sentence llama fa", SentenceLlamaForCausalLM, sentence_llama_fa_checkpoints_dir),
             ("sentence llama", SentenceLlamaForCausalLM, sentence_llama_checkpoints_dir),
         ]
 
@@ -147,46 +147,46 @@ class ContinuousEvaluator:
         """Evaluate a single checkpoint on pending benchmarks"""
         print(f"\n=== Evaluating {model_name} checkpoint: {dir_name} ===")
 
-        try:
-            # Load model
-            model = model_class.from_pretrained(checkpoint_dir, torch_dtype=torch.bfloat16)
-            # model = model_class.from_pretrained(checkpoint_dir)
-            model.eval()
-            model.to("cuda")
+        # Load model
+        model = model_class.from_pretrained(checkpoint_dir, torch_dtype=torch.bfloat16)
+        # model = model_class.from_pretrained(checkpoint_dir)
+        if 'sentence' in model_name:
+            model.config._attn_implementation = 'sentence_attention'
 
-            # Evaluate each pending benchmark
-            for benchmark_name, benchmark_fn in pending_benchmarks:
-                print(f"  Running {benchmark_name}...")
+        model.eval()
+        model.to("cuda")
 
-                try:
-                    bench_results = benchmark_fn(model)
-                    acc_norm = bench_results['acc_norm']
+        # Evaluate each pending benchmark
+        for benchmark_name, benchmark_fn in pending_benchmarks:
+            print(f"  Running {benchmark_name}...")
 
-                    # Add result
-                    current_result = [model_name, dir_name, benchmark_name, acc_norm]
-                    self.results.append(current_result)
+            try:
+            # if True:
+                bench_results = benchmark_fn(model)
+                acc_norm = bench_results['acc_norm']
 
-                    # Update evaluated combinations
-                    self.evaluated_combinations.add((model_name, dir_name, benchmark_name))
+                # Add result
+                current_result = [model_name, dir_name, benchmark_name, acc_norm]
+                self.results.append(current_result)
 
-                    # Save results immediately
-                    self.save_results()
+                # Update evaluated combinations
+                self.evaluated_combinations.add((model_name, dir_name, benchmark_name))
 
-                    # Update plots
-                    self.update_plots()
+                # Save results immediately
+                self.save_results()
 
-                    print(f"    {benchmark_name}: {acc_norm:.4f}")
+                # Update plots
+                self.update_plots()
 
-                except Exception as e:
-                    print(f"    Error evaluating {benchmark_name}: {e}")
-                    continue
+                print(f"    {benchmark_name}: {acc_norm:.4f}")
 
-            # Clean up model from GPU memory
-            del model
-            torch.cuda.empty_cache()
+            except Exception as e:
+                print(f"    Error evaluating {benchmark_name}: {e}")
+                continue
 
-        except Exception as e:
-            print(f"Error loading model {checkpoint_dir}: {e}")
+        # Clean up model from GPU memory
+        del model
+        torch.cuda.empty_cache()
 
     def update_plots(self):
         """Create/update plots for each benchmark"""
@@ -255,27 +255,23 @@ class ContinuousEvaluator:
         print(f"Sleep interval: {sleep_interval} seconds")
         print("Press Ctrl+C to stop\n")
 
-        try:
-            while True:
-                # Find new checkpoints
-                new_checkpoints = self.get_new_checkpoints()
+        while True:
+            # Find new checkpoints
+            new_checkpoints = self.get_new_checkpoints()
 
-                if new_checkpoints:
-                    print(f"Found {len(new_checkpoints)} new checkpoint(s) to evaluate")
-                    for model_name, model_class, checkpoint_dir, dir_name, pending_benchmarks in new_checkpoints:
-                        print(f"{model_name} / {dir_name} : {pending_benchmarks}")
+            if new_checkpoints:
+                print(f"Found {len(new_checkpoints)} new checkpoint(s) to evaluate")
+                for model_name, model_class, checkpoint_dir, dir_name, pending_benchmarks in new_checkpoints:
+                    print(f"{model_name} / {dir_name} : {pending_benchmarks}")
 
-                    # Evaluate each new checkpoint
-                    for model_name, model_class, checkpoint_dir, dir_name, pending_benchmarks in new_checkpoints:
-                        self.evaluate_checkpoint(model_name, model_class, checkpoint_dir, dir_name, pending_benchmarks)
-                else:
-                    print(f"No new checkpoints found. Sleeping for {sleep_interval} seconds...")
+                # Evaluate each new checkpoint
+                for model_name, model_class, checkpoint_dir, dir_name, pending_benchmarks in new_checkpoints:
+                    self.evaluate_checkpoint(model_name, model_class, checkpoint_dir, dir_name, pending_benchmarks)
+            else:
+                print(f"No new checkpoints found. Sleeping for {sleep_interval} seconds...")
 
-                time.sleep(sleep_interval)
+            time.sleep(sleep_interval)
 
-        except KeyboardInterrupt:
-            print("\nStopping continuous evaluation...")
-            print(f"Final results saved to: {self.results_file}")
 
 if __name__ == "__main__":
     evaluator = ContinuousEvaluator()

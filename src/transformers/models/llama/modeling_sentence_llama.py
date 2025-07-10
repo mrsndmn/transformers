@@ -201,7 +201,7 @@ class SentenceLlamaAttention(nn.Module):
 
         attention_interface: Callable = eager_attention_forward
 
-        assert self.config._attn_implementation == 'sentence_attention'
+        assert self.config._attn_implementation == 'sentence_attention', f"self.config._attn_implementation os not sentence_attention: {self.config._attn_implementation}"
 
         if self.config._attn_implementation != "eager":
             if self.config._attn_implementation == "sdpa" and kwargs.get("output_attentions", False):
