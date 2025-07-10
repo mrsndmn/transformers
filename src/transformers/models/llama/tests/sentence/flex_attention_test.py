@@ -68,7 +68,7 @@ def test_flex_attention_custom():
 
     # Create a FlexAttention layer
 
-    eos_tokens_mask = torch.tensor([[ 0, 1, 0, 0, 1, 0, 0, 1, 0, 1 ]]).repeat(batch_size, 1).bool()
+    special_embeddings_mask = torch.tensor([[ 0, 1, 0, 0, 1, 0, 0, 1, 0, 1 ]]).repeat(batch_size, 1).bool()
     clothest_eos_token_idx = torch.tensor([[ 0, 0, 1, 1, 1, 4, 4, 4, 7, 7 ]]).repeat(batch_size, 1)
     attention_mask_bool = torch.tensor([[ 0, 0, 1, 1, 1, 1, 1, 1, 1, 1 ]]).repeat(batch_size, 1).bool()
 
@@ -89,25 +89,25 @@ def test_flex_attention_custom():
     def custom_mask(score, b, h, q_idx, kv_idx):
         eos_token_idx = clothest_eos_token_idx[b, q_idx]
 
-        eos_sync_tokens = (kv_idx <= q_idx) & eos_tokens_mask[b, kv_idx]
-        causal_triu_mask = (kv_idx <= q_idx) & (kv_idx >= eos_token_idx)
-        attention_mask_result_kv = attention_mask_bool[b, kv_idx]
-        attention_mask_result_q = attention_mask_bool[b, q_idx]
+        causal_mask = (kv_idx <= q_idx) & attention_mask_bool[b, q_idx] & attention_mask_bool[b, kv_idx]
+        eos_sync_tokens = causal_mask & special_embeddings_mask[b, kv_idx]
+        causal_triu_mask = causal_mask & (kv_idx >= eos_token_idx)
 
-        # return torch.where(causal_triu_mask, score, -float("inf"))
-        return torch.where(attention_mask_result_kv & attention_mask_result_q & (causal_triu_mask | eos_sync_tokens), score, -float("inf"))
+        return torch.where((causal_triu_mask | eos_sync_tokens), score, -float("inf"))
+
 
     generated_mask = torch.zeros(seq_len, seq_len)
     for q_idx in range(seq_len):
         for kv_idx in range(seq_len):
             generated_mask[q_idx, kv_idx] = custom_mask(1, 0, None, q_idx, kv_idx)
 
-    assert torch.allclose(expected_mask, generated_mask)
+    assert (expected_mask == generated_mask).all()
 
     query, key, value = tensor, tensor, tensor
     output = flex_attention(query, key, value, score_mod=custom_mask)
 
-    print("output", output.shape)
+
+    breakpoint()
 
 
 

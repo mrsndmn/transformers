@@ -98,6 +98,42 @@ def test_sentence_llama_model_generate_with_eos_token_and_attention_mask():
     assert output1.loss == output2.loss, "output losses are not equal"
 
 
+def test_sentence_llama_model_generate_with_eos_token_and_attention_mask_partial_logits():
+
+    device = 'cuda'
+
+    checkpoint = "HuggingFaceTB/SmolLM2-1.7B"
+    model = SentenceLlamaForCausalLM.from_pretrained(checkpoint).to(device)
+    tokenizer = GPT2TokenizerFastEOS.from_pretrained(checkpoint)
+
+    model.resize_token_embeddings(len(tokenizer))
+    print(f"Resized model embeddings to vocabulary size: {len(tokenizer)}")
+    model.config.end_of_sentence_token_id = tokenizer.convert_tokens_to_ids('<end_of_sentence>')
+
+    model.config._attn_implementation = 'sentence_attention'
+
+    input_ids = tokenizer.encode("Russia - Moscow. France - Paris. Germany - Berlin. Italy - ", return_tensors="pt")
+    input_ids = input_ids.to(device)
+    assert (input_ids == model.config.end_of_sentence_token_id).sum().item() == 3
+
+    seq_len = input_ids.shape[1]
+
+    # print("input_ids", input_ids)
+    output1 = model(
+        input_ids,
+        use_cache=False,
+        output_hidden_states=True,
+    )
+
+    output2 = model(
+        input_ids[:, :seq_len // 2],
+        use_cache=False,
+        output_hidden_states=True,
+    )
+
+    assert torch.allclose(output1.logits[:, :seq_len // 2, :], output2.logits), "logits are not equal"
+
+
 
 def test_sentence_attention_attention_mask():
 

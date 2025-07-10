@@ -454,7 +454,6 @@ class AdaptiveLlamaTrainer(Trainer):
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
         causal_lm_loss = loss
-        breakpoint()
 
         # fan_in_merging_logits_sum = sum(x.sum(dim=[0, 1]) for x in fan_in_merging_logits)
         model_unwrapped = model
