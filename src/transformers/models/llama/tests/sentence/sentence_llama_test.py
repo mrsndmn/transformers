@@ -113,7 +113,7 @@ def test_sentence_attention_attention_mask():
     v = torch.rand(batch_size, num_heads, seq_len, hidden_size)
     attention_mask = torch.ones(batch_size, seq_len)
 
-    special_embeddings_mask = torch.zeros(batch_size, seq_len)
+    special_embeddings_mask = torch.zeros(batch_size, seq_len, dtype=torch.long)
     special_embeddings_mask[:, 2] = 1
     special_embeddings_mask[:, 5] = 1
     clothest_end_of_sentence_token_idx = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask)
@@ -131,16 +131,16 @@ def test_sentence_attention_attention_mask():
     q2 = torch.rand(batch_size, num_heads, seq_len2, hidden_size)
     k2 = torch.rand(batch_size, num_heads, seq_len2, hidden_size)
     v2 = torch.rand(batch_size, num_heads, seq_len2, hidden_size)
-    q2[:, :, seq_len:] = q
-    k2[:, :, seq_len:] = k
-    v2[:, :, seq_len:] = v
+    q2[:, :, :seq_len] = q
+    k2[:, :, :seq_len] = k
+    v2[:, :, :seq_len] = v
     attention_mask2 = torch.ones(batch_size, seq_len2)
-    attention_mask2[:, :seq_len] = 0
+    attention_mask2[:, seq_len:] = 0
 
-    special_embeddings_mask2 = torch.rand(batch_size, seq_len2)
-    special_embeddings_mask2[:, seq_len:] = special_embeddings_mask
-    clothest_end_of_sentence_token_idx2 = torch.rand(batch_size, seq_len2)
-    clothest_end_of_sentence_token_idx2[:, seq_len:] = clothest_end_of_sentence_token_idx + seq_len
+    special_embeddings_mask2 = torch.zeros(batch_size, seq_len2, dtype=torch.long)
+    special_embeddings_mask2[:, :seq_len] = special_embeddings_mask
+    clothest_end_of_sentence_token_idx2 = torch.zeros(batch_size, seq_len2, dtype=torch.long)
+    clothest_end_of_sentence_token_idx2[:, :seq_len] = clothest_end_of_sentence_token_idx
 
     output2, _ = sentence_attention_forward(
         None,

@@ -90,12 +90,13 @@ if is_torch_flex_attn_available():
 
 def special_token_mask_to_clothest_token_idx_slow(special_token_mask):
     # [ bs, seq_len ]
+
     special_token_mask_bool = special_token_mask.bool()
 
     clothest_token_idx = torch.zeros_like(special_token_mask, dtype=torch.long)
 
-    current_clothest_token_idx = 0
     for batch_i in range(special_token_mask_bool.shape[0]):
+        current_clothest_token_idx = 0
         for seq_len_i in range(special_token_mask_bool.shape[1]):
             if special_token_mask_bool[batch_i, seq_len_i].item():
                 clothest_token_idx[batch_i, seq_len_i] = current_clothest_token_idx
