@@ -794,78 +794,93 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         **kwargs,
     ):
         """
-        Creates a causal 4D mask of shape `(batch_size, 1, query_length, key_value_length)` from a 2D mask of shape
-        `(batch_size, key_value_length)`, or if the input `attention_mask` is already 4D, do nothing.
+        Same signature as the original implementation, but now fully vectorized (no Python `for` loops).
 
-        Args:
-            attention_mask (`torch.Tensor`):
-                A 2D attention mask of shape `(batch_size, key_value_length)` or a 4D attention mask of shape
-                `(batch_size, 1, query_length, key_value_length)`.
-            sequence_length (`int`):
-                The sequence length being processed.
-            target_length (`int`):
-                The target length: when generating with static cache, the mask should be as long as the static cache,
-                to account for the 0 padding, the part of the cache that is not filled yet.
-            dtype (`torch.dtype`):
-                The dtype to use for the 4D attention mask.
-            device (`torch.device`):
-                The device to plcae the 4D attention mask on.
-            cache_position (`torch.Tensor`):
-                Indices depicting the position of the input sequence tokens in the sequence.
-            batch_size (`torch.Tensor`):
-                Batch size.
+        The mask obeys the following rules (see the user-provided `expected_mask` example):
+
+        1. **Causality** – a token can only attend to previous (or itself) positions.
+        2. **Block causality** – for every query position *q* the first token that follows an *end-of-sentence* (EOS)
+           symbol acts as a new causal block.  All keys *k* such that
+           `eos_idx(q) ≤ k ≤ q` are therefore visible, while tokens before `eos_idx(q)` are masked.
+        3. **Special embeddings** – any key that is marked in `special_embeddings_mask` is always visible as long as
+           it is not positioned *after* the current query (i.e. it still must satisfy `k ≤ q`).
+        4. **Padding** – the classical 2-D `attention_mask` is honoured for both query and key positions.
+
+        The resulting tensor has shape ``(batch_size, 1, sequence_length, target_length)`` and contains
+        ``1`` for visible positions and ``-inf`` (the minimum of ``dtype``) for masked positions, matching the
+        heuristics that were previously produced by the Python triple-nested loop.
         """
 
+        # Fast return if a 4-D mask is already provided – keep the original behaviour.
         if attention_mask is not None and attention_mask.dim() == 4:
-            # In this case we assume that the mask comes already in inverted form and requires no inversion or slicing.
-            causal_mask = attention_mask
-        else:
-            min_dtype = torch.finfo(dtype).min
-            causal_mask = torch.full(
-                (sequence_length, target_length), fill_value=min_dtype, dtype=dtype, device=device
-            )
-            if sequence_length != 1:
-                causal_mask = torch.triu(causal_mask, diagonal=1)
-            causal_mask *= torch.arange(target_length, device=device) > cache_position.reshape(-1, 1)
-            causal_mask = causal_mask[None, None, :, :].expand(batch_size, 1, -1, -1)
-            if attention_mask is not None:
-                causal_mask = causal_mask.clone()  # copy to contiguous memory for in-place edit
-                mask_length = attention_mask.shape[-1]
-                padding_mask = causal_mask[:, :, :, :mask_length] + attention_mask[:, None, None, :]
-                padding_mask = padding_mask == 0
-                causal_mask[:, :, :, :mask_length] = causal_mask[:, :, :, :mask_length].masked_fill(
-                    padding_mask, min_dtype
-                )
+            return attention_mask
 
-        # causal_mask ~ [ bs, heads, seq_len, seq_len ]
-        # causal_mask ~ [ bs, heads,       1, seq_len ]
-        batch_size = causal_mask.shape[0]
-        q_len = causal_mask.shape[2]
-        k_len = causal_mask.shape[3]
+        # ----------------------------------------------------------------------------
+        # Preconditions & common tensors
+        # ----------------------------------------------------------------------------
+        assert attention_mask is not None, "`attention_mask` must be provided for sentence attention."  # keeps behaviour
+        assert attention_mask.dim() == 2, "`attention_mask` is expected to be 2-D (batch, seq_len)."
 
-        clothest_end_of_sentence_token_idx = kwargs['clothest_end_of_sentence_token_idx']
-        # bs, seq_len
-        special_embeddings_mask = kwargs['special_embeddings_mask'].bool()
+        bs = batch_size
+        q_len = sequence_length
+        k_len = target_length
+        min_val = torch.finfo(dtype).min
 
-        def custom_mask(score, b, q_idx, kv_idx):
-            eos_token_idx = clothest_end_of_sentence_token_idx[b, q_idx]
+        # Convert the 2-D masks to bool for logical operations
+        attention_mask_bool = attention_mask.to(dtype=torch.bool)  # [bs, k_len]
 
-            causal_mask = (kv_idx <= q_idx) & attention_mask[b, q_idx] & attention_mask[b, kv_idx]
-            eos_sync_tokens  = (causal_mask & special_embeddings_mask[b, kv_idx]).bool()
-            causal_triu_mask = (causal_mask & (kv_idx >= eos_token_idx)).bool()
+        clothest_end_of_sentence_token_idx = kwargs["clothest_end_of_sentence_token_idx"]  # [bs, q_len]
+        special_embeddings_mask = kwargs["special_embeddings_mask"].to(torch.bool)         # [bs, k_len]
 
-            return torch.where((causal_triu_mask | eos_sync_tokens), score, -float("inf"))
+        # ----------------------------------------------------------------------------
+        # Build broadcastable index grids for queries (q) and keys (k)
+        # ----------------------------------------------------------------------------
+        q_idx = torch.arange(q_len, device=device).view(1, q_len, 1)         # shape: (1, q_len, 1)
+        k_idx = torch.arange(k_len, device=device).view(1, 1, k_len)         # shape: (1, 1, k_len)
 
-        generated_mask = torch.zeros_like(causal_mask)
+        # ----------------------------------------------------------------------------
+        # Base causal condition: k ≤ q
+        # ----------------------------------------------------------------------------
+        causal_base = k_idx <= q_idx                                            # (1, q_len, k_len)
 
-        for b_i in range(batch_size):
-            for q_i in range(q_len):
-                for k_i in range(k_len):
-                    generated_mask[b_i, :, q_i, k_i] = custom_mask(1, b_i, q_i, k_i)
+        # ----------------------------------------------------------------------------
+        # Padding masks for queries and keys
+        # ----------------------------------------------------------------------------
+        q_valid = attention_mask_bool.view(bs, q_len, 1)                       # (bs, q_len, 1)
+        k_valid = attention_mask_bool.view(bs, 1, k_len)                       # (bs, 1, k_len)
+        valid_positions = q_valid & k_valid                                    # (bs, q_len, k_len)
 
-        causal_mask = generated_mask
+        # Apply base causal & validity
+        causal_and_valid = causal_base & valid_positions                       # (bs, q_len, k_len)
 
-        return causal_mask
+        # ----------------------------------------------------------------------------
+        # Block-causal component via EOS index
+        # ----------------------------------------------------------------------------
+        # clothest_end_of_sentence_token_idx gives, for every query, the index of the closest EOS *at or before* q.
+        eos_idx = clothest_end_of_sentence_token_idx.view(bs, q_len, 1)        # (bs, q_len, 1)
+        block_causal = causal_and_valid & (k_idx >= eos_idx)                   # (bs, q_len, k_len)
+
+        # ----------------------------------------------------------------------------
+        # Special embedding visibility (within causal window)
+        # ----------------------------------------------------------------------------
+        special_keys = special_embeddings_mask.view(bs, 1, k_len)              # (bs, 1, k_len)
+        special_visible = causal_and_valid & special_keys                      # (bs, q_len, k_len)
+
+        # ----------------------------------------------------------------------------
+        # Final visibility mask
+        # ----------------------------------------------------------------------------
+        allowed = block_causal | special_visible                               # (bs, q_len, k_len)
+
+        # ----------------------------------------------------------------------------
+        # Convert boolean visibility to the floating mask expected by the model
+        # ----------------------------------------------------------------------------
+        score_val = torch.tensor(1.0, dtype=dtype, device=device)
+        final_mask = torch.full((bs, 1, q_len, k_len), min_val, dtype=dtype, device=device)
+        final_mask.masked_fill_(allowed.unsqueeze(1), score_val)
+
+        breakpoint()
+
+        return final_mask
 
 
 
