@@ -130,20 +130,26 @@ def sentence_attention_forward(
     def custom_mask(score, b, h, q_idx, kv_idx):
         eos_token_idx = clothest_end_of_sentence_token_idx[b, q_idx]
 
-        causal_mask = (q_idx >= kv_idx) & attention_mask_bool[b, q_idx] & attention_mask_bool[b, kv_idx]
-        eos_sync_tokens = causal_mask & special_embeddings_mask[b, kv_idx]
-        causal_triu_mask = causal_mask & (kv_idx >= eos_token_idx)
+        causal_mask = (q_idx >= kv_idx) # & attention_mask_bool[b, q_idx] & attention_mask_bool[b, kv_idx]
+        # eos_sync_tokens = causal_mask & special_embeddings_mask[b, kv_idx]
+        # causal_triu_mask = causal_mask & (kv_idx >= eos_token_idx)
 
-        # return torch.where(causal_mask, score, -float("inf"))
+        return torch.where(causal_mask, score, -float("inf"))
         # return torch.where((eos_sync_tokens), score, -float("inf"))
         return torch.where((causal_triu_mask | eos_sync_tokens), score, -float("inf"))
 
-    output = flex_attention(query, key, value, score_mod=custom_mask, scale=scaling)
+    def causal(score, b, h, q_idx, kv_idx):
+        return torch.where(q_idx >= kv_idx, score, -float("inf"))
+
+    print("run flex attention")
+    # output = flex_attention(query, key, value, score_mod=custom_mask)
+    output = flex_attention(query, key, value, score_mod=causal)
 
     return output, None
 
 
-ALL_ATTENTION_FUNCTIONS["sentence_attention"] = sentence_attention_forward
+# ALL_ATTENTION_FUNCTIONS["sentence_attention"] = sentence_attention_forward
+ALL_ATTENTION_FUNCTIONS["sentence_attention"] = eager_attention_forward
 
 
 @dataclass
@@ -235,7 +241,7 @@ class SentenceLlamaDecoderLayer(nn.Module):
 
         self.layer_idx = layer_idx
         # config._attn_implementation = 'eager'
-        config._attn_implementation = 'sdpa'
+        # config._attn_implementation = 'sdpa'
         # config._attn_implementation = 'flash_attention_2'
         self.self_attn = SentenceLlamaAttention(config=config, layer_idx=layer_idx)
 
@@ -580,7 +586,15 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
 
         assert len(attention_mask.shape) == 2
 
-        causal_mask = self._update_causal_mask( attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions )
+        causal_mask = self._update_causal_mask(
+            attention_mask,
+            inputs_embeds,
+            cache_position,
+            past_key_values,
+            output_attentions,
+            clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx,
+            special_embeddings_mask=special_embeddings_mask,
+        )
         # if causal_mask is not None:
         #     print("causal_mask", causal_mask.shape)
 
@@ -634,14 +648,13 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         cache_position: torch.Tensor,
         past_key_values: Cache,
         output_attentions: bool,
+        clothest_end_of_sentence_token_idx: torch.Tensor,
+        special_embeddings_mask: torch.Tensor,
     ):
         if self.config._attn_implementation == "flash_attention_2":
             if attention_mask is not None and (attention_mask == 0.0).any():
                 return attention_mask
             return None
-
-        if self.config._attn_implementation == "sentence_attention":
-            return attention_mask
 
         if self.config._attn_implementation == "flex_attention":
             if isinstance(attention_mask, torch.Tensor):
@@ -675,16 +688,29 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
                 else past_seen_tokens + sequence_length + 1
             )
 
-        # In case the provided `attention` mask is 2D, we generate a causal mask here (4D).
-        causal_mask = self._prepare_4d_causal_attention_mask_with_cache_position(
-            attention_mask,
-            sequence_length=sequence_length,
-            target_length=target_length,
-            dtype=dtype,
-            device=device,
-            cache_position=cache_position,
-            batch_size=input_tensor.shape[0],
-        )
+        if self.config._attn_implementation == "sentence_attention":
+            causal_mask = self._prepare_4d_causal_attention_mask_with_cache_position_sentence_attention(
+                attention_mask,
+                sequence_length=sequence_length,
+                target_length=target_length,
+                dtype=dtype,
+                device=device,
+                cache_position=cache_position,
+                batch_size=input_tensor.shape[0],
+                clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx,
+                special_embeddings_mask=special_embeddings_mask,
+            )
+        else:
+            # In case the provided `attention` mask is 2D, we generate a causal mask here (4D).
+            causal_mask = self._prepare_4d_causal_attention_mask_with_cache_position(
+                attention_mask,
+                sequence_length=sequence_length,
+                target_length=target_length,
+                dtype=dtype,
+                device=device,
+                cache_position=cache_position,
+                batch_size=input_tensor.shape[0],
+            )
 
         if (
             self.config._attn_implementation == "sdpa"
@@ -753,6 +779,91 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
                 causal_mask[:, :, :, :mask_length] = causal_mask[:, :, :, :mask_length].masked_fill(
                     padding_mask, min_dtype
                 )
+
+        return causal_mask
+
+    @staticmethod
+    def _prepare_4d_causal_attention_mask_with_cache_position_sentence_attention(
+        attention_mask: torch.Tensor,
+        sequence_length: int,
+        target_length: int,
+        dtype: torch.dtype,
+        device: torch.device,
+        cache_position: torch.Tensor,
+        batch_size: int,
+        **kwargs,
+    ):
+        """
+        Creates a causal 4D mask of shape `(batch_size, 1, query_length, key_value_length)` from a 2D mask of shape
+        `(batch_size, key_value_length)`, or if the input `attention_mask` is already 4D, do nothing.
+
+        Args:
+            attention_mask (`torch.Tensor`):
+                A 2D attention mask of shape `(batch_size, key_value_length)` or a 4D attention mask of shape
+                `(batch_size, 1, query_length, key_value_length)`.
+            sequence_length (`int`):
+                The sequence length being processed.
+            target_length (`int`):
+                The target length: when generating with static cache, the mask should be as long as the static cache,
+                to account for the 0 padding, the part of the cache that is not filled yet.
+            dtype (`torch.dtype`):
+                The dtype to use for the 4D attention mask.
+            device (`torch.device`):
+                The device to plcae the 4D attention mask on.
+            cache_position (`torch.Tensor`):
+                Indices depicting the position of the input sequence tokens in the sequence.
+            batch_size (`torch.Tensor`):
+                Batch size.
+        """
+
+        if attention_mask is not None and attention_mask.dim() == 4:
+            # In this case we assume that the mask comes already in inverted form and requires no inversion or slicing.
+            causal_mask = attention_mask
+        else:
+            min_dtype = torch.finfo(dtype).min
+            causal_mask = torch.full(
+                (sequence_length, target_length), fill_value=min_dtype, dtype=dtype, device=device
+            )
+            if sequence_length != 1:
+                causal_mask = torch.triu(causal_mask, diagonal=1)
+            causal_mask *= torch.arange(target_length, device=device) > cache_position.reshape(-1, 1)
+            causal_mask = causal_mask[None, None, :, :].expand(batch_size, 1, -1, -1)
+            if attention_mask is not None:
+                causal_mask = causal_mask.clone()  # copy to contiguous memory for in-place edit
+                mask_length = attention_mask.shape[-1]
+                padding_mask = causal_mask[:, :, :, :mask_length] + attention_mask[:, None, None, :]
+                padding_mask = padding_mask == 0
+                causal_mask[:, :, :, :mask_length] = causal_mask[:, :, :, :mask_length].masked_fill(
+                    padding_mask, min_dtype
+                )
+
+        # causal_mask ~ [ bs, heads, seq_len, seq_len ]
+        # causal_mask ~ [ bs, heads,       1, seq_len ]
+        batch_size = causal_mask.shape[0]
+        q_len = causal_mask.shape[2]
+        k_len = causal_mask.shape[3]
+
+        clothest_end_of_sentence_token_idx = kwargs['clothest_end_of_sentence_token_idx']
+        # bs, seq_len
+        special_embeddings_mask = kwargs['special_embeddings_mask'].bool()
+
+        def custom_mask(score, b, q_idx, kv_idx):
+            eos_token_idx = clothest_end_of_sentence_token_idx[b, q_idx]
+
+            causal_mask = (kv_idx <= q_idx) & attention_mask[b, q_idx] & attention_mask[b, kv_idx]
+            eos_sync_tokens  = (causal_mask & special_embeddings_mask[b, kv_idx]).bool()
+            causal_triu_mask = (causal_mask & (kv_idx >= eos_token_idx)).bool()
+
+            return torch.where((causal_triu_mask | eos_sync_tokens), score, -float("inf"))
+
+        generated_mask = torch.zeros_like(causal_mask)
+
+        for b_i in range(batch_size):
+            for q_i in range(q_len):
+                for k_i in range(k_len):
+                    generated_mask[b_i, :, q_i, k_i] = custom_mask(1, b_i, q_i, k_i)
+
+        causal_mask = generated_mask
 
         return causal_mask
 

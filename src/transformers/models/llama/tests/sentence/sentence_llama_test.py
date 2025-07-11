@@ -111,7 +111,8 @@ def test_sentence_llama_model_generate_with_eos_token_and_attention_mask_partial
     print(f"Resized model embeddings to vocabulary size: {len(tokenizer)}")
     model.config.end_of_sentence_token_id = tokenizer.convert_tokens_to_ids('<end_of_sentence>')
 
-    model.config._attn_implementation = 'eager'
+    # model.config._attn_implementation = 'eager'
+    model.config._attn_implementation = 'sentence_attention'
 
     input_ids = tokenizer.encode("Russia - Moscow. France - Paris. Germany - Berlin. Italy - ", return_tensors="pt")
     input_ids = input_ids.to(device)
@@ -134,9 +135,18 @@ def test_sentence_llama_model_generate_with_eos_token_and_attention_mask_partial
         output_hidden_states=True,
     )
 
-    logits_diff = (output1.logits[:, :seq_len // 2, :], output2.logits).norm()
+    tokens_1 = output1.logits[:, :seq_len // 2, :].argmax(dim=-1)
+    tokens_2 = output2.logits.argmax(dim=-1)
+
+    print('tokens_1', tokens_1)
+    print('tokens_2', tokens_2)
+
+    assert (tokens_1 == tokens_2).all(), "tokens are not equal"
+
+    logits_diff = (output1.logits[:, :seq_len // 2, :] - output2.logits).norm()
     assert logits_diff < 0.04, "logits diff is low"
     assert torch.allclose(output1.logits[:, :seq_len // 2, :], output2.logits, atol=1e-2), "logits are not equal"
+
 
 
 
@@ -248,4 +258,4 @@ def test_sentence_attention_causal_mask():
 
 
 if __name__ == "__main__":
-    test_sentence_attention_causal_mask()
+    test_sentence_llama_model_generate_with_eos_token_and_attention_mask_partial_logits()
