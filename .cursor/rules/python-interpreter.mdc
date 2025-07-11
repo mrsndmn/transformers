@@ -12,3 +12,10 @@ For pytest use this path:
 ```
 /home/jovyan/.mlspace/envs/tokens_pruning/bin/pytest
 ```
+
+Always set environment variables:
+
+```
+PYTHONPATH=./src
+HF_HOME=/workspace-SR004.nfs2/.cache/huggingface
+```

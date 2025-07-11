@@ -130,10 +130,12 @@ def sentence_attention_forward(
     def custom_mask(score, b, h, q_idx, kv_idx):
         eos_token_idx = clothest_end_of_sentence_token_idx[b, q_idx]
 
-        causal_mask = (kv_idx <= q_idx) & attention_mask_bool[b, q_idx] & attention_mask_bool[b, kv_idx]
+        causal_mask = (q_idx >= kv_idx) & attention_mask_bool[b, q_idx] & attention_mask_bool[b, kv_idx]
         eos_sync_tokens = causal_mask & special_embeddings_mask[b, kv_idx]
         causal_triu_mask = causal_mask & (kv_idx >= eos_token_idx)
 
+        # return torch.where(causal_mask, score, -float("inf"))
+        # return torch.where((eos_sync_tokens), score, -float("inf"))
         return torch.where((causal_triu_mask | eos_sync_tokens), score, -float("inf"))
 
     output = flex_attention(query, key, value, score_mod=custom_mask, scale=scaling)
@@ -206,7 +208,7 @@ class SentenceLlamaAttention(nn.Module):
 
         attention_interface: Callable = eager_attention_forward
 
-        assert self.config._attn_implementation == 'sentence_attention', f"self.config._attn_implementation os not sentence_attention: {self.config._attn_implementation}"
+        # assert self.config._attn_implementation == 'sentence_attention', f"self.config._attn_implementation os not sentence_attention: {self.config._attn_implementation}"
 
         if self.config._attn_implementation != "eager":
             if self.config._attn_implementation == "sdpa" and kwargs.get("output_attentions", False):

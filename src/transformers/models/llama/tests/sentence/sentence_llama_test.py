@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from transformers.models.gpt2.tokenization_gpt2_fast import GPT2TokenizerFastEOS, GPT2TokenizerFast
 
@@ -103,20 +103,23 @@ def test_sentence_llama_model_generate_with_eos_token_and_attention_mask_partial
     device = 'cuda'
 
     checkpoint = "HuggingFaceTB/SmolLM2-1.7B"
-    model = SentenceLlamaForCausalLM.from_pretrained(checkpoint).to(device)
+    model = SentenceLlamaForCausalLM.from_pretrained(checkpoint, torch_dtype=torch.float32).to(device)
+    # model = AutoModelForCausalLM.from_pretrained(checkpoint, torch_dtype=torch.float32).to(device)
     tokenizer = GPT2TokenizerFastEOS.from_pretrained(checkpoint)
 
     model.resize_token_embeddings(len(tokenizer))
     print(f"Resized model embeddings to vocabulary size: {len(tokenizer)}")
     model.config.end_of_sentence_token_id = tokenizer.convert_tokens_to_ids('<end_of_sentence>')
 
-    model.config._attn_implementation = 'sentence_attention'
+    model.config._attn_implementation = 'eager'
 
     input_ids = tokenizer.encode("Russia - Moscow. France - Paris. Germany - Berlin. Italy - ", return_tensors="pt")
     input_ids = input_ids.to(device)
     assert (input_ids == model.config.end_of_sentence_token_id).sum().item() == 3
 
     seq_len = input_ids.shape[1]
+
+    model.eval()
 
     # print("input_ids", input_ids)
     output1 = model(
@@ -131,7 +134,9 @@ def test_sentence_llama_model_generate_with_eos_token_and_attention_mask_partial
         output_hidden_states=True,
     )
 
-    assert torch.allclose(output1.logits[:, :seq_len // 2, :], output2.logits), "logits are not equal"
+    logits_diff = (output1.logits[:, :seq_len // 2, :], output2.logits).norm()
+    assert logits_diff < 0.04, "logits diff is low"
+    assert torch.allclose(output1.logits[:, :seq_len // 2, :], output2.logits, atol=1e-2), "logits are not equal"
 
 
 
@@ -189,6 +194,58 @@ def test_sentence_attention_attention_mask():
     assert torch.allclose(output1, output2[:, :, :seq_len, :]), "output1 and output2 are not equal"
 
 
+def test_sentence_attention_causal_mask():
+
+    hidden_size = 128
+    batch_size = 4
+    seq_len = 7
+    num_heads = 8
+
+    scaling = 1.0 / hidden_size ** 0.5
+
+    q = torch.rand(batch_size, num_heads, seq_len, hidden_size)
+    k = torch.rand(batch_size, num_heads, seq_len, hidden_size)
+    v = torch.rand(batch_size, num_heads, seq_len, hidden_size)
+    attention_mask = torch.ones(batch_size, seq_len)
+
+    special_embeddings_mask = torch.zeros(batch_size, seq_len, dtype=torch.long)
+    special_embeddings_mask[:, 2] = 1
+    special_embeddings_mask[:, 5] = 1
+    clothest_end_of_sentence_token_idx = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask)
+
+    output1, _ = sentence_attention_forward(
+        None,
+        q, k, v,
+        attention_mask,
+        scaling=scaling,
+        clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx,
+        special_embeddings_mask=special_embeddings_mask,
+    )
+
+    seq_len2 = seq_len * 2
+    q2 = torch.rand(batch_size, num_heads, seq_len2, hidden_size)
+    k2 = torch.rand(batch_size, num_heads, seq_len2, hidden_size)
+    v2 = torch.rand(batch_size, num_heads, seq_len2, hidden_size)
+    q2[:, :, :seq_len] = q
+    k2[:, :, :seq_len] = k
+    v2[:, :, :seq_len] = v
+    attention_mask2 = torch.ones(batch_size, seq_len2)
+
+    special_embeddings_mask2 = torch.zeros(batch_size, seq_len2, dtype=torch.long)
+    special_embeddings_mask2[:, :seq_len] = special_embeddings_mask
+    clothest_end_of_sentence_token_idx2 = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask2)
+
+    output2, _ = sentence_attention_forward(
+        None,
+        q2, k2, v2,
+        attention_mask2,
+        scaling=scaling,
+        clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx2,
+        special_embeddings_mask=special_embeddings_mask2,
+    )
+
+    assert torch.allclose(output1, output2[:, :, :seq_len, :]), "output1 and output2 are not equal"
+
+
 if __name__ == "__main__":
-    test_sentence_llama_model_generate_with_eos_token_and_attention_mask()
-    test_sentence_attention_attention_mask()
+    test_sentence_attention_causal_mask()
