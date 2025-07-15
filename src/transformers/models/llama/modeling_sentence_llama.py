@@ -688,7 +688,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
                 else past_seen_tokens + sequence_length + 1
             )
 
-        if False and self.config._attn_implementation == "sentence_attention":
+        if self.config._attn_implementation == "sentence_attention":
             causal_mask = self._prepare_4d_causal_attention_mask_with_cache_position_sentence_attention(
                 attention_mask,
                 sequence_length=sequence_length,

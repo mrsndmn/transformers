@@ -49,7 +49,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         lr_scheduler_type = exp.pop('lr_scheduler_type', 'cosine')
         max_grad_norm = exp.pop('max_grad_norm', 1)
 
-        assert max_grad_norm > 0
+        assert float(max_grad_norm) > 0
 
         dataset = exp.pop('dataset', '')
         if dataset is None:
@@ -94,6 +94,9 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
 
         eval_steps = exp.pop('eval_steps', 500)
 
+        adam_beta1 = exp.pop('adam_beta1', '0.9')
+        adam_beta2 = exp.pop('adam_beta2', '0.95')
+
         bf16 = exp.pop('bf16', 0)
 
         if len(exp.keys()) > 0:
@@ -123,7 +126,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
 
         seed = SEED
 
-        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --max_grad_norm {max_grad_norm} --num_train_epochs {num_train_epochs} --seed {seed} --model_type {model_type} --llama_checkpoint {llama_checkpoint} --adam_beta1 0.9 --adam_beta2 0.95 {adam_epsilon} --lr_scheduler_type {lr_scheduler_type} --optimized_params {optimized_params} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --select_train_dataset_items {select_train_dataset_items} --weight_decay {weight_decay} --bf16 {bf16} --torch_compile {torch_compile}  {gradient_accumulation_steps}  --eval_strategy {eval_strategy} --eval_steps {eval_steps} --gradient_checkpointing {gradient_checkpointing} {save_total_limit} {optim} {save_only_model} {logging_steps} {dataset} --add_end_of_sentence_token {add_end_of_sentence_token} --disable_tqdm 1 "
+        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --max_grad_norm {max_grad_norm} --num_train_epochs {num_train_epochs} --seed {seed} --model_type {model_type} --llama_checkpoint {llama_checkpoint} --adam_beta1 {adam_beta1} --adam_beta2 {adam_beta2} {adam_epsilon} --lr_scheduler_type {lr_scheduler_type} --optimized_params {optimized_params} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --select_train_dataset_items {select_train_dataset_items} --weight_decay {weight_decay} --bf16 {bf16} --torch_compile {torch_compile}  {gradient_accumulation_steps}  --eval_strategy {eval_strategy} --eval_steps {eval_steps} --gradient_checkpointing {gradient_checkpointing} {save_total_limit} {optim} {save_only_model} {logging_steps} {dataset} --add_end_of_sentence_token {add_end_of_sentence_token} --disable_tqdm 1 "
 
         print(f"\n\n{script_str}\n\n")
 
@@ -174,6 +177,8 @@ def run_training_experiments(
         experiment_prefix_base_name = "adaptive_llama31_8B",
         gradient_accumulation_steps=4,
         gradient_checkpointing=False,
+        adam_beta1='0.9',
+        adam_beta2='0.98',
         save_steps=5000,
         save_total_limit=3,
         per_device_train_batch_size=4,
@@ -197,6 +202,9 @@ def run_training_experiments(
         "optimized_params": optimized_params,
         "adam_epsilon": adam_epsilon,
         "weight_decay": weight_decay,
+
+        "adam_beta1": adam_beta1,
+        "adam_beta2": adam_beta2,
 
         "dataset": dataset,
         "num_train_epochs": num_train_epochs,
@@ -263,44 +271,6 @@ if __name__ == "__main__":
     #         exit(1)
 
 
-    # Train full params
-    NGPUS = 8
-    num_train_epochs = 1
-    per_device_train_batch_size = 8
-    gradient_accumulation_steps = math.ceil(128 / NGPUS)
-    save_steps = 500
-
-    # Train full params
-    if True:
-    # if False:
-        run_training_experiments(
-            learning_rate=0.0001,
-            model_type='sentence_pretrained_checkpoint',
-            optimized_params='full',
-            # optimized_params='only_eos_embedding',
-            weight_decay='0.1',
-            per_device_train_batch_size=per_device_train_batch_size,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            # select_train_dataset_items=1510000 * NGPUS,
-            num_train_epochs=num_train_epochs,
-            save_total_limit=100,
-            save_steps=save_steps,
-            instance_type=f'a100.{NGPUS}gpu',
-            # llama_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__S9M6BLOE/checkpoint-400_untied_fixed/',
-            # llama_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__5RHWG2LO/checkpoint-1000/',
-            llama_checkpoint=f'HuggingFaceTB/SmolLM2-1.7B',
-            dataset='smollm-corpus',
-            select_train_dataset_items=0,
-            adam_epsilon='1e-8',
-            warmup_steps=1000,
-            dry=dry,
-            lr_scheduler_type='cosine',
-            bf16='0',
-            add_end_of_sentence_token=1,
-            experiment_prefix_base_name="sentence_slm2_1.7B_pretrain_with_end_of_sentence_full",
-        )
-
-
     # Train only one embedding param
     NGPUS = 6
     num_train_epochs = 1
@@ -323,17 +293,59 @@ if __name__ == "__main__":
             save_total_limit=100,
             save_steps=save_steps,
             instance_type=f'a100.{NGPUS}gpu',
-            llama_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__S9M6BLOE/checkpoint-400/',
+            # llama_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__S9M6BLOE/checkpoint-400/',
             # llama_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__5RHWG2LO/checkpoint-1000/',
-            # llama_checkpoint=f'HuggingFaceTB/SmolLM2-1.7B',
+            llama_checkpoint=f'HuggingFaceTB/SmolLM2-1.7B',
             dataset='smollm-corpus',
             select_train_dataset_items=0,
             adam_epsilon='1e-8',
-            warmup_steps=500,
+            warmup_steps=1000,
             dry=dry,
             lr_scheduler_type='cosine',
             bf16='0',
             add_end_of_sentence_token=1,
             experiment_prefix_base_name="sentence_slm2_1.7B_pretrain_with_end_of_sentence_one_embedding_no_wd",
         )
+
+
+
+    # Train full params
+    NGPUS = 8
+    num_train_epochs = 1
+    per_device_train_batch_size = 8
+    gradient_accumulation_steps = math.ceil(128 / NGPUS)
+    save_steps = 500
+
+    # Train full params
+    if True:
+    # if False:
+        run_training_experiments(
+            learning_rate=0.0001,
+            model_type='sentence_pretrained_checkpoint',
+            optimized_params='full',
+            # optimized_params='only_eos_embedding',
+            weight_decay='0.1',
+            per_device_train_batch_size=per_device_train_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            adam_beta1='0.9',
+            adam_beta2='0.98',
+            # select_train_dataset_items=1510000 * NGPUS,
+            num_train_epochs=num_train_epochs,
+            max_grad_norm='0.5',
+            save_total_limit=100,
+            save_steps=save_steps,
+            instance_type=f'a100.{NGPUS}gpu',
+            # llama_checkpoint=f'HuggingFaceTB/SmolLM2-1.7B',
+            llama_checkpoint=f"{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_one_embedding_no_wd_4IQFRDRG/checkpoint-500/",
+            dataset='smollm-corpus',
+            select_train_dataset_items=0,
+            adam_epsilon='1e-8',
+            warmup_steps=3000,
+            dry=dry,
+            lr_scheduler_type='cosine',
+            bf16='0',
+            add_end_of_sentence_token=1,
+            experiment_prefix_base_name="sentence_slm2_1.7B_pretrain_with_end_of_sentence_full",
+        )
+
 
