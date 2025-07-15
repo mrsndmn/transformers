@@ -593,7 +593,8 @@ def build_model(training_args: AdaptiveTrainingArguments):
         print("Load sentence llama model from", llama_checkpoint)
         model = SentenceLlamaForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
 
-        model.config._attn_implementation = 'sentence_attention'
+        model.config._attn_implementation = 'flash_attention_2'
+        print("model.config._attn_implementation", model.config._attn_implementation)
 
     elif training_args.model_type == 'pretrained_checkpoint':
         llama_checkpoint = training_args.llama_checkpoint
