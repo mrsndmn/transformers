@@ -593,9 +593,9 @@ def build_model(training_args: AdaptiveTrainingArguments):
         print("Load sentence llama model from", llama_checkpoint)
         model = SentenceLlamaForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
 
-        model.config._attn_implementation = 'eager'
-        print("WARN! using eager attention")
-        # model.config._attn_implementation = 'sentence_attention'
+        # model.config._attn_implementation = 'eager'
+        # print("WARN! using eager attention")
+        model.config._attn_implementation = 'sentence_attention'
         # model.config._attn_implementation = 'flash_attention_2'
         # print("model.config._attn_implementation", model.config._attn_implementation)
 
@@ -637,8 +637,8 @@ def build_model(training_args: AdaptiveTrainingArguments):
             for p in model.lm_head.parameters():
                 p.requires_grad = True
 
-    print("force full fp32 training!")
-    model = model.to(torch.float32)
+    # print("force full fp32 training!")
+    # model = model.to(torch.float32)
 
     print("model", type(model))
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))

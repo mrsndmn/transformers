@@ -46,6 +46,7 @@ from ...modeling_outputs import (
     TokenClassifierOutput,
 )
 from ...modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
+from ...integrations.sdpa_attention import sdpa_attention_forward
 
 from ...modeling_rope_utils import ROPE_INIT_FUNCTIONS
 from ...modeling_utils import PreTrainedModel
@@ -120,36 +121,23 @@ def sentence_attention_forward(
     special_embeddings_mask = kwargs['special_embeddings_mask'].bool()
 
     # bs
-    attention_mask_bool = attention_mask.bool()
+    # attention_mask # [ bs, 1, q_len, k_len ]
 
     assert len(clothest_end_of_sentence_token_idx.shape) == 2, 'clothest_end_of_sentence_token_idx must be 2D'
     assert len(special_embeddings_mask.shape) == 2, 'special_embeddings_mask must be 2D'
 
     assert dropout == 0.0, 'dropout is not supported'
 
-    def custom_mask(score, b, h, q_idx, kv_idx):
-        eos_token_idx = clothest_end_of_sentence_token_idx[b, q_idx]
+    output = F.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask, dropout_p=dropout)
 
-        causal_mask = (q_idx >= kv_idx) # & attention_mask_bool[b, q_idx] & attention_mask_bool[b, kv_idx]
-        # eos_sync_tokens = causal_mask & special_embeddings_mask[b, kv_idx]
-        # causal_triu_mask = causal_mask & (kv_idx >= eos_token_idx)
-
-        return torch.where(causal_mask, score, -float("inf"))
-        # return torch.where((eos_sync_tokens), score, -float("inf"))
-        return torch.where((causal_triu_mask | eos_sync_tokens), score, -float("inf"))
-
-    def causal(score, b, h, q_idx, kv_idx):
-        return torch.where(q_idx >= kv_idx, score, -float("inf"))
-
-    print("run flex attention")
-    # output = flex_attention(query, key, value, score_mod=custom_mask)
-    output = flex_attention(query, key, value, score_mod=causal)
+    # breakpoint()
 
     return output, None
 
 
-# ALL_ATTENTION_FUNCTIONS["sentence_attention"] = sentence_attention_forward
-ALL_ATTENTION_FUNCTIONS["sentence_attention"] = eager_attention_forward
+ALL_ATTENTION_FUNCTIONS["sentence_attention"] = sentence_attention_forward
+# ALL_ATTENTION_FUNCTIONS["sentence_attention"] = eager_attention_forward
+# ALL_ATTENTION_FUNCTIONS["sentence_attention"] = sdpa_attention_forward
 
 
 @dataclass
@@ -713,7 +701,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
             )
 
         if (
-            self.config._attn_implementation == "sdpa"
+            (self.config._attn_implementation == "sdpa" or self.config._attn_implementation == "sentence_attention")
             and attention_mask is not None
             and attention_mask.device.type == "cuda"
             and not output_attentions
@@ -874,7 +862,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         # ----------------------------------------------------------------------------
         # Convert boolean visibility to the floating mask expected by the model
         # ----------------------------------------------------------------------------
-        score_val = torch.tensor(1.0, dtype=dtype, device=device)
+        score_val = torch.tensor(0.0, dtype=dtype, device=device)
         final_mask = torch.full((bs, 1, q_len, k_len), min_val, dtype=dtype, device=device)
         final_mask.masked_fill_(allowed.unsqueeze(1), score_val)
 
