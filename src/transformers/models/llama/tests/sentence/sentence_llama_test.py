@@ -97,6 +97,81 @@ def test_sentence_llama_model_generate_with_eos_token_and_attention_mask():
 
     assert output1.loss == output2.loss, "output losses are not equal"
 
+def test_sentence_llama_model_attn_implementations():
+
+    device = 'cuda'
+
+    checkpoint = "HuggingFaceTB/SmolLM2-1.7B"
+    checkpoint = "./sentence_slm2_1.7B_pretrain_with_end_of_sentence_one_embedding_no_wd_4IQFRDRG/checkpoint-500/"
+    model = SentenceLlamaForCausalLM.from_pretrained(checkpoint, torch_dtype=torch.float32).to(device)
+    # model = AutoModelForCausalLM.from_pretrained(checkpoint, torch_dtype=torch.float32).to(device)
+    # tokenizer = GPT2TokenizerFastEOS.from_pretrained(checkpoint)
+    tokenizer = AutoTokenizer.from_pretrained(checkpoint)
+
+    model.resize_token_embeddings(len(tokenizer))
+    print(f"Resized model embeddings to vocabulary size: {len(tokenizer)}")
+    model.config.end_of_sentence_token_id = tokenizer.convert_tokens_to_ids('<end_of_sentence>')
+
+    model.config._attn_implementation = 'eager'
+
+    input_ids = tokenizer.encode("Russia - Moscow France - Paris Germany - Berlin Italy - ", return_tensors="pt")
+    input_ids = input_ids.to(device)
+    # assert (input_ids == model.config.end_of_sentence_token_id).sum().item() == 3
+
+    seq_len = input_ids.shape[1]
+
+    model.eval()
+
+    # print("input_ids", input_ids)
+    output1 = model(
+        input_ids,
+        use_cache=False,
+        output_hidden_states=True,
+    )
+
+    output1.logits.sum().backward()
+
+    gradients1 = [ (n,p.grad) for n,p in model.named_parameters() if p.grad is not None ]
+
+    model.zero_grad()
+
+    for p in model.parameters():
+        assert p.grad == None, f"gradients are not zeroed"
+
+    model.config._attn_implementation = 'sdpa'
+    # model.config._attn_implementation = 'flash_attention_2'
+
+    output2 = model(
+        input_ids,
+        use_cache=False,
+        output_hidden_states=True,
+    )
+
+    output2.logits.sum().backward()
+
+    gradients2 = [ (n,p.grad) for n,p in model.named_parameters() if p.grad is not None ]
+
+    for i in range(len(gradients1)):
+        param_name, grad_norm1 = gradients1[i]
+        param_name, grad_norm2 = gradients2[i]
+        gradients_diff = (grad_norm1 - grad_norm2).norm()
+        # print("gradients_diff", gradients_diff)
+        if gradients_diff > 1:
+            print(f"gradients[{param_name}] are not equal: {gradients_diff:.2f}")
+
+    tokens_1 = output1.logits.argmax(dim=-1)
+    tokens_2 = output2.logits.argmax(dim=-1)
+
+    assert (tokens_1 == tokens_2).all(), "tokens are not equal"
+
+    logits_diff = (output1.logits - output2.logits).norm()
+    assert logits_diff < 0.04, "logits diff is low"
+
+    assert torch.allclose(output1.logits, output2.logits, atol=1e-2), "logits are not equal"
+
+    breakpoint()
+
+
 
 def test_sentence_llama_model_generate_with_eos_token_and_attention_mask_partial_logits():
 

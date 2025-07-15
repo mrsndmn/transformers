@@ -593,8 +593,11 @@ def build_model(training_args: AdaptiveTrainingArguments):
         print("Load sentence llama model from", llama_checkpoint)
         model = SentenceLlamaForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
 
-        model.config._attn_implementation = 'flash_attention_2'
-        print("model.config._attn_implementation", model.config._attn_implementation)
+        model.config._attn_implementation = 'eager'
+        print("WARN! using eager attention")
+        # model.config._attn_implementation = 'sentence_attention'
+        # model.config._attn_implementation = 'flash_attention_2'
+        # print("model.config._attn_implementation", model.config._attn_implementation)
 
     elif training_args.model_type == 'pretrained_checkpoint':
         llama_checkpoint = training_args.llama_checkpoint
@@ -634,6 +637,8 @@ def build_model(training_args: AdaptiveTrainingArguments):
             for p in model.lm_head.parameters():
                 p.requires_grad = True
 
+    print("force full fp32 training!")
+    model = model.to(torch.float32)
 
     print("model", type(model))
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
@@ -751,9 +756,11 @@ if __name__ == "__main__":
             print("model layers up proj grad", [ (i, self.model.model.layers[i].mlp.up_proj.weight.grad.norm(2).item()) for i in range(self.model.config.num_hidden_layers) ])
             print("model layers down proj grad", [ (i, self.model.model.layers[i].mlp.down_proj.weight.grad.norm(2).item()) for i in range(self.model.config.num_hidden_layers) ])
             print("model lm_head grad norm", self.model.lm_head.weight.grad.norm(2).item())
+
+            print("\n\n\n")
             return control
 
-    # callbacks.append(LogModelLayersGradNorm(model))
+    callbacks.append(LogModelLayersGradNorm(model))
 
     if 'only_eos_embedding' in training_args.optimized_params:
         unfrozen_idx = model.config.end_of_sentence_token_id
