@@ -688,7 +688,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
                 else past_seen_tokens + sequence_length + 1
             )
 
-        if self.config._attn_implementation == "sentence_attention":
+        if False and self.config._attn_implementation == "sentence_attention":
             causal_mask = self._prepare_4d_causal_attention_mask_with_cache_position_sentence_attention(
                 attention_mask,
                 sequence_length=sequence_length,
@@ -877,8 +877,6 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         score_val = torch.tensor(1.0, dtype=dtype, device=device)
         final_mask = torch.full((bs, 1, q_len, k_len), min_val, dtype=dtype, device=device)
         final_mask.masked_fill_(allowed.unsqueeze(1), score_val)
-
-        breakpoint()
 
         return final_mask
 

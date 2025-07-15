@@ -339,6 +339,8 @@ class AdaptiveLlamaTrainer(Trainer):
 
             assert optim_params_count == total_model_params, f"optim_params_count: {optim_params_count}, total_model_params: {total_model_params}"
 
+            # breakpoint()
+
             optimizer_cls, optimizer_kwargs = self.get_optimizer_cls_and_kwargs(self.args, opt_model)
 
             # Overwrite `params` in case it's created by `get_optimizer_cls_and_kwargs`
@@ -1198,6 +1200,8 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
         optimized_params = training_args.optimized_params.split(',')
 
+        print("optimized_params", optimized_params)
+
         for param_name in optimized_params:
             assert param_name in AVAILABLE_OPTIMIZED_PARAMS, f'{param_name} is not in {AVAILABLE_OPTIMIZED_PARAMS}'
 
@@ -1206,6 +1210,12 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
         if 'full' not in optimized_params:
             freeze_model(model)
+
+        print("num trainable model parameters before:", sum(p.numel() for p in model.parameters() if p.requires_grad))
+
+        if 'only_eos_embedding' in optimized_params:
+            for p in model.model.embed_tokens.parameters():
+                p.requires_grad = True
 
         if 'fan_in' in optimized_params:
             unfreeze_fan_in(model)
@@ -1295,6 +1305,23 @@ def build_model(training_args: AdaptiveTrainingArguments):
             model.model.fan_in.hcg.hcg_log_a.data = log_a_data
             sigmoid = torch.nn.functional.sigmoid(log_a_data)
             print("Harded hcg_log_a for fan_in with value", sigmoid.min(), sigmoid.max())
+
+    if training_args.model_type == "sentence_pretrained_checkpoint":
+        optimized_params = training_args.optimized_params.split(',')
+        print("optimized_params", optimized_params)
+
+        if 'full' in optimized_params:
+            assert len(optimized_params) == 1
+
+        if 'full' not in optimized_params:
+            freeze_model(model)
+
+        print("num trainable model parameters before:", sum(p.numel() for p in model.parameters() if p.requires_grad))
+
+        if 'only_eos_embedding' in optimized_params:
+            for p in model.model.embed_tokens.parameters():
+                p.requires_grad = True
+
 
     print("model", type(model))
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
@@ -1392,7 +1419,7 @@ if __name__ == "__main__":
                     dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2_eos'
 
                 output_dir = sorted(os.listdir(dataset_path))[:30]
-                print(output_dir)
+                print("loading", len(output_dir), 'dataset shards', output_dir)
 
                 all_datasets = []
                 for data_file in tqdm(output_dir, desc='Loading datasets'):
@@ -1549,6 +1576,24 @@ if __name__ == "__main__":
         callbacks.append(gradual_unfreeze_callback)
 
     print("training_args.do_eval_on_save", training_args.do_eval_on_save)
+
+    if 'only_eos_embedding' in training_args.optimized_params:
+        unfrozen_idx = model.config.end_of_sentence_token_id
+
+        class ZeroOutGradientsForAllExceptEosEmbedding(TrainerCallback):
+            def __init__(self, model):
+                self.model = model
+
+            def on_pre_optimizer_step(self, args, state, control, **kwargs):
+
+                for p in model.model.embed_tokens.parameters():
+                    current_grad = p.grad
+                    p.grad = torch.zeros_like(p.grad)
+                    p.grad[unfrozen_idx] = current_grad[unfrozen_idx]
+
+                return control
+
+        callbacks.append(ZeroOutGradientsForAllExceptEosEmbedding(model))
 
     # from accelerate.utils import DistributedDataParallelKwargs
     # ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=False, static_graph=True)

@@ -109,6 +109,10 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         if gradient_accumulation_steps != '':
             gradient_accumulation_steps = f"--gradient_accumulation_steps {gradient_accumulation_steps}"
 
+        adam_epsilon = exp.pop('adam_epsilon', '1e-8')
+        if adam_epsilon != '':
+            adam_epsilon = f'--adam_epsilon {adam_epsilon}'
+
         save_steps = exp.pop('save_steps', 5000)
         save_total_limit = exp.pop('save_total_limit', "")
         if save_total_limit != "":
@@ -128,6 +132,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         instance_type = exp.pop('instance_type', INSTANCE_TYPE)
 
         eval_strategy = exp.pop('eval_strategy', 'steps')
+        weight_decay = exp.pop('weight_decay', '0.01')
 
         add_end_of_sentence_token = exp.pop('add_end_of_sentence_token', 0)
 
@@ -179,7 +184,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
 
         seed = SEED
 
-        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --hcg_learning_rate {hcg_learning_rate} {init_hcg_a} --hard_hcg_log_a {hard_hcg_log_a} --max_grad_norm {max_grad_norm} --num_train_epochs {num_train_epochs} --seed {seed} --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --adam_beta1 0.9 --adam_beta2 0.95 --lr_scheduler_type {lr_scheduler_type} --merging_type {merging_type} --temperature_schedule 0 --optimized_params {optimized_params} --fan_out_projection {fan_out_projection} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --weight_decay 0.1 --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --bf16 {bf16} --torch_compile {torch_compile} --sparsity_level {sparsity_level} --concrete_random_mask_proba {concrete_random_mask_proba} --lm_loss_max_value {lm_loss_max_value} --hcg_loss_max_value {hcg_loss_max_value} --prohibit_end_of_sentence_pruning {prohibit_end_of_sentence_pruning} --early_stopping_for_pretraining {early_stopping_for_pretraining} {gradient_accumulation_steps} --pretrain_fan_out_projection {pretrain_fan_out_projection} --eval_strategy {eval_strategy} --concrete_uniform_pruning {concrete_uniform_pruning} --each_layer_pruning {each_layer_pruning} {fan_in_idx} {fan_out_idx} --forward_residuals {forward_residuals} --eval_steps {eval_steps} --init_fan_out_mlp {init_fan_out_mlp} {hcg_fan_in_from} {fan_out_projection_mlp_intermediate_size} --do_eval_on_save {do_eval_on_save} --gradient_checkpointing {gradient_checkpointing} {save_total_limit} {optim} {save_only_model} {logging_steps} {dataset} --add_end_of_sentence_token {add_end_of_sentence_token} --disable_tqdm 1 --force_train_on_trimmed_embeddings {force_train_on_trimmed_embeddings} --prune_all_except_end_of_sentence_token {prune_all_except_end_of_sentence_token} {mid_layers_learning_rate}"
+        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --generate_merges_transform_impl {generate_merges_transform_impl} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --hcg_learning_rate {hcg_learning_rate} {init_hcg_a} --hard_hcg_log_a {hard_hcg_log_a} --max_grad_norm {max_grad_norm} --num_train_epochs {num_train_epochs} --seed {seed} --model_type {model_type} --llama_checkpoint {llama_checkpoint} --dummy_adaptive_fan_in_layers_str {dummy_adaptive_fan_in_layers_str} --adam_beta1 0.9 --adam_beta2 0.95 {adam_epsilon} --lr_scheduler_type {lr_scheduler_type} --merging_type {merging_type} --temperature_schedule 0 --optimized_params {optimized_params} --fan_out_projection {fan_out_projection} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --learnt_temperature 0 --select_train_dataset_items {select_train_dataset_items} --weight_decay {weight_decay} --scale_not_pruned_gradients {scale_not_pruned_gradients} --hcg_loss_weight {hcg_loss_weight} --hcg_loss_weight_dynamic {hcg_loss_weight_dynamic} --bf16 {bf16} --torch_compile {torch_compile} --sparsity_level {sparsity_level} --concrete_random_mask_proba {concrete_random_mask_proba} --lm_loss_max_value {lm_loss_max_value} --hcg_loss_max_value {hcg_loss_max_value} --prohibit_end_of_sentence_pruning {prohibit_end_of_sentence_pruning} --early_stopping_for_pretraining {early_stopping_for_pretraining} {gradient_accumulation_steps} --pretrain_fan_out_projection {pretrain_fan_out_projection} --eval_strategy {eval_strategy} --concrete_uniform_pruning {concrete_uniform_pruning} --each_layer_pruning {each_layer_pruning} {fan_in_idx} {fan_out_idx} --forward_residuals {forward_residuals} --eval_steps {eval_steps} --init_fan_out_mlp {init_fan_out_mlp} {hcg_fan_in_from} {fan_out_projection_mlp_intermediate_size} --do_eval_on_save {do_eval_on_save} --gradient_checkpointing {gradient_checkpointing} {save_total_limit} {optim} {save_only_model} {logging_steps} {dataset} --add_end_of_sentence_token {add_end_of_sentence_token} --disable_tqdm 1 --force_train_on_trimmed_embeddings {force_train_on_trimmed_embeddings} --prune_all_except_end_of_sentence_token {prune_all_except_end_of_sentence_token} {mid_layers_learning_rate}"
 
         print(f"\n\n{script_str}\n\n")
 
@@ -456,8 +461,10 @@ def run_hcg_smollm2_1_7B_hcg(**kwargs):
 
 def run_hcg_llama31_8B_hcg(
         hcg_loss_weight=1.0,
+        weight_decay='0.01',
         fan_in_idx=None,
         num_train_epochs=1,
+        adam_epsilon='1e-8',
         mid_layers_learning_rate=None,
         add_end_of_sentence_token=0,
         fan_out_idx=None,
@@ -502,6 +509,8 @@ def run_hcg_llama31_8B_hcg(
 
         "force_train_on_trimmed_embeddings": force_train_on_trimmed_embeddings,
         "optimized_params": optimized_params,
+        "adam_epsilon": adam_epsilon,
+        "weight_decay": weight_decay,
 
         "dataset": dataset,
         "num_train_epochs": num_train_epochs,
@@ -888,11 +897,12 @@ if __name__ == "__main__":
 
     # Pretrain Fain Out on Tiny Datasets
     # NGPUS = 1
-    NGPUS = 6
+    NGPUS = 8
+    # NGPUS = 6
     num_train_epochs = 1
-    per_device_train_batch_size = 16
-    gradient_accumulation_steps = math.ceil(16 / NGPUS)
-    save_steps = 1000
+    per_device_train_batch_size = 8
+    gradient_accumulation_steps = math.ceil(128 / NGPUS)
+    save_steps = 500
 
     # prune_all_except_end_of_sentence_token 1.7B Model
     if True:
@@ -900,10 +910,12 @@ if __name__ == "__main__":
         run_hcg_llama31_8B_hcg(
             hcg_loss_weight=0.1,
             hcg_learning_rate=0.01,
-            learning_rate=0.0003,
-            mid_layers_learning_rate=0.0003,
+            learning_rate=0.0001,
+            mid_layers_learning_rate=0.0001,
             model_type='sentence_pretrained_checkpoint',
             optimized_params='full',
+            # optimized_params='only_eos_embedding',
+            weight_decay='0.0',
             per_device_train_batch_size=per_device_train_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
             # select_train_dataset_items=1510000 * NGPUS,
@@ -911,19 +923,22 @@ if __name__ == "__main__":
             save_total_limit=100,
             save_steps=save_steps,
             instance_type=f'a100.{NGPUS}gpu',
-            llama_checkpoint=f'HuggingFaceTB/SmolLM2-1.7B',
+            llama_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__S9M6BLOE/checkpoint-400/',
+            # llama_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__5RHWG2LO/checkpoint-1000/',
+            # llama_checkpoint=f'HuggingFaceTB/SmolLM2-1.7B',
             dataset='smollm-corpus',
             select_train_dataset_items=0,
             fan_in_idx=None,
             fan_out_idx=None,
-            warmup_steps=1000,
+            adam_epsilon='1e-8',
+            warmup_steps=500,
             dry=dry,
             lr_scheduler_type='cosine',
             force_train_on_trimmed_embeddings='0',
             bf16='0',
             add_end_of_sentence_token=1,
             prune_all_except_end_of_sentence_token=1,
-            experiment_prefix_base_name="sentence_slm2_1.7B_pretrain_with_end_of_sentence_token",
+            experiment_prefix_base_name="sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_no_wd",
         )
 
 
