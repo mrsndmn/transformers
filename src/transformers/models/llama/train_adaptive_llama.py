@@ -62,7 +62,7 @@ from transformers.models.llama.extra_types import AVAILABLE_OPTIMIZED_PARAMS
 @dataclass
 class AdaptiveTrainingArguments(TrainingArguments):
 
-    ddp_find_unused_parameters: bool = field(default=True)
+    ddp_find_unused_parameters: bool = field(default=False)
     load_best_model_at_end: bool = field(default=False)
 
     output_dir: str = field(default="llama_for_sequential_numbers",)
@@ -630,6 +630,9 @@ def build_model(training_args: AdaptiveTrainingArguments):
             for p in model.model.embed_tokens.parameters():
                 p.requires_grad = True
 
+            for p in model.lm_head.parameters():
+                p.requires_grad = True
+
 
     print("model", type(model))
     print("num trainable model parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
@@ -746,7 +749,10 @@ if __name__ == "__main__":
         def on_pre_optimizer_step(self, args, state, control, **kwargs):
             print("model layers up proj grad", [ (i, self.model.model.layers[i].mlp.up_proj.weight.grad.norm(2).item()) for i in range(self.model.config.num_hidden_layers) ])
             print("model layers down proj grad", [ (i, self.model.model.layers[i].mlp.down_proj.weight.grad.norm(2).item()) for i in range(self.model.config.num_hidden_layers) ])
+            print("model lm_head grad norm", self.model.lm_head.weight.grad.norm(2).item())
             return control
+
+    # callbacks.append(LogModelLayersGradNorm(model))
 
     if 'only_eos_embedding' in training_args.optimized_params:
         unfrozen_idx = model.config.end_of_sentence_token_id
@@ -758,6 +764,11 @@ if __name__ == "__main__":
             def on_pre_optimizer_step(self, args, state, control, **kwargs):
 
                 for p in model.model.embed_tokens.parameters():
+                    current_grad = p.grad
+                    p.grad = torch.zeros_like(p.grad)
+                    p.grad[unfrozen_idx] = current_grad[unfrozen_idx]
+
+                for p in model.lm_head.parameters():
                     current_grad = p.grad
                     p.grad = torch.zeros_like(p.grad)
                     p.grad[unfrozen_idx] = current_grad[unfrozen_idx]

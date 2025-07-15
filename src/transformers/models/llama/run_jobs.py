@@ -270,7 +270,7 @@ if __name__ == "__main__":
     gradient_accumulation_steps = math.ceil(128 / NGPUS)
     save_steps = 500
 
-    # prune_all_except_end_of_sentence_token 1.7B Model
+    # Train full params
     if True:
     # if False:
         run_training_experiments(
@@ -278,7 +278,7 @@ if __name__ == "__main__":
             model_type='sentence_pretrained_checkpoint',
             optimized_params='full',
             # optimized_params='only_eos_embedding',
-            weight_decay='0.0',
+            weight_decay='0.1',
             per_device_train_batch_size=per_device_train_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
             # select_train_dataset_items=1510000 * NGPUS,
@@ -286,18 +286,18 @@ if __name__ == "__main__":
             save_total_limit=100,
             save_steps=save_steps,
             instance_type=f'a100.{NGPUS}gpu',
-            llama_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__S9M6BLOE/checkpoint-400/',
+            # llama_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__S9M6BLOE/checkpoint-400_untied_fixed/',
             # llama_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__5RHWG2LO/checkpoint-1000/',
-            # llama_checkpoint=f'HuggingFaceTB/SmolLM2-1.7B',
+            llama_checkpoint=f'HuggingFaceTB/SmolLM2-1.7B',
             dataset='smollm-corpus',
             select_train_dataset_items=0,
             adam_epsilon='1e-8',
-            warmup_steps=500,
+            warmup_steps=1000,
             dry=dry,
             lr_scheduler_type='cosine',
             bf16='0',
             add_end_of_sentence_token=1,
-            experiment_prefix_base_name="sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_no_wd",
+            experiment_prefix_base_name="sentence_slm2_1.7B_pretrain_with_end_of_sentence_full",
         )
 
 
@@ -308,8 +308,8 @@ if __name__ == "__main__":
     gradient_accumulation_steps = math.ceil(128 / NGPUS)
     save_steps = 500
 
-    if True:
-    # if False:
+    # if True:
+    if False:
         run_training_experiments(
             learning_rate=0.0001,
             model_type='sentence_pretrained_checkpoint',
