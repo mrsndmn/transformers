@@ -676,7 +676,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
                 else past_seen_tokens + sequence_length + 1
             )
 
-        if self.config._attn_implementation == "sentence_attention":
+        if self.config._attn_implementation in ["sentence_attention", "eager"]:
             causal_mask = self._prepare_4d_causal_attention_mask_with_cache_position_sentence_attention(
                 attention_mask,
                 sequence_length=sequence_length,
@@ -701,7 +701,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
             )
 
         if (
-            (self.config._attn_implementation == "sdpa" or self.config._attn_implementation == "sentence_attention")
+            (self.config._attn_implementation in ["sdpa", "sentence_attention", "eager"])
             and attention_mask is not None
             and attention_mask.device.type == "cuda"
             and not output_attentions
