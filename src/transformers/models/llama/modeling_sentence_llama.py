@@ -712,6 +712,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
             min_dtype = torch.finfo(dtype).min
             causal_mask = AttentionMaskConverter._unmask_unattended(causal_mask, min_dtype)
 
+        # breakpoint()
         return causal_mask
 
     @staticmethod
@@ -894,8 +895,7 @@ class SentenceLlamaForCausalLM(SentenceLlamaPreTrainedModel, GenerationMixin):
     ):
         outputs = super().prepare_inputs_for_generation(input_ids, past_key_values, attention_mask, inputs_embeds, cache_position, **kwargs)
 
-        special_embeddings_mask = attention_mask.cumsum(dim=-1)
-        special_embeddings_mask[special_embeddings_mask > 1] = 0
+        special_embeddings_mask = torch.zeros_like(attention_mask)
         if self.config.end_of_sentence_token_id is not None:
             special_embeddings_mask[input_ids == self.config.end_of_sentence_token_id] = 1
 
@@ -988,8 +988,7 @@ class SentenceLlamaForCausalLM(SentenceLlamaPreTrainedModel, GenerationMixin):
             attention_mask = torch.ones_like(input_ids, dtype=torch.long)
 
         if special_embeddings_mask is None:
-            special_embeddings_mask = attention_mask.cumsum(dim=-1)
-            special_embeddings_mask[special_embeddings_mask > 1] = 0
+            special_embeddings_mask = torch.zeros_like(attention_mask)
             if self.config.end_of_sentence_token_id is not None:
                 print("number of end of sentence tokens", (input_ids == self.config.end_of_sentence_token_id).sum())
                 special_embeddings_mask[input_ids == self.config.end_of_sentence_token_id] = 1

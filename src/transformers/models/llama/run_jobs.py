@@ -314,13 +314,13 @@ if __name__ == "__main__":
     num_train_epochs = 1
     per_device_train_batch_size = 8
     gradient_accumulation_steps = math.ceil(128 / NGPUS)
-    save_steps = 500
+    save_steps = 1000
 
     # Train full params
     if True:
     # if False:
         run_training_experiments(
-            learning_rate=0.0001,
+            learning_rate=0.0003,
             model_type='sentence_pretrained_checkpoint',
             optimized_params='full',
             # optimized_params='only_eos_embedding',
@@ -328,20 +328,21 @@ if __name__ == "__main__":
             per_device_train_batch_size=per_device_train_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
             adam_beta1='0.9',
-            adam_beta2='0.98',
+            adam_beta2='0.95',
             optim='adamw_torch_fused',
             # select_train_dataset_items=1510000 * NGPUS,
             num_train_epochs=num_train_epochs,
-            max_grad_norm='0.5',
+            max_grad_norm='1.0',
             save_total_limit=100,
             save_steps=save_steps,
             instance_type=f'a100.{NGPUS}gpu',
             # llama_checkpoint=f'HuggingFaceTB/SmolLM2-1.7B',
-            llama_checkpoint=f"{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_one_embedding_no_wd_4IQFRDRG/checkpoint-500/",
+            # llama_checkpoint=f"{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_one_embedding_no_wd_4IQFRDRG/checkpoint-500/",
+            llama_checkpoint=f"{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_VYE9JVA0/checkpoint-6500/",
             dataset='smollm-corpus',
             select_train_dataset_items=0,
             adam_epsilon='1e-8',
-            warmup_steps=3000,
+            warmup_steps=1000,
             dry=dry,
             lr_scheduler_type='cosine',
             bf16='0',
