@@ -23,9 +23,12 @@ def process_dataset_item(dataset_item):
 
 if __name__ == "__main__":
 
+    shard_num = int(sys.argv[1])
+    total_shards = int(sys.argv[2])
+
     dataset_path = f'./fineweb_edu_tokenized_gpt2_eos/'
-    targer_dir = f'./fineweb_edu_tokenized_gpt2_with_special_embedding_mask_clothest_eos_token_idx'
-    dataset_shard = sorted(os.listdir(dataset_path))[:10]
+    targer_dir = f'./fineweb_edu_tokenized_gpt2_with_special_embedding_mask_clothest_eos_token_idx_full'
+    dataset_shard = sorted(os.listdir(dataset_path))[shard_num::total_shards]
     print(dataset_shard)
 
     columns_to_keep = ['input_ids', 'attention_mask', 'special_embeddings_mask', 'clothest_end_of_sentence_token_idx']
@@ -42,7 +45,7 @@ if __name__ == "__main__":
         dataset = dataset.remove_columns( list(set(dataset.column_names) - set(columns_to_keep)) )
 
         # dataset = dataset.select(range(1000))
-        dataset = dataset.map(process_dataset_item, num_proc=32)
+        dataset = dataset.map(process_dataset_item, num_proc=16)
 
         dataset.save_to_disk(shard_targer_dir)
 

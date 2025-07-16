@@ -760,7 +760,7 @@ if __name__ == "__main__":
             print("\n\n\n")
             return control
 
-    callbacks.append(LogModelLayersGradNorm(model))
+    # callbacks.append(LogModelLayersGradNorm(model))
 
     if 'only_eos_embedding' in training_args.optimized_params:
         unfrozen_idx = model.config.end_of_sentence_token_id
