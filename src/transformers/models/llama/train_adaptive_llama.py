@@ -670,11 +670,13 @@ if __name__ == "__main__":
 
                 if training_args.model_type == 'sentence_pretrained_checkpoint':
                     dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2_with_special_embedding_mask_clothest_eos_token_idx'
+                    raise ValueError('Change dataset path to full')
+                    # dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2_with_special_embedding_mask_clothest_eos_token_idx_full'
                 else:
                     dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2_eos'
 
-                output_dir = sorted(os.listdir(dataset_path))[:30]
-                print("loading", len(output_dir), 'dataset shards', output_dir)
+                output_dir = sorted(os.listdir(dataset_path))
+                print("loading dataset", dataset_path, 'with', len(output_dir), 'dataset shards', output_dir)
 
                 all_datasets = []
                 for data_file in tqdm(output_dir, desc='Loading datasets'):
