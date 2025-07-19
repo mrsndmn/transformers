@@ -112,6 +112,7 @@ def test_sentence_llama_model_generate_with_eos_token_and_attention_mask_partial
     model.config.end_of_sentence_token_id = tokenizer.convert_tokens_to_ids('<end_of_sentence>')
 
     # model.config._attn_implementation = 'eager'
+    # model.config._attn_implementation = 'sdpa'
     model.config._attn_implementation = 'sentence_attention'
 
     input_ids = tokenizer.encode("Russia - Moscow. France - Paris. Germany - Berlin. Italy - ", return_tensors="pt")

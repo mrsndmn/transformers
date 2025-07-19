@@ -19,7 +19,8 @@ from transformers.models.llama.modeling_sentence_llama import SentenceLlamaForCa
 if __name__ == "__main__":
 
     # List of checkpoints to visualize
-    checkpoint_steps_list = [1000, 2000, 3000, 4000, 5000, 6000]
+    # checkpoint_steps_list = [1000, 2000, 3000, 4000, 5000, 6000]
+    checkpoint_steps_list = [1000, 2000]
 
     # Will be initialized after the first forward pass when we know num_layers
     frames_per_layer = None  # list[list[np.ndarray]]
@@ -31,7 +32,7 @@ if __name__ == "__main__":
     for checkpoint_steps in checkpoint_steps_list:
 
         checkpoint_path = (
-            f"./sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_VYE9JVA0/checkpoint-{checkpoint_steps}"
+            f'./sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_FI1MVVP3/checkpoint-{checkpoint_steps}/'
         )
 
         with torch.no_grad():
