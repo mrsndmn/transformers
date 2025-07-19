@@ -168,13 +168,6 @@ def sentence_attention_forward(
     if is_causal is None:
         is_causal = query.shape[2] > 1 and causal_mask is None
 
-    # print("is_causal", is_causal)
-    # print("causal_mask", causal_mask)
-    causal_mask_bool = causal_mask == 0
-    torch.set_printoptions(linewidth=100000)
-    # print(causal_mask_bool)
-    # breakpoint()
-
     # Shapes (e.g. query.shape[2]) are tensors during jit tracing, resulting in `is_causal` being a tensor.
     # We convert it to a bool for the SDPA kernel that only accepts bools.
     if torch.jit.is_tracing() and isinstance(is_causal, torch.Tensor):

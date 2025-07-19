@@ -29,7 +29,7 @@ class ContinuousEvaluator:
 
         # sentence_llama_fa_checkpoints_dir = "./sentence_slm2_1.7B_flash_attention_pretrain_with_end_of_sentence_token_w_0.100_l__ME65Z1L5"
 
-        sentence_llama_checkpoints_dir = "./sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__5RHWG2LO"
+        sentence_llama_checkpoints_dir = "./sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_IOVO1EQ9"
 
 
         self.model_to_checkpoints = [
