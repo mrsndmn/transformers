@@ -318,9 +318,9 @@ if __name__ == "__main__":
     num_train_epochs = 1
     per_device_train_batch_size = 8
     gradient_accumulation_steps = math.ceil(128 / NGPUS)
-    save_steps = 1000
+    save_steps = 500
 
-    models_checkpoints = [ 'unsloth/Llama-3.2-1B', 'Qwen/Qwen2.5-1.5B', 'HuggingFaceTB/SmolLM2-1.7B' ]
+    models_checkpoints = [ 'unsloth/Llama-3.2-1B', 'Qwen/Qwen2.5-1.5B', 'HuggingFaceTB/SmolLM2-1.7B', 'unsloth/Llama-3.2-3B', 'Qwen/Qwen2.5-3B',  ]
     # model_checkpoint = 'unsloth/Llama-3.2-1B'
     # model_checkpoint = 'HuggingFaceTB/SmolLM2-1.7B'
     # model_checkpoint = 'Qwen/Qwen2.5-1.5B'
