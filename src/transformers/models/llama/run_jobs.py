@@ -314,7 +314,7 @@ if __name__ == "__main__":
     NGPUS = 8
     num_train_epochs = 1
     per_device_train_batch_size = 8
-    gradient_accumulation_steps = math.ceil(128 / NGPUS)
+    gradient_accumulation_steps = math.ceil(256 / NGPUS)
     save_steps = 1000
 
     # Train full params

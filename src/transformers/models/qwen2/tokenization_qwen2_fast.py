@@ -14,7 +14,8 @@
 # limitations under the License.
 """Tokenization classes for Qwen2."""
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
+import re
 
 from ...tokenization_utils import AddedToken
 from ...tokenization_utils_fast import PreTrainedTokenizerFast
@@ -132,3 +133,58 @@ class Qwen2TokenizerFast(PreTrainedTokenizerFast):
     def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> Tuple[str]:
         files = self._tokenizer.model.save(save_directory, name=filename_prefix)
         return tuple(files)
+
+
+class Qwen2TokenizerFastEOS(PreTrainedTokenizerFast):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.end_of_sentence_token = '<end_of_sentence>'
+        if self.end_of_sentence_token not in self.get_vocab():
+            self.add_special_tokens({"additional_special_tokens": [self.end_of_sentence_token]})
+            print(f"Added <end_of_sentence> token with ID: {self.convert_tokens_to_ids(self.end_of_sentence_token)}")
+
+        self.end_of_sentence_token_id = self.convert_tokens_to_ids(self.end_of_sentence_token)
+
+        return
+
+    @property
+    def can_save_slow_tokenizer(self) -> bool:
+        """
+        `bool`: Whether or not the slow tokenizer can be saved. Usually for sentencepiece based slow tokenizer, this
+        can only be `True` if the original `"sentencepiece.model"` was not deleted.
+        """
+        return False
+
+    def encode_plus(self, text: str, **kwargs):
+        text = self.prepare_for_tokenization(text)
+        return super().encode_plus(text, **kwargs)
+
+    def batch_encode_plus(self, batch_text_or_text_pairs: str, **kwargs):
+        batch_text_or_text_pairs = [self.prepare_for_tokenization(x) for x in batch_text_or_text_pairs]
+        return super().batch_encode_plus(batch_text_or_text_pairs, **kwargs)
+
+    def prepare_for_tokenization(
+        self, text: str
+    ) -> tuple[str, dict[str, Any]]:
+
+        end_of_sentence_token = self.end_of_sentence_token
+        patterns = [
+            (r'\. ', f'. {end_of_sentence_token}'),
+            (r'\? ', f'? {end_of_sentence_token}'),
+            (r'! ', f'! {end_of_sentence_token}'),
+            (r'\.\n', f'.\n{end_of_sentence_token}'),
+            (r'\?\n', f'?\n{end_of_sentence_token}'),
+            (r'!\n', f'!\n{end_of_sentence_token}'),
+            (r'\.$', f'. {end_of_sentence_token}'),
+            (r'!$', f'!{end_of_sentence_token}'),
+            (r'\?$', f'?{end_of_sentence_token}'),
+        ]
+
+        for pattern, replacement in patterns:
+            text = re.sub(pattern, replacement, text)
+
+        return text
+
+

@@ -300,6 +300,28 @@ def eval_hcg_adaptive_pretrain_all_tasks_parallel(**kwargs):
     return
 
 
+def slm2_mmlu_cloze_5_shot(**kwargs):
+
+    checkpoints = [
+        "HuggingFaceTB/SmolLM2-1.7B",
+        "sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_IOVO1EQ9/checkpoint-26000/",
+    ]
+
+    tasks = "custom|mmlu_cloze|5|1".split(",")
+
+    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
+
+    print('len hcg_experiments:', len(hcg_experiments))
+
+
+    if kwargs.pop('extract_metrics', False):
+        run_extract_metrics(checkpoints, tasks=tasks)
+    else:
+        for task in tasks:
+            run_eval_experiments(hcg_experiments, job_description_prefix="Eval: ", tasks=task, **kwargs)
+
+    return
+
 
 if __name__ == "__main__":
 
@@ -310,4 +332,5 @@ if __name__ == "__main__":
 
     print("dry", dry, 'extract_metrics', extract_metrics)
 
-    eval_hcg_adaptive_pretrain_all_tasks_parallel(dry=dry, extract_metrics=extract_metrics)
+    # eval_hcg_adaptive_pretrain_all_tasks_parallel(dry=dry, extract_metrics=extract_metrics)
+    slm2_mmlu_cloze_5_shot(dry=dry, extract_metrics=extract_metrics)

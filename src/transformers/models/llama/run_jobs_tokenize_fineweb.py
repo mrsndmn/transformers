@@ -11,7 +11,7 @@ if __name__ == "__main__":
 
     author_name = 'd.tarasov'
 
-    total_shards = 4
+    total_shards = 14
 
     for shard_num in range(total_shards):
             result = client.run_job(
