@@ -8,8 +8,6 @@ from rich.console import Console
 
 import os
 
-assert os.environ.get("WANDB_API_KEY", "") != "", "WANDB_API_KEY is required" 
-
 from copy import deepcopy
 
 from transformers.models.llama.extra_types import AVAILABLE_OPTIMIZED_PARAMS
@@ -44,7 +42,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         num_train_epochs = exp.pop('num_train_epochs', 1)
         select_train_dataset_items = exp.pop('select_train_dataset_items', 150000)
         model_type = exp.pop('model_type', 'pretrained') # pretrained_checkpoint
-        llama_checkpoint = exp.pop('llama_checkpoint', '""')
+        model_checkpoint = exp.pop('model_checkpoint', '""')
 
         learning_rate = exp.pop('learning_rate', 1e-4)
         lr_scheduler_type = exp.pop('lr_scheduler_type', 'cosine')
@@ -98,6 +96,8 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         adam_beta1 = exp.pop('adam_beta1', '0.9')
         adam_beta2 = exp.pop('adam_beta2', '0.95')
 
+        limit_dataset_shards = exp.pop('limit_dataset_shards', 0)
+
         bf16 = exp.pop('bf16', 0)
 
         if len(exp.keys()) > 0:
@@ -127,7 +127,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
 
         seed = SEED
 
-        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --max_grad_norm {max_grad_norm} --num_train_epochs {num_train_epochs} --seed {seed} --model_type {model_type} --llama_checkpoint {llama_checkpoint} --adam_beta1 {adam_beta1} --adam_beta2 {adam_beta2} {adam_epsilon} --lr_scheduler_type {lr_scheduler_type} --optimized_params {optimized_params} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --select_train_dataset_items {select_train_dataset_items} --weight_decay {weight_decay} --bf16 {bf16} --torch_compile {torch_compile}  {gradient_accumulation_steps}  --eval_strategy {eval_strategy} --eval_steps {eval_steps} --gradient_checkpointing {gradient_checkpointing} {save_total_limit} {optim} {save_only_model} {logging_steps} {dataset} --add_end_of_sentence_token {add_end_of_sentence_token} --disable_tqdm 1 "
+        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --max_grad_norm {max_grad_norm} --num_train_epochs {num_train_epochs} --seed {seed} --model_type {model_type} --model_checkpoint {model_checkpoint} --adam_beta1 {adam_beta1} --adam_beta2 {adam_beta2} {adam_epsilon} --lr_scheduler_type {lr_scheduler_type} --optimized_params {optimized_params} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --select_train_dataset_items {select_train_dataset_items} --weight_decay {weight_decay} --bf16 {bf16} --torch_compile {torch_compile}  {gradient_accumulation_steps}  --eval_strategy {eval_strategy} --eval_steps {eval_steps} --gradient_checkpointing {gradient_checkpointing} {save_total_limit} {optim} {save_only_model} {logging_steps} {dataset} --add_end_of_sentence_token {add_end_of_sentence_token} --disable_tqdm 1 --limit_dataset_shards {limit_dataset_shards} "
 
         print(f"\n\n{script_str}\n\n")
 
@@ -148,8 +148,9 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
             env_variables={
                 "PATH": "/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin:/home/user/conda/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/hpcx/ompi/bin:/opt/hpcx/ucx/bin:/opt/hpcx/ucc/bin:/opt/hpcx/sharp/bin:/opt/hpcx/hcoll/bin:/opt/hpcx/ompi/bin:/opt/hpcx/ucx/bin:/opt/hpcx/ucc/bin:/opt/hpcx/sharp/bin:/opt/hpcx/hcoll/bin",
                 "WANDB_PROJECT": "adaptive_attention",
-                "WANDB_API_KEY": os.environ.get("WANDB_API_KEY", ""),
-                "WANDB_MODE": "online",
+                "CLEARML_CONFIG_FILE": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/clearml.conf",
+                'CLEARML_PROJECT': 'sentence_attention',
+                'CLEARML_TASK': f'{job_description_prefix}{output_dir}',
                 "PYTHONPATH": f"{workdir_prefix}/src:/workspace-SR004.nfs2/d.tarasov/lighteval/src",
                 "HF_HOME": "/workspace-SR004.nfs2/.cache/huggingface"
             },
@@ -171,7 +172,8 @@ def run_training_experiments(
         optimized_params='full',
         learning_rate=0.08,
         model_type="pretrained",
-        llama_checkpoint="unsloth/Meta-Llama-3.1-8B",
+        limit_dataset_shards=0,
+        model_checkpoint="unsloth/Meta-Llama-3.1-8B",
         select_train_dataset_items=500000,
         lr_scheduler_type="constant_with_warmup",
         instance_type="a100.1gpu",
@@ -198,7 +200,8 @@ def run_training_experiments(
     common_params = {
         # Model
         "model_type": model_type,
-        "llama_checkpoint": llama_checkpoint,
+        "model_checkpoint": model_checkpoint,
+        "limit_dataset_shards": limit_dataset_shards,
 
         "optimized_params": optimized_params,
         "adam_epsilon": adam_epsilon,
@@ -273,7 +276,7 @@ if __name__ == "__main__":
 
 
     # Train only one embedding param
-    NGPUS = 6
+    NGPUS = 4
     num_train_epochs = 1
     per_device_train_batch_size = 8
     gradient_accumulation_steps = math.ceil(128 / NGPUS)
@@ -294,9 +297,9 @@ if __name__ == "__main__":
             save_total_limit=100,
             save_steps=save_steps,
             instance_type=f'a100.{NGPUS}gpu',
-            # llama_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__S9M6BLOE/checkpoint-400/',
-            # llama_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__5RHWG2LO/checkpoint-1000/',
-            llama_checkpoint=f'HuggingFaceTB/SmolLM2-1.7B',
+            # model_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__S9M6BLOE/checkpoint-400/',
+            # model_checkpoint=f'{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_token_w_0.100_l__5RHWG2LO/checkpoint-1000/',
+            model_checkpoint=f'HuggingFaceTB/SmolLM2-1.7B',
             dataset='smollm-corpus',
             select_train_dataset_items=0,
             adam_epsilon='1e-8',
@@ -311,19 +314,27 @@ if __name__ == "__main__":
 
 
     # Train full params
-    NGPUS = 8
+    NGPUS = 4
     num_train_epochs = 1
     per_device_train_batch_size = 8
-    gradient_accumulation_steps = math.ceil(256 / NGPUS)
+    gradient_accumulation_steps = math.ceil(128 / NGPUS)
     save_steps = 1000
 
+    models_checkpoints = [ 'unsloth/Llama-3.2-1B', 'Qwen/Qwen2.5-1.5B', 'HuggingFaceTB/SmolLM2-1.7B' ]
+    # model_checkpoint = 'unsloth/Llama-3.2-1B'
+    # model_checkpoint = 'HuggingFaceTB/SmolLM2-1.7B'
+    # model_checkpoint = 'Qwen/Qwen2.5-1.5B'
+
     # Train full params
-    if True:
+    for model_checkpoint in models_checkpoints:
+        model_checkpoint_slug = model_checkpoint.split('/')[-1]
+
     # if False:
         run_training_experiments(
             learning_rate=0.0003,
             model_type='sentence_pretrained_checkpoint',
             optimized_params='full',
+            limit_dataset_shards=4,
             # optimized_params='only_eos_embedding',
             weight_decay='0.01',
             per_device_train_batch_size=per_device_train_batch_size,
@@ -337,18 +348,18 @@ if __name__ == "__main__":
             save_total_limit=100,
             save_steps=save_steps,
             instance_type=f'a100.{NGPUS}gpu',
-            llama_checkpoint=f'HuggingFaceTB/SmolLM2-1.7B',
-            # llama_checkpoint=f"{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_one_embedding_no_wd_4IQFRDRG/checkpoint-500/",
-            # llama_checkpoint=f"{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_VYE9JVA0/checkpoint-6500/",
+            model_checkpoint=model_checkpoint,
+            # model_checkpoint=f"{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_one_embedding_no_wd_4IQFRDRG/checkpoint-500/",
+            # model_checkpoint=f"{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_VYE9JVA0/checkpoint-6500/",
             dataset='smollm-corpus',
             select_train_dataset_items=0,
             adam_epsilon='1e-8',
-            warmup_steps=1000,
+            warmup_steps=500,
             dry=dry,
             lr_scheduler_type='cosine',
             bf16='0',
             add_end_of_sentence_token=1,
-            experiment_prefix_base_name="sentence_slm2_1.7B_pretrain_with_end_of_sentence_full",
+            experiment_prefix_base_name=f"sentence_{model_checkpoint_slug}_pretrain_with_end_of_sentence_full",
         )
 
 

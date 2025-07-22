@@ -36,8 +36,6 @@ if __name__ == "__main__":
     dataset_name = 'HuggingFaceFW/fineweb-edu'
     dataset = load_dataset(dataset_name, 'sample-10BT', num_proc=16, split='train').shard(total_shards, shard_num)
 
-    dataset = dataset.select(range(1000))
-
     # dataset = dataset.remove_columns( list(set(dataset.column_names) - set(columns_to_keep)) )
 
     columns_to_keep = ['input_ids', 'attention_mask', 'special_embeddings_mask', 'clothest_end_of_sentence_token_idx']

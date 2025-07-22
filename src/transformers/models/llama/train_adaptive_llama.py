@@ -15,6 +15,12 @@ from transformers.models.llama.modeling_sentence_llama import SentenceLlamaForCa
 from transformers.models.llama.tokenization_llama_fast import EOSTokenizerFast
 from transformers.models.gpt2.tokenization_gpt2_fast import GPT2TokenizerFastEOS, GPT2TokenizerFast
 
+from transformers.tokenization_utils_fast import PreTrainedTokenizerFastEOS
+from transformers.models.gpt2.tokenization_gpt2_fast import GPT2TokenizerFastEOS
+from transformers.models.qwen2.tokenization_qwen2_fast import Qwen2TokenizerFastEOS
+
+from transformers.models.qwen2.modeling_sentence_qwen2 import SentenceQwen2ForCausalLM
+
 from datasets import load_dataset, Dataset
 import datasets
 from accelerate import PartialState
@@ -70,6 +76,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
     max_grad_norm: float = field(default=1.0)
 
     dataset: str = field(default='smollm-corpus')
+    limit_dataset_shards: int = field(default=0)
 
     warmup_steps: int = field(default=500)
     per_device_train_batch_size: int = field(default=32)
@@ -80,7 +87,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
     average_tokens_across_devices: bool = field(default=True)
 
-    llama_checkpoint: str = field(default='')
+    model_checkpoint: str = field(default='')
 
     weight_decay: float = field(default=0.01)
     eval_strategy: str = field(default="steps")
@@ -92,7 +99,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
     push_to_hub: bool = field(default=False)
     optim: str = field(default="adamw_torch_fused")
-    report_to: str = field(default="wandb")
+    report_to: str = field(default="clearml")
     logging_steps: int = field(default=100)
     dataloader_drop_last: bool = field(default=True)
     dataloader_num_workers: int = field(default=0)
@@ -574,24 +581,42 @@ def unfreeze_fan_out(model: nn.Module):
 
 def build_model(training_args: AdaptiveTrainingArguments):
     tokenizer = None
-    llama_checkpoint = training_args.llama_checkpoint
+    model_checkpoint = training_args.model_checkpoint
 
     if training_args.add_end_of_sentence_token:
-        if 'slm' in llama_checkpoint or 'HuggingFaceTB/SmolLM' in llama_checkpoint:
-            tokenizer = GPT2TokenizerFastEOS.from_pretrained(llama_checkpoint)
+
+        tokenizer_class = type(AutoTokenizer.from_pretrained(model_checkpoint)).__name__
+
+        if tokenizer_class == 'GPT2TokenizerFast':
+            tokenizer_class = GPT2TokenizerFastEOS
+        elif tokenizer_class == 'PreTrainedTokenizerFast':
+            tokenizer_class = PreTrainedTokenizerFastEOS
+        elif tokenizer_class == 'Qwen2TokenizerFast':
+            tokenizer_class = Qwen2TokenizerFastEOS
         else:
-            tokenizer = EOSTokenizerFast.from_pretrained(llama_checkpoint)
+            raise ValueError(f"Invalid tokenizer class: {tokenizer_class}")
+
+        print("tokenizer_class", tokenizer_class)
+        tokenizer = tokenizer_class.from_pretrained(model_checkpoint)
+
     else:
-        tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint)
+        tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
 
     print("tokenizer", tokenizer)
 
     torch_dtype = torch.bfloat16
 
     if training_args.model_type == 'sentence_pretrained_checkpoint':
-        llama_checkpoint = training_args.llama_checkpoint
-        print("Load sentence llama model from", llama_checkpoint)
-        model = SentenceLlamaForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
+        model_checkpoint = training_args.model_checkpoint
+        print("Load sentence llama model from", model_checkpoint)
+        model_class = None
+        if 'lama' in model_checkpoint.lower() or 'smollm2' in model_checkpoint.lower():
+            model_class = SentenceLlamaForCausalLM
+        elif 'qwen' in model_checkpoint.lower():
+            model_class = SentenceQwen2ForCausalLM
+
+        print("model_class", model_class)
+        model = model_class.from_pretrained(model_checkpoint, torch_dtype=torch_dtype)
 
         # model.config._attn_implementation = 'eager'
         # print("WARN! using eager attention")
@@ -600,12 +625,12 @@ def build_model(training_args: AdaptiveTrainingArguments):
         # print("model.config._attn_implementation", model.config._attn_implementation)
 
     elif training_args.model_type == 'pretrained_checkpoint':
-        llama_checkpoint = training_args.llama_checkpoint
-        print("Load model from", llama_checkpoint)
-        model = AdaptiveLlamaForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
+        model_checkpoint = training_args.model_checkpoint
+        print("Load model from", model_checkpoint)
+        model = AdaptiveLlamaForCausalLM.from_pretrained(model_checkpoint, torch_dtype=torch_dtype)
     elif training_args.model_type == 'SmolLM2':
-        llama_checkpoint = training_args.llama_checkpoint
-        model = LlamaForCausalLM.from_pretrained(llama_checkpoint, torch_dtype=torch_dtype)
+        model_checkpoint = training_args.model_checkpoint
+        model = LlamaForCausalLM.from_pretrained(model_checkpoint, torch_dtype=torch_dtype)
     else:
         raise ValueError(f"{training_args.model_type} is not supported")
 
@@ -664,17 +689,28 @@ if __name__ == "__main__":
 
         if training_args.dataset == 'smollm-corpus':
 
-            if isinstance(tokenizer, GPT2TokenizerFastEOS):
+            if training_args.add_end_of_sentence_token:
                 print("Loading fineweb edu tokenized with gpt2_eos")
                 current_dir = '/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out'
 
                 if training_args.model_type == 'sentence_pretrained_checkpoint':
                     # dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2_with_special_embedding_mask_clothest_eos_token_idx'
-                    dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2_with_special_embedding_mask_clothest_eos_token_idx_full'
+                    if 'llama-3.2' in training_args.model_checkpoint.lower():
+                        dataset_path = f'{current_dir}/fineweb_edu_tokenized_Llama-3.2-1B_with_eos_token'
+                    elif 'qwen2' in training_args.model_checkpoint.lower():
+                        dataset_path = f'{current_dir}/fineweb_edu_tokenized_Qwen2.5-1.5B_with_eos_token'
+                    elif 'smollm2' in training_args.model_checkpoint.lower():
+                        dataset_path = f'{current_dir}/fineweb_edu_tokenized_SmolLM2-1.7B_with_eos_token'
+                    else:
+                        raise ValueError(f"Unknown model checkpoint: {training_args.model_checkpoint}")
+                        # dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2_with_special_embedding_mask_clothest_eos_token_idx_full'
                 else:
                     dataset_path = f'{current_dir}/fineweb_edu_tokenized_gpt2_eos'
 
-                output_dir = sorted(os.listdir(dataset_path))[10:]
+                output_dir = sorted(os.listdir(dataset_path))
+                if training_args.limit_dataset_shards > 0:
+                    output_dir = output_dir[:training_args.limit_dataset_shards]
+
                 print("loading dataset", dataset_path, 'with', len(output_dir), 'dataset shards', output_dir)
 
                 all_datasets = []
@@ -729,6 +765,9 @@ if __name__ == "__main__":
 
     def crutch_collator(examples):
         collate_dummy = nested_data_collator(examples)
+
+        if len(collate_dummy['attention_mask'].shape) == 3:
+            collate_dummy['attention_mask'] = collate_dummy['attention_mask'].squeeze(1)
 
         if 'special_embeddings_mask' not in collate_dummy:
             collate_dummy['special_embeddings_mask'] = collate_dummy['attention_mask'].cumsum(-1)

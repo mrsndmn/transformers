@@ -11,9 +11,10 @@ if __name__ == "__main__":
 
     author_name = "d.tarasov"
 
-    num_shards = 1
+    num_shards = 14
 
-    for pretrained_model_name in ['HuggingFaceTB/SmolLM2-1.7B', 'unsloth/Llama-3.2-1B', 'Qwen/Qwen3-1.7B']:
+    for pretrained_model_name in ['HuggingFaceTB/SmolLM2-1.7B', 'unsloth/Llama-3.2-1B', 'Qwen/Qwen2.5-1.5B']:
+    # for pretrained_model_name in ['Qwen/Qwen2.5-1.5B']:
 
         for shard_i in range(num_shards):
 
@@ -25,6 +26,7 @@ if __name__ == "__main__":
                     'region': extra_options['region'],
                     'env_variables': {
                         'PYTHONPATH': './src',
+                        'HF_HOME': '/workspace-SR004.nfs2/.cache/huggingface',
                     },
                     'type': 'binary_exp',
                     'shm_size_class': 'medium',
