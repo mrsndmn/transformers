@@ -32,7 +32,7 @@ try:
 except OptionalDependencyNotAvailable:
     pass
 else:
-    _import_structure["tokenization_qwen2_fast"] = ["Qwen2TokenizerFast"]
+    _import_structure["tokenization_qwen2_fast"] = ["Qwen2TokenizerFast", "Qwen2TokenizerFastEOS"]
 
 try:
     if not is_torch_available():
