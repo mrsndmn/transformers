@@ -34,6 +34,7 @@ def scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, c
 
     for i, sentence_i in enumerate(eos_tokens_idxs):
         kv_length = past_key_values.get_seq_length()
+        # print("kv_length", kv_length)
         if trim_kv_cache:
             assert past_key_values.get_seq_length() == i, 'cache seq len should be equal to number of sentences'
 

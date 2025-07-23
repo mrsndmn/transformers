@@ -11,7 +11,6 @@ from transformers import AutoTokenizer, DynamicCache
 from transformers.models.llama.benchmarks.sentence_attention_bench import scrooge_prefill
 
 
-
 if __name__ == "__main__":
 
     model_class = SentenceLlamaForCausalLM
@@ -63,6 +62,8 @@ if __name__ == "__main__":
         torch.set_printoptions(linewidth = 30000, profile='full')
 
         print("rich_hs_last, scroodge_hs", ((rich_hs_last - scroodge_hs_last)*100).mean(dim=-1)[:, -last_token_idx:].round())
+
+        breakpoint()
 
         scroodge_outputs = scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, clothest_end_of_sentence_token_idx, trim_kv_cache=True)
 

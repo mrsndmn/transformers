@@ -896,8 +896,8 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         valid_positions = q_valid & k_valid                                    # (bs, q_len, k_len)
 
         causal_valid_positions = valid_positions.clone()
-        if q_len < attention_mask_bool.shape[1]:
-            causal_valid_positions[:, :, :-q_len] = False
+        # if q_len < attention_mask_bool.shape[1]:
+        #     causal_valid_positions[:, :, :-q_len] = False
 
         # Apply base causal & validity
         causal_and_valid = causal_base & causal_valid_positions                       # (bs, q_len, k_len)
@@ -913,7 +913,8 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
             eos_idx = clothest_end_of_sentence_token_idx.view(bs, q_len, 1)        # (bs, q_len, 1)
 
         block_causal = causal_and_valid.clone()
-        block_causal[:, :, -q_len:] = causal_and_valid[:, :, -q_len:] & (k_idx[:, :, -q_len:] >= eos_idx)                   # (bs, q_len, k_len)
+        block_causal = causal_and_valid & (k_idx >= eos_idx)
+        # block_causal[:, :, -q_len:] = causal_and_valid[:, :, -q_len:] & (k_idx[:, :, -q_len:] >= eos_idx)
 
         # ----------------------------------------------------------------------------
         # Special embedding visibility (within causal window)
@@ -932,6 +933,9 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         score_val = torch.tensor(0.0, dtype=dtype, device=device)
         final_mask = torch.full((bs, 1, q_len, k_len), min_val, dtype=dtype, device=device)
         final_mask.masked_fill_(allowed.unsqueeze(1), score_val)
+
+        # breakpoint()
+        # torch.save(final_mask, "final_mask_partial.pt")
 
         return final_mask
 
