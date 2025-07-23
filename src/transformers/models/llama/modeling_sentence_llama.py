@@ -595,6 +595,26 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
 
+        if attention_mask is None:
+            past_key_values_len = 0
+            if past_key_values is not None:
+                past_key_values_len = past_key_values.get_seq_length()
+
+            attention_mask = torch.ones([input_ids.shape[0], input_ids.shape[1] + past_key_values_len], device=input_ids.device, dtype=torch.long)
+
+        if special_embeddings_mask is None:
+            special_embeddings_mask = torch.zeros_like(attention_mask)
+            if self.config.end_of_sentence_token_id is not None:
+                print("number of end of sentence tokens", (input_ids == self.config.end_of_sentence_token_id).sum())
+                special_embeddings_mask[input_ids == self.config.end_of_sentence_token_id] = 1
+
+        assert special_embeddings_mask is not None
+
+        if clothest_end_of_sentence_token_idx is None:
+            clothest_end_of_sentence_token_idx = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask)
+
+
+
         assert len(attention_mask.shape) == 2
 
         causal_mask = self._update_causal_mask(
@@ -678,6 +698,8 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
         using_static_cache = isinstance(past_key_values, StaticCache)
 
+        print("update causal mask: past_seen_tokens", past_seen_tokens)
+
         # When output attentions is True, sdpa implementation's forward method calls the eager implementation's forward
         if self.config._attn_implementation == "sdpa" and not using_static_cache and not output_attentions:
             if AttentionMaskConverter._ignore_causal_mask_sdpa(
@@ -699,7 +721,12 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
                 else past_seen_tokens + sequence_length + 1
             )
 
-        if self.config._attn_implementation in ["sentence_attention", "eager"]:
+        print("update causal mask: target_length", target_length)
+        print("update causal mask: sequence_length", sequence_length)
+
+        breakpoint()
+
+        if self.config._attn_implementation in ["sentence_attention"]:
             causal_mask = self._prepare_4d_causal_attention_mask_with_cache_position_sentence_attention(
                 attention_mask,
                 sequence_length=sequence_length,
@@ -1006,20 +1033,6 @@ class SentenceLlamaForCausalLM(SentenceLlamaPreTrainedModel, GenerationMixin):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        if attention_mask is None:
-            attention_mask = torch.ones_like(input_ids, dtype=torch.long)
-
-        if special_embeddings_mask is None:
-            special_embeddings_mask = torch.zeros_like(attention_mask)
-            if self.config.end_of_sentence_token_id is not None:
-                print("number of end of sentence tokens", (input_ids == self.config.end_of_sentence_token_id).sum())
-                special_embeddings_mask[input_ids == self.config.end_of_sentence_token_id] = 1
-
-        assert special_embeddings_mask is not None
-
-        if clothest_end_of_sentence_token_idx is None:
-            clothest_end_of_sentence_token_idx = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask)
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         # print("use_cache", use_cache)
