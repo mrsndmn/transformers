@@ -20,7 +20,8 @@ if __name__ == "__main__":
     model.eval()
     model.to("cuda")
 
-    model.config._attn_implementation = "sdpa"
+    # model.config._attn_implementation = "sdpa"
+    model.config._attn_implementation = "sentence_attention"
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint_dir)
     special_token_id = tokenizer.end_of_sentence_token_id
@@ -33,8 +34,8 @@ if __name__ == "__main__":
 
     for item in dataset:
 
-        input_ids = torch.tensor(item["input_ids"], device="cuda").unsqueeze(0)[:, :929]
-        attention_mask = torch.tensor(item["attention_mask"], device="cuda")[:, :929]
+        input_ids = torch.tensor(item["input_ids"], device="cuda").unsqueeze(0)[:, :]
+        attention_mask = torch.tensor(item["attention_mask"], device="cuda")[:, :]
         special_embeddings_mask = input_ids == special_token_id
         clothest_end_of_sentence_token_idx = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask)
 

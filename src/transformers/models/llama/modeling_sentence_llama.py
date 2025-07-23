@@ -861,6 +861,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         bs = batch_size
         q_len = sequence_length
         k_len = target_length
+
         min_val = torch.finfo(dtype).min
 
         # Convert the 2-D masks to bool for logical operations
@@ -878,30 +879,47 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         # ----------------------------------------------------------------------------
         # Base causal condition: k ≤ q
         # ----------------------------------------------------------------------------
-        causal_base = k_idx <= q_idx                                            # (1, q_len, k_len)
+        diff_q_idx_k_idx = k_idx.max() - q_idx.max()
+
+        causal_base = k_idx <= (q_idx + diff_q_idx_k_idx)                                            # (1, q_len, k_len)
 
         # ----------------------------------------------------------------------------
         # Padding masks for queries and keys
         # ----------------------------------------------------------------------------
-        q_valid = attention_mask_bool.view(bs, q_len, 1)                       # (bs, q_len, 1)
+        if q_len < attention_mask_bool.shape[1]:
+            # assert sequence is left padded
+            q_valid = attention_mask_bool[:, -q_len:].view(bs, q_len, 1)                       # (bs, q_len, 1)
+        else:
+            q_valid = attention_mask_bool.view(bs, q_len, 1)                       # (bs, q_len, 1)
+
         k_valid = attention_mask_bool.view(bs, 1, k_len)                       # (bs, 1, k_len)
         valid_positions = q_valid & k_valid                                    # (bs, q_len, k_len)
 
+        causal_valid_positions = valid_positions.clone()
+        if q_len < attention_mask_bool.shape[1]:
+            causal_valid_positions[:, :, :-q_len] = False
+
         # Apply base causal & validity
-        causal_and_valid = causal_base & valid_positions                       # (bs, q_len, k_len)
+        causal_and_valid = causal_base & causal_valid_positions                       # (bs, q_len, k_len)
+        full_causal_and_valid = causal_base & valid_positions                       # (bs, q_len, k_len)
 
         # ----------------------------------------------------------------------------
         # Block-causal component via EOS index
         # ----------------------------------------------------------------------------
         # clothest_end_of_sentence_token_idx gives, for every query, the index of the closest EOS *at or before* q.
-        eos_idx = clothest_end_of_sentence_token_idx.view(bs, q_len, 1)        # (bs, q_len, 1)
-        block_causal = causal_and_valid & (k_idx >= eos_idx)                   # (bs, q_len, k_len)
+        if q_len < clothest_end_of_sentence_token_idx.shape[1]:
+            eos_idx = clothest_end_of_sentence_token_idx[:, -q_len:].view(bs, q_len, 1)        # (bs, q_len, 1)
+        else:
+            eos_idx = clothest_end_of_sentence_token_idx.view(bs, q_len, 1)        # (bs, q_len, 1)
+
+        block_causal = causal_and_valid.clone()
+        block_causal[:, :, -q_len:] = causal_and_valid[:, :, -q_len:] & (k_idx[:, :, -q_len:] >= eos_idx)                   # (bs, q_len, k_len)
 
         # ----------------------------------------------------------------------------
         # Special embedding visibility (within causal window)
         # ----------------------------------------------------------------------------
         special_keys = special_embeddings_mask.view(bs, 1, k_len)              # (bs, 1, k_len)
-        special_visible = causal_and_valid & special_keys                      # (bs, q_len, k_len)
+        special_visible = full_causal_and_valid & special_keys                      # (bs, q_len, k_len)
 
         # ----------------------------------------------------------------------------
         # Final visibility mask

@@ -43,11 +43,11 @@ def scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, c
         outputs = model(
             input_ids=input_ids[:, prev_sentence_i:sentence_i],
             attention_mask=attention_mask[:, (prev_sentence_i-kv_length):sentence_i],
-            special_embeddings_mask=special_embeddings_mask[:, prev_sentence_i:sentence_i],
-            clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx[:, prev_sentence_i:sentence_i],
+            special_embeddings_mask=special_embeddings_mask[:, (prev_sentence_i-kv_length):sentence_i],
+            clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx[:, (prev_sentence_i-kv_length):sentence_i],
             past_key_values=past_key_values,
             cache_position=torch.arange(prev_sentence_i, sentence_i, device=input_ids.device),
-            is_sentence_chunked_prefill=True,
+            is_sentence_chunked_prefill=trim_kv_cache,
             output_hidden_states=True,
         )
         prev_sentence_i = sentence_i
