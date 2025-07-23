@@ -476,9 +476,6 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
 
     def forward_decoder_layer(self, decoder_layer, hidden_states, attention_mask, position_ids, past_key_values, output_attentions, use_cache, cache_position, position_embeddings, special_embeddings_mask, clothest_end_of_sentence_token_idx):
 
-        # if decoder_layer.layer_idx == 0:
-        #     breakpoint()
-
         if self.gradient_checkpointing and self.training:
             layer_outputs = self._gradient_checkpointing_func(
                 decoder_layer.__call__,
@@ -727,7 +724,6 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         # print("update causal mask: target_length", target_length)
         # print("update causal mask: sequence_length", sequence_length)
 
-        # breakpoint()
 
         if self.config._attn_implementation in ["sentence_attention"] and not is_sentence_chunked_prefill:
             causal_mask = self._prepare_4d_causal_attention_mask_with_cache_position_sentence_attention(
@@ -765,7 +761,6 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
             min_dtype = torch.finfo(dtype).min
             causal_mask = AttentionMaskConverter._unmask_unattended(causal_mask, min_dtype)
 
-        # breakpoint()
         return causal_mask
 
     @staticmethod
