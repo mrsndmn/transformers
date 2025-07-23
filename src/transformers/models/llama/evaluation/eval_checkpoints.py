@@ -16,17 +16,30 @@ class ContinuousEvaluator:
     def __init__(self, max_checkpoint_steps=None):
         sentence_slm2_checkpoints_dir = "./sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_IOVO1EQ9"
         sentence_llama32_checkpoints_dir = "./sentence_Llama-3.2-1B_pretrain_with_end_of_sentence_full_BTLCR6IG"
+        sentence_qwen25_checkpoints_dir = "./sentence_Qwen2.5-1.5B_pretrain_with_end_of_sentence_full_271TTUXM"
+
+        sentence_llama32_3b_checkpoints_dir = "./sentence_Llama-3.2-3B_pretrain_with_end_of_sentence_full_KVSAH64V"
+        sentence_slm2_1_7b_checkpoints_dir_new = "./sentence_SmolLM2-1.7B_pretrain_with_end_of_sentence_full_2V0V8WU1"
+        sentence_qwen25_3b_checkpoints_dir_new = "./sentence_Qwen2.5-3B_pretrain_with_end_of_sentence_full_I2ZYVLTN"
 
         self.max_checkpoint_steps = max_checkpoint_steps
 
         self.model_to_checkpoints = [
             ("sentence SLM2 1.7B", SentenceLlamaForCausalLM, sentence_slm2_checkpoints_dir),
             ("sentence Llama3.2 1B", SentenceLlamaForCausalLM, sentence_llama32_checkpoints_dir),
+            ("sentence Qwen2.5 1.5B", SentenceLlamaForCausalLM, sentence_qwen25_checkpoints_dir),
+            ("sentence Llama3.2 3B", SentenceLlamaForCausalLM, sentence_llama32_3b_checkpoints_dir),
+            ("sentence SLM2 1.7B", SentenceLlamaForCausalLM, sentence_slm2_1_7b_checkpoints_dir_new),
+            ("sentence Qwen2.5 3B", SentenceLlamaForCausalLM, sentence_qwen25_3b_checkpoints_dir_new),
         ]
 
         self.model_name_to_color = {
             "sentence SLM2 1.7B": "blue",
             "sentence Llama3.2 1B": "red",
+            "sentence Qwen2.5 1.5B": "green",
+            "sentence Llama3.2 3B": "yellow",
+            "sentence SLM2 1.7B": "purple",
+            "sentence Qwen2.5 3B": "orange",
         }
 
         for model_name, _, _ in self.model_to_checkpoints:
