@@ -1,3 +1,4 @@
+import pandas as pd
 import matplotlib.pyplot as plt
 from datasets import Dataset
 from tqdm.auto import tqdm
@@ -48,7 +49,7 @@ def scrooge_prefill(model, input_ids, special_embeddings_mask, clothest_end_of_s
                 past_key_values.value_cache[idx] = past_key_values.value_cache[idx][..., -(i + 1):, :]
 
         assert past_key_values.get_seq_length() == i + 1, 'cache seq len should be equal to number of sentences'
-    
+
     last_outputs = outputs
 
     return last_outputs, past_key_values
@@ -147,6 +148,14 @@ if __name__ == "__main__":
 
     print(f"Average tokens per special token (compression ratio): {sum_tokens / sum_special_tokens}")
 
+    df = pd.DataFrame({
+        "sequence_lengths": sequence_lengths,
+        "mean_scroodge_peak_memory": mean_scroodge_peak_memory,
+        "mean_base_peak_memory": mean_base_peak_memory,
+    })
+    df.to_csv("src/transformers/models/llama/benchmarks/plots/sentence_attention_bench_memory_kv_cache.csv", index=False)
+    print('saved csv to src/transformers/models/llama/benchmarks/plots/sentence_attention_bench_memory_kv_cache.csv')
+
     plt.plot(sequence_lengths, mean_scroodge_peak_memory, label="Scrooge", color="red")
     plt.plot(sequence_lengths, mean_base_peak_memory, label="Base", color="blue")
     plt.xlabel("Sequence Length")
@@ -155,3 +164,4 @@ if __name__ == "__main__":
     plt.legend()
     plt.show()
     plt.savefig("src/transformers/models/llama/benchmarks/plots/sentence_attention_bench_memory_kv_cache.png")
+    print('saved plot to src/transformers/models/llama/benchmarks/plots/sentence_attention_bench_memory_kv_cache.png')
