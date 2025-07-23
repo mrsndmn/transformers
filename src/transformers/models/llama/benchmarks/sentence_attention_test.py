@@ -39,6 +39,8 @@ if __name__ == "__main__":
         special_embeddings_mask = input_ids == special_token_id
         clothest_end_of_sentence_token_idx = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask)
 
+        print("total tokens", attention_mask.sum().item())
+
         rich_prefill_outputs = model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -49,20 +51,14 @@ if __name__ == "__main__":
         )
 
         rich_hs = rich_prefill_outputs.hidden_states
+        rich_hs_last = rich_hs[-1]
 
         scroodge_outputs = scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, clothest_end_of_sentence_token_idx, trim_kv_cache=False)
 
-        scroodge_hs_start = scroodge_outputs['hidden_states'][0][-1]
-        scroodge_hs_start_seq_len = scroodge_hs_start.shape[1]
+        scroodge_hs_last = torch.cat([ x[-1] for x in scroodge_outputs["hidden_states"]], dim=1)
 
-        print("rich_hs[-1][:, :scroodge_hs_start_seq_len] - scroodge_hs_start", rich_hs[-1][:, 867:scroodge_hs_start_seq_len] - scroodge_hs_start[:, 867:])
-        assert torch.allclose(rich_hs[-1][:, 867:scroodge_hs_start_seq_len], scroodge_hs_start[:, 867:], atol=1e-3), 'start hidden state should be the same'
+        print("rich_hs_last, scroodge_hs", (rich_hs_last - scroodge_hs_last).mean(dim=-1)[-200:])
 
-        scroodge_hs = scroodge_outputs["hidden_states"][-1][-1]
-        scroodge_hs_seq_len = scroodge_hs.shape[1]
-
-        print("rich_hs[-1][:, -scroodge_hs_seq_len:], scroodge_hs", rich_hs[-1][:, -scroodge_hs_seq_len:] - scroodge_hs)
-
-        assert torch.allclose(rich_hs[-1][:, -scroodge_hs_seq_len:], scroodge_hs, atol=1e-3), 'last hidden state should be the same'
+        assert torch.allclose(rich_hs_last, scroodge_hs_last, atol=1e-3), 'last hidden state should be the same'
 
         breakpoint()
