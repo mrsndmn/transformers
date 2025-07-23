@@ -1,3 +1,6 @@
+from datasets import Dataset
+from tqdm.auto import tqdm
+
 import torch
 from transformers.models.llama.modeling_sentence_llama import SentenceLlamaForCausalLM, special_token_mask_to_clothest_token_idx_slow
 
@@ -22,36 +25,48 @@ if __name__ == "__main__":
     # Prefill
     # Peak Memory Usage, Time
 
-    input_ids = tokenizer.encode(LIPSUM * 10, return_tensors="pt")
-    input_ids = input_ids.to("cuda")
+    dataset = Dataset.load_from_disk('./fineweb_edu_tokenized_Llama-3.2-1B_with_eos_token/shard_9')
+    dataset = dataset.select(range(100))
 
-    special_embeddings_mask = torch.zeros_like(input_ids).to("cuda")
-
-    if model.config.end_of_sentence_token_id is not None:
-        special_embeddings_mask[input_ids == model.config.end_of_sentence_token_id] = 1
-
-    print("sum special tokens", special_embeddings_mask.sum().item())
-    print("total tokens      ", input_ids.shape[1])
-
-    clothest_end_of_sentence_token_idx = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask).to("cuda")
+    sum_tokens = 0
+    sum_special_tokens = 0
 
     with torch.no_grad():
-        event = torch.cuda.Event(enable_timing=True)
-        event_2 = torch.cuda.Event(enable_timing=True)
+        for item in tqdm(dataset):
 
-        event.record()
+            torch.cuda.reset_peak_memory_stats()
 
-        model(
-            input_ids=input_ids,
-            special_embeddings_mask=special_embeddings_mask,
-            clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx,
-        )
+            event = torch.cuda.Event(enable_timing=True)
+            event_2 = torch.cuda.Event(enable_timing=True)
 
-        event_2.record()
+            input_ids = torch.tensor(item["input_ids"], device="cuda").unsqueeze(0)
+            special_embeddings_mask = torch.tensor(item["special_embeddings_mask"], device="cuda").unsqueeze(0)
 
-        event.synchronize()
-        event_2.synchronize()
+            sum_tokens += input_ids.shape[1]
+            sum_special_tokens += special_embeddings_mask.sum().item()
 
-        print(f"Prefill Time: {event.elapsed_time(event_2)}")
-        print(f"Peak Memory Usage: {torch.cuda.max_memory_allocated() / 1024 ** 2} MB")
+            clothest_end_of_sentence_token_idx = torch.tensor(item["clothest_end_of_sentence_token_idx"], device="cuda").unsqueeze(0)
 
+            event.record()
+
+            model(
+                input_ids=input_ids,
+                special_embeddings_mask=special_embeddings_mask,
+                clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx,
+            )
+
+            event_2.record()
+
+            event.synchronize()
+            event_2.synchronize()
+
+            # print(f"Prefill Time: {event.elapsed_time(event_2)}")
+            # print(f"Peak Memory Usage: {torch.cuda.max_memory_allocated() / 1024 ** 2} MB")
+
+            torch.cuda.empty_cache()
+
+
+    print(f"Average tokens: {sum_tokens / len(dataset)}")
+    print(f"Average special tokens: {sum_special_tokens / len(dataset)}")
+
+    print(f"Average tokens per special token (compression ratio): {sum_tokens / sum_special_tokens}")
