@@ -554,6 +554,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        is_sentence_chunked_prefill: bool = False,
         # **flash_attn_kwargs: Unpack[FlashAttentionKwargs],
     ) -> Union[Tuple, SentenceBaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -625,6 +626,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
             output_attentions,
             clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx,
             special_embeddings_mask=special_embeddings_mask,
+            is_sentence_chunked_prefill=is_sentence_chunked_prefill,
         )
         # if causal_mask is not None:
         #     print("causal_mask", causal_mask.shape)
@@ -681,6 +683,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         output_attentions: bool,
         clothest_end_of_sentence_token_idx: torch.Tensor,
         special_embeddings_mask: torch.Tensor,
+        is_sentence_chunked_prefill: bool,
     ):
         if self.config._attn_implementation == "flash_attention_2":
             if attention_mask is not None and (attention_mask == 0.0).any():
@@ -698,7 +701,7 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
         past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
         using_static_cache = isinstance(past_key_values, StaticCache)
 
-        print("update causal mask: past_seen_tokens", past_seen_tokens)
+        # print("update causal mask: past_seen_tokens", past_seen_tokens)
 
         # When output attentions is True, sdpa implementation's forward method calls the eager implementation's forward
         if self.config._attn_implementation == "sdpa" and not using_static_cache and not output_attentions:
@@ -721,12 +724,12 @@ class SentenceLlamaModel(SentenceLlamaPreTrainedModel):
                 else past_seen_tokens + sequence_length + 1
             )
 
-        print("update causal mask: target_length", target_length)
-        print("update causal mask: sequence_length", sequence_length)
+        # print("update causal mask: target_length", target_length)
+        # print("update causal mask: sequence_length", sequence_length)
 
-        breakpoint()
+        # breakpoint()
 
-        if self.config._attn_implementation in ["sentence_attention"]:
+        if self.config._attn_implementation in ["sentence_attention"] and not is_sentence_chunked_prefill:
             causal_mask = self._prepare_4d_causal_attention_mask_with_cache_position_sentence_attention(
                 attention_mask,
                 sequence_length=sequence_length,
@@ -995,6 +998,7 @@ class SentenceLlamaForCausalLM(SentenceLlamaPreTrainedModel, GenerationMixin):
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
         logits_to_keep: int = 0,
+        is_sentence_chunked_prefill: bool = False,
         **kwargs,
     ) -> Union[Tuple, SentenceCausalLMOutputWithPast]:
         r"""
@@ -1050,6 +1054,7 @@ class SentenceLlamaForCausalLM(SentenceLlamaPreTrainedModel, GenerationMixin):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             cache_position=cache_position,
+            is_sentence_chunked_prefill=is_sentence_chunked_prefill,
         )
 
         hidden_states = outputs[0]

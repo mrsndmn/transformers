@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 from datasets import Dataset
 from tqdm.auto import tqdm
 
@@ -29,13 +30,14 @@ def scrooge_prefill(model, input_ids, special_embeddings_mask, clothest_end_of_s
     for i, sentence_i in enumerate(eos_tokens_idxs):
         assert past_key_values.get_seq_length() == i
 
-        print("prev_sentence_i, sentence_i", prev_sentence_i, sentence_i)
+        # print("prev_sentence_i, sentence_i", prev_sentence_i, sentence_i)
 
         outputs = model(
             input_ids=input_ids[:, prev_sentence_i:sentence_i],
             special_embeddings_mask=special_embeddings_mask[:, prev_sentence_i:sentence_i],
             clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx[:, prev_sentence_i:sentence_i],
             past_key_values=past_key_values,
+            is_sentence_chunked_prefill=True,
         )
         prev_sentence_i = sentence_i
 
@@ -46,8 +48,10 @@ def scrooge_prefill(model, input_ids, special_embeddings_mask, clothest_end_of_s
                 past_key_values.value_cache[idx] = past_key_values.value_cache[idx][..., -(i + 1):, :]
 
         assert past_key_values.get_seq_length() == i + 1, 'cache seq len should be equal to number of sentences'
+    
+    last_outputs = outputs
 
-    return past_key_values
+    return last_outputs, past_key_values
 
 
 if __name__ == "__main__":
@@ -67,54 +71,87 @@ if __name__ == "__main__":
     # Peak Memory Usage, Time
 
     dataset = Dataset.load_from_disk('./fineweb_edu_tokenized_Llama-3.2-1B_with_eos_token/shard_9')
-    dataset = dataset.select(range(100))
+    dataset = dataset.select(range(10))
 
     sum_tokens = 0
     sum_special_tokens = 0
 
+    special_token_id = tokenizer.end_of_sentence_token_id
+
+
+    base_seq_len = 1024
+    sequence_lengths = []
+    mean_scroodge_peak_memory = []
+    mean_base_peak_memory = []
+
     with torch.no_grad():
-        for item in tqdm(dataset):
 
-            torch.cuda.reset_peak_memory_stats()
+        for sequence_scaling in [ 1, 4, 8, 16, 32 ]:
 
-            event = torch.cuda.Event(enable_timing=True)
-            event_2 = torch.cuda.Event(enable_timing=True)
+            base_peak_memory = []
+            scroodge_peak_memory = []
 
-            input_ids = torch.tensor(item["input_ids"], device="cuda").unsqueeze(0)
-            special_embeddings_mask = torch.tensor(item["special_embeddings_mask"], device="cuda").unsqueeze(0)
+            for item in tqdm(dataset, desc=f"Sequence Scaling: {sequence_scaling}"):
 
-            sum_tokens += input_ids.shape[1]
-            sum_special_tokens += special_embeddings_mask.sum().item()
+                torch.cuda.reset_peak_memory_stats()
 
-            clothest_end_of_sentence_token_idx = torch.tensor(item["clothest_end_of_sentence_token_idx"], device="cuda").unsqueeze(0)
+                event = torch.cuda.Event(enable_timing=True)
+                event_2 = torch.cuda.Event(enable_timing=True)
 
-            event.record()
+                input_ids = torch.tensor(item["input_ids"], device="cuda").unsqueeze(0)
+                input_ids = input_ids.repeat(1, sequence_scaling)
+                special_embeddings_mask = input_ids == special_token_id
+                clothest_end_of_sentence_token_idx = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask)
 
-            # model(
-            #     input_ids=input_ids,
-            #     special_embeddings_mask=special_embeddings_mask,
-            #     clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx,
-            # )
+                sum_tokens += input_ids.shape[1]
+                sum_special_tokens += special_embeddings_mask.sum().item()
 
-            event_2.record()
+                event.record()
 
-            event.synchronize()
-            event_2.synchronize()
+                rich_prefill_outputs = model(
+                    input_ids=input_ids,
+                    special_embeddings_mask=special_embeddings_mask,
+                    clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx,
+                    use_cache=True,
+                )
 
-            # print(f"Prefill Time: {event.elapsed_time(event_2)}")
-            print(f"Peak Memory Usage: {torch.cuda.max_memory_allocated() / 1024 ** 2} MB")
+                event_2.record()
 
-            torch.cuda.empty_cache()
+                event.synchronize()
+                event_2.synchronize()
 
-            torch.cuda.reset_peak_memory_stats()
+                # print(f"Prefill Time: {event.elapsed_time(event_2)}")
+                base_peak_memory.append(torch.cuda.max_memory_allocated() / 1024 ** 2)
 
-            scrooge_prefill(model, input_ids, special_embeddings_mask, clothest_end_of_sentence_token_idx)
+                rich_prefill_outputs_logits = rich_prefill_outputs.logits.detach().cpu()
+                del rich_prefill_outputs
 
-            print(f"Scrooge Peak Memory Usage: {torch.cuda.max_memory_allocated() / 1024 ** 2} MB")
+
+                torch.cuda.empty_cache()
+
+                torch.cuda.reset_peak_memory_stats()
+
+                scroodge_last_outputs, _ = scrooge_prefill(model, input_ids, special_embeddings_mask, clothest_end_of_sentence_token_idx)
+
+                # TODO validate scroodge prefill
+                # assert torch.allclose(rich_prefill_outputs_logits[0, -1, :], scroodge_last_outputs.logits.cpu()[0, -1, :])
+                scroodge_peak_memory.append(torch.cuda.max_memory_allocated() / 1024 ** 2)
 
 
+            sequence_lengths.append(base_seq_len * sequence_scaling)
+            mean_scroodge_peak_memory.append(sum(scroodge_peak_memory) / len(scroodge_peak_memory))
+            mean_base_peak_memory.append(sum(base_peak_memory) / len(base_peak_memory))
 
     print(f"Average tokens: {sum_tokens / len(dataset)}")
     print(f"Average special tokens: {sum_special_tokens / len(dataset)}")
 
     print(f"Average tokens per special token (compression ratio): {sum_tokens / sum_special_tokens}")
+
+    plt.plot(sequence_lengths, mean_scroodge_peak_memory, label="Scrooge", color="red")
+    plt.plot(sequence_lengths, mean_base_peak_memory, label="Base", color="blue")
+    plt.xlabel("Sequence Length")
+    plt.ylabel("Peak Memory Usage (MB)")
+    plt.title("Peak Memory Usage for Sentence Attention")
+    plt.legend()
+    plt.show()
+    plt.savefig("src/transformers/models/llama/benchmarks/plots/sentence_attention_bench_memory_kv_cache.png")
