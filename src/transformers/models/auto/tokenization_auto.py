@@ -46,7 +46,7 @@ from .configuration_auto import (
 
 
 if is_tokenizers_available():
-    from ...tokenization_utils_fast import PreTrainedTokenizerFast
+    from ...tokenization_utils_fast import PreTrainedTokenizerFast, PreTrainedTokenizerFastEOS
 else:
     PreTrainedTokenizerFast = None
 
@@ -347,6 +347,9 @@ else:
             ("mluke", ("MLukeTokenizer" if is_sentencepiece_available() else None, None)),
             ("mobilebert", ("MobileBertTokenizer", "MobileBertTokenizerFast" if is_tokenizers_available() else None)),
             ("modernbert", (None, "PreTrainedTokenizerFast" if is_tokenizers_available() else None)),
+            ("llama", ("PreTrainedTokenizerFastEOS", "PreTrainedTokenizerFastEOS" if is_tokenizers_available() else None)),
+            ("llama", ("GPT2TokenizerFastEOS", "GPT2TokenizerFastEOS" if is_tokenizers_available() else None)),
+            ("qwen2", ("Qwen2TokenizerFastEOS", "Qwen2TokenizerFastEOS" if is_tokenizers_available() else None)),
             ("moonshine", (None, "PreTrainedTokenizerFast" if is_tokenizers_available() else None)),
             ("moshi", (None, "PreTrainedTokenizerFast" if is_tokenizers_available() else None)),
             ("mpnet", ("MPNetTokenizer", "MPNetTokenizerFast" if is_tokenizers_available() else None)),
@@ -639,6 +642,9 @@ CONFIG_TO_TYPE = {v: k for k, v in CONFIG_MAPPING_NAMES.items()}
 def tokenizer_class_from_name(class_name: str):
     if class_name == "PreTrainedTokenizerFast":
         return PreTrainedTokenizerFast
+
+    if class_name == "PreTrainedTokenizerFastEOS":
+        return PreTrainedTokenizerFastEOS
 
     for module_name, tokenizers in TOKENIZER_MAPPING_NAMES.items():
         if class_name in tokenizers:

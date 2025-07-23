@@ -60,7 +60,7 @@ if TYPE_CHECKING:
     except OptionalDependencyNotAvailable:
         pass
     else:
-        from .tokenization_qwen2_fast import Qwen2TokenizerFast
+        from .tokenization_qwen2_fast import Qwen2TokenizerFast, Qwen2TokenizerFastEOS
 
     try:
         if not is_torch_available():

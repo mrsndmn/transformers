@@ -13,44 +13,20 @@ from transformers.models.llama.modeling_sentence_llama import SentenceLlamaForCa
 from transformers.models.llama.interpretation.explore_eval_hard_concrete_percent import evaluate_acc_hellaswag, evaluate_acc_winogrande, evaluate_acc_piqa, evaluate_acc_siqa, evaluate_acc_openbookqa, evaluate_acc_mmlu_0_shot, evaluate_acc_mmlu_5_shot
 
 class ContinuousEvaluator:
-    def __init__(self):
-        # Pretrain 1
-        # self.vanilla_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_w_0.000_l_-_BM2DG7DH"
-        # self.vanilla_16L_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_w_0.000_l_-_X3NTEOHS"
-        # self.adaptive_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_K6WC5X8F"
+    def __init__(self, max_checkpoint_steps=None):
+        sentence_slm2_checkpoints_dir = "./sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_IOVO1EQ9"
+        sentence_llama32_checkpoints_dir = "./sentence_Llama-3.2-1B_pretrain_with_end_of_sentence_full_BTLCR6IG"
 
-        # Pretrain 2
-        vanilla_16L_eos_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_eos_token_w_0.000_l_-_5U28SEN5"
-        vanilla_16L_checkpoints_dir = "./vanilla_slm2_1.7B_pretrain_16L_w_0.000_l_-_F0UCD5QW"
-        adaptive_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_8MTABS8F"
-        adaptive_mid_lr_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_QVDLIG38"
-
-        adaptive_huge_bs_checkpoints_dir = "./adaptive_slm2_1.7B_pretrain_with_end_of_sentence_token_ftte_w_0.100_l_8-16_HEQTAX1C"
-
-        # sentence_llama_fa_checkpoints_dir = "./sentence_slm2_1.7B_flash_attention_pretrain_with_end_of_sentence_token_w_0.100_l__ME65Z1L5"
-
-        sentence_llama_checkpoints_dir = "./sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_IOVO1EQ9"
-
+        self.max_checkpoint_steps = max_checkpoint_steps
 
         self.model_to_checkpoints = [
-            ("vanilla_16L eos", LlamaForCausalLM, vanilla_16L_eos_checkpoints_dir),
-            ("vanilla_16L", LlamaForCausalLM, vanilla_16L_checkpoints_dir),
-            ("adaptive", AdaptiveLlamaForCausalLM, adaptive_checkpoints_dir),
-            ("adaptive mid lr", AdaptiveLlamaForCausalLM, adaptive_mid_lr_checkpoints_dir),
-            ("adaptive huge bs", AdaptiveLlamaForCausalLM, adaptive_huge_bs_checkpoints_dir),
-            # ("sentence llama fa", SentenceLlamaForCausalLM, sentence_llama_fa_checkpoints_dir),
-            ("sentence llama", SentenceLlamaForCausalLM, sentence_llama_checkpoints_dir),
+            ("sentence SLM2 1.7B", SentenceLlamaForCausalLM, sentence_slm2_checkpoints_dir),
+            ("sentence Llama3.2 1B", SentenceLlamaForCausalLM, sentence_llama32_checkpoints_dir),
         ]
 
         self.model_name_to_color = {
-            "vanilla": "blue",
-            "vanilla_16L": "red",
-            "vanilla_16L eos": "purple",
-            "adaptive": "green",
-            "adaptive mid lr": "orange",
-            "adaptive huge bs": "brown",
-            "sentence llama fa": "pink",
-            "sentence llama": "black",
+            "sentence SLM2 1.7B": "blue",
+            "sentence Llama3.2 1B": "red",
         }
 
         for model_name, _, _ in self.model_to_checkpoints:
@@ -66,7 +42,7 @@ class ContinuousEvaluator:
             # ("mmlu_5_shot", evaluate_acc_mmlu_5_shot),
         ]
 
-        self.results_file = "slm_checkpoints_benchmarks_results.json"
+        self.results_file = "sentence_checkpoints_benchmarks_results.json"
         self.results = self.load_results()
         self.evaluated_combinations = self.get_evaluated_combinations()
 
@@ -121,6 +97,8 @@ class ContinuousEvaluator:
 
                 continue
 
+            if model_name == "sentence SLM2 1.7B":
+                continue
 
             if not os.path.exists(checkpoints_dir):
                 print(f"Warning: Directory {checkpoints_dir} does not exist")
@@ -128,6 +106,9 @@ class ContinuousEvaluator:
 
             for dir_name in sorted(os.listdir(checkpoints_dir), key=self.get_checkpoint_number):
                 if dir_name.startswith("checkpoint-"):
+                    if self.max_checkpoint_steps and self.get_checkpoint_number(dir_name) > self.max_checkpoint_steps:
+                        continue
+
                     checkpoint_dir = os.path.join(checkpoints_dir, dir_name)
 
                     # Check which benchmarks need to be evaluated for this checkpoint
@@ -199,6 +180,9 @@ class ContinuousEvaluator:
             if len(result) >= 4:
                 model_name, checkpoint, benchmark_name, acc_norm = result[:4]
                 checkpoint_num = self.get_checkpoint_number(checkpoint)
+                if self.max_checkpoint_steps and checkpoint_num > self.max_checkpoint_steps:
+                    continue
+
                 df_data.append({
                     'model': model_name,
                     'checkpoint': checkpoint,
@@ -274,6 +258,9 @@ class ContinuousEvaluator:
 
 
 if __name__ == "__main__":
-    evaluator = ContinuousEvaluator()
+
+    max_checkpoint_steps = 5000
+
+    evaluator = ContinuousEvaluator(max_checkpoint_steps=max_checkpoint_steps)
     evaluator.update_plots()
     evaluator.run_continuous_evaluation()

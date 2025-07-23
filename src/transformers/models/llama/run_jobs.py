@@ -150,7 +150,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
                 "WANDB_PROJECT": "adaptive_attention",
                 "CLEARML_CONFIG_FILE": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/clearml.conf",
                 'CLEARML_PROJECT': 'sentence_attention',
-                'CLEARML_TASK': f'{job_description_prefix}{output_dir}',
+                # 'CLEARML_TASK': f'{job_description_prefix}{output_dir}',
                 "PYTHONPATH": f"{workdir_prefix}/src:/workspace-SR004.nfs2/d.tarasov/lighteval/src",
                 "HF_HOME": "/workspace-SR004.nfs2/.cache/huggingface"
             },

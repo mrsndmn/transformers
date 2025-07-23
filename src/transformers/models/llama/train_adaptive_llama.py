@@ -684,6 +684,10 @@ if __name__ == "__main__":
     compute_metrics = None
     data_collator = None
 
+    base_output_dir = os.path.basename(training_args.output_dir)
+
+    os.environ['CLEARML_TASK'] = f"{base_output_dir}"
+
     state = PartialState()
     with state.local_main_process_first():
 

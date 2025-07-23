@@ -197,3 +197,6 @@ fineweb_edu_tokenized_gpt2_with_special_embedding_mask_clothest_eos_token_idx_fu
 sentence_slm*
 
 fineweb_edu_tokenized_*
+sentence_Llama*
+sentence_Qwen*
+sentence_SmolLM*
