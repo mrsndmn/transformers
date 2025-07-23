@@ -11,6 +11,7 @@ from transformers import AutoTokenizer, DynamicCache
 from transformers.models.llama.benchmarks.sentence_attention_bench import scrooge_prefill
 
 
+
 if __name__ == "__main__":
 
     model_class = SentenceLlamaForCausalLM
@@ -39,7 +40,9 @@ if __name__ == "__main__":
         special_embeddings_mask = input_ids == special_token_id
         clothest_end_of_sentence_token_idx = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask)
 
-        print("total tokens", attention_mask.sum().item())
+        last_token_idx = attention_mask.sum().item()
+
+        print("total tokens", last_token_idx)
 
         rich_prefill_outputs = model(
             input_ids=input_ids,
@@ -57,7 +60,16 @@ if __name__ == "__main__":
 
         scroodge_hs_last = torch.cat([ x[-1] for x in scroodge_outputs["hidden_states"]], dim=1)
 
-        print("rich_hs_last, scroodge_hs", (rich_hs_last - scroodge_hs_last).mean(dim=-1)[-200:])
+        torch.set_printoptions(linewidth = 30000, profile='full')
+
+        print("rich_hs_last, scroodge_hs", ((rich_hs_last - scroodge_hs_last)*100).mean(dim=-1)[:, -last_token_idx:].round())
+
+        scroodge_outputs = scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, clothest_end_of_sentence_token_idx, trim_kv_cache=True)
+
+        scroodge_hs_last = torch.cat([ x[-1] for x in scroodge_outputs["hidden_states"]], dim=1)
+
+        print("rich_hs_last, scroodge_hs", ((rich_hs_last - scroodge_hs_last)*100).mean(dim=-1)[:, -last_token_idx:].round())
+
 
         assert torch.allclose(rich_hs_last, scroodge_hs_last, atol=1e-3), 'last hidden state should be the same'
 
