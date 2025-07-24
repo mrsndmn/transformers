@@ -245,6 +245,25 @@ class SentenceQwen2Model(SentenceQwen2PreTrainedModel):
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
 
+        if attention_mask is None:
+            past_key_values_len = 0
+            if past_key_values is not None:
+                past_key_values_len = past_key_values.get_seq_length()
+
+            attention_mask = torch.ones([input_ids.shape[0], input_ids.shape[1] + past_key_values_len], device=input_ids.device, dtype=torch.long)
+
+        if special_embeddings_mask is None:
+            special_embeddings_mask = torch.zeros_like(attention_mask)
+            if self.config.end_of_sentence_token_id is not None:
+                print("number of end of sentence tokens", (input_ids == self.config.end_of_sentence_token_id).sum())
+                special_embeddings_mask[input_ids == self.config.end_of_sentence_token_id] = 1
+
+        assert special_embeddings_mask is not None
+
+        if clothest_end_of_sentence_token_idx is None:
+            clothest_end_of_sentence_token_idx = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask)
+
+
         causal_mask = self._update_causal_mask(
             attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions, clothest_end_of_sentence_token_idx, special_embeddings_mask
         )
@@ -660,17 +679,6 @@ class SentenceQwen2ForCausalLM(SentenceQwen2PreTrainedModel, GenerationMixin):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        if special_embeddings_mask is None:
-            special_embeddings_mask = torch.zeros_like(attention_mask)
-            if self.config.end_of_sentence_token_id is not None:
-                print("number of end of sentence tokens", (input_ids == self.config.end_of_sentence_token_id).sum())
-                special_embeddings_mask[input_ids == self.config.end_of_sentence_token_id] = 1
-
-        assert special_embeddings_mask is not None
-
-        if clothest_end_of_sentence_token_idx is None:
-            clothest_end_of_sentence_token_idx = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask)
 
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)

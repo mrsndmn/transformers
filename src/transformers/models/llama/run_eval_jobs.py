@@ -93,6 +93,7 @@ def run_extract_metrics(checkpoints: list[str], tasks=None):
             'custom|arc|0|1': 'custom|arc:_average|0',
             'custom|openbookqa|0|1': 'custom|openbookqa|0',
             'custom|mmlu_cloze|0|1': 'custom|mmlu_cloze:_average|0',
+            'custom|mmlu_cloze|5|1': 'custom|mmlu_cloze:_average|5',
             'custom|mmlu_pro_cloze|0|1': 'custom|mmlu_pro_cloze|0',
             'custom|wikitext_103|0|1': 'custom|wikitext_103|0',
             'custom|siqa|0|1': 'custom|siqa|0',
@@ -105,11 +106,11 @@ def run_extract_metrics(checkpoints: list[str], tasks=None):
         }
         tasks = list(map(lambda x: tasks_mapping[x], tasks))
 
-    print(" & ".join([ 'checkpoint', 'pruned', 'MaxLM Loss' ] + tasks), " \\\\")
+    print(" & ".join([ 'checkpoint' ] + tasks), " \\\\")
 
     for checkpoint in checkpoints:
 
-        if 'unsloth' in checkpoint or 'Qwen' in checkpoint:
+        if 'unsloth/' in checkpoint or 'Qwen/' in checkpoint or 'HuggingFaceTB/' in checkpoint:
             # exps_evaluation/results/unsloth/Meta-Llama-3.1-8B/
             checkpoint_norm = checkpoint.split('/')
         else:
@@ -158,7 +159,7 @@ def run_extract_metrics(checkpoints: list[str], tasks=None):
         for key in tasks:
             checkpoint_metrics.append(metrics_dict.get(key, ""))
 
-        print(" & ".join([ checkpoint, '\%', '\-'] + checkpoint_metrics), " \\\\")
+        print(" & ".join([ checkpoint, ] + checkpoint_metrics), " \\\\")
 
 
 
@@ -326,13 +327,21 @@ def slm2_mmlu_cloze_5_shot(**kwargs):
 
 def eval_base_models(**kwargs):
 
-
     checkpoints = [
-        # 'HuggingFaceTB/SmolLM2-1.7B',
         'unsloth/Llama-3.2-1B',
+        "./sentence_Llama-3.2-1B_pretrain_with_end_of_sentence_full_BTLCR6IG/checkpoint-2698/",
+
         'Qwen/Qwen2.5-1.5B',
+        "./sentence_Qwen2.5-1.5B_pretrain_with_end_of_sentence_full_271TTUXM/checkpoint-2698/",
+
+        'HuggingFaceTB/SmolLM2-1.7B',
+        "./sentence_SmolLM2-1.7B_pretrain_with_end_of_sentence_full_2V0V8WU1/checkpoint-2698/",
+
+        # 3B models
         'unsloth/Llama-3.2-3B',
-        'Qwen/Qwen2.5-3B',
+        "./sentence_Llama-3.2-3B_pretrain_with_end_of_sentence_full_KVSAH64V/checkpoint-2698/",
+
+        # # 'Qwen/Qwen2.5-3B',
     ]
 
     # ("hellaswag", evaluate_acc_hellaswag),
@@ -342,8 +351,8 @@ def eval_base_models(**kwargs):
     # ("openbookqa", evaluate_acc_openbookqa),
     # ("mmlu_0_shot", evaluate_acc_mmlu_0_shot),
 
-
-    tasks = "custom|mmlu_cloze|0|1,custom|hellaswag|0|1,custom|winogrande|0|1,custom|piqa|0|1,custom|siqa|0|1,custom|openbookqa|0|1".split(",")
+    tasks = ["custom|mmlu_cloze|5|1"]
+    # tasks = "custom|mmlu_cloze|5|1,custom|mmlu_cloze|0|1,custom|hellaswag|0|1,custom|winogrande|0|1,custom|piqa|0|1,custom|siqa|0|1,custom|openbookqa|0|1".split(",")
 
     hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
 
