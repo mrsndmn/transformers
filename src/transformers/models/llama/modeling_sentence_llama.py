@@ -93,7 +93,7 @@ if is_torch_flex_attn_available():
 def special_token_mask_to_clothest_token_idx_slow(special_token_mask):
     # [ bs, seq_len ]
 
-    special_token_mask_bool = special_token_mask.bool()
+    special_token_mask_bool = special_token_mask.bool().cpu()
 
     clothest_token_idx = torch.zeros_like(special_token_mask, dtype=torch.long)
 

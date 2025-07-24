@@ -320,7 +320,8 @@ if __name__ == "__main__":
     gradient_accumulation_steps = math.ceil(128 / NGPUS)
     save_steps = 500
 
-    models_checkpoints = [ 'unsloth/Llama-3.2-1B', 'Qwen/Qwen2.5-1.5B', 'HuggingFaceTB/SmolLM2-1.7B', 'unsloth/Llama-3.2-3B', 'Qwen/Qwen2.5-3B',  ]
+    # models_checkpoints = [ 'unsloth/Llama-3.2-1B', 'Qwen/Qwen2.5-1.5B', 'HuggingFaceTB/SmolLM2-1.7B', 'unsloth/Llama-3.2-3B', 'Qwen/Qwen2.5-3B',  ]
+    models_checkpoints = [ 'unsloth/Llama-3.2-1B' ]
     # model_checkpoint = 'unsloth/Llama-3.2-1B'
     # model_checkpoint = 'HuggingFaceTB/SmolLM2-1.7B'
     # model_checkpoint = 'Qwen/Qwen2.5-1.5B'
@@ -329,13 +330,13 @@ if __name__ == "__main__":
     for model_checkpoint in models_checkpoints:
         model_checkpoint_slug = model_checkpoint.split('/')[-1]
 
-    # if False:
+        optimized_params = 'only_eos_embedding' # 'full' 'only_eos_embedding'
+
         run_training_experiments(
-            learning_rate=0.0003,
+            learning_rate=0.0001,
             model_type='sentence_pretrained_checkpoint',
-            optimized_params='full',
             limit_dataset_shards=4,
-            # optimized_params='only_eos_embedding',
+            optimized_params=optimized_params,
             weight_decay='0.01',
             per_device_train_batch_size=per_device_train_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
@@ -359,7 +360,7 @@ if __name__ == "__main__":
             lr_scheduler_type='cosine',
             bf16='0',
             add_end_of_sentence_token=1,
-            experiment_prefix_base_name=f"sentence_{model_checkpoint_slug}_pretrain_with_end_of_sentence_full",
+            experiment_prefix_base_name=f"sentence_{model_checkpoint_slug}_ft_{optimized_params}",
         )
 
 

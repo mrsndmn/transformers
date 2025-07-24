@@ -63,7 +63,15 @@ def full_kv_scrooge_prefill(model, input_ids, attention_mask, special_embeddings
 
 
 
-def scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, clothest_end_of_sentence_token_idx):
+def scrooge_prefill(
+        model,
+        input_ids,
+        attention_mask,
+        special_embeddings_mask,
+        clothest_end_of_sentence_token_idx,
+        output_hidden_states=False,
+        outputs_hook=None,
+        ):
 
     assert clothest_end_of_sentence_token_idx.shape[0] == 1, 'only single size batch is supported'
 
@@ -80,7 +88,8 @@ def scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, c
     # model.model.
     # full_ones_attention_mask = torch.ones_like(input_ids)
 
-    hidden_states = []
+    if output_hidden_states:
+        hidden_states = []
 
     prev_sentence_i = (attention_mask == 0).sum().item()
 
@@ -105,11 +114,14 @@ def scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, c
             clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx_current,
             past_key_values=past_key_values,
             cache_position=torch.arange(prev_sentence_i, sentence_i, device=input_ids.device),
-            output_hidden_states=True,
+            output_hidden_states=output_hidden_states,
         )
-        prev_sentence_i = sentence_i
 
-        hidden_states.append(outputs.hidden_states)
+        if output_hidden_states:
+            hidden_states.append(outputs.hidden_states)
+
+        if outputs_hook is not None:
+            outputs_hook(outputs, prev_sentence_i, sentence_i)
 
         # Leave only sentence attention cache
         if i != len(eos_tokens_idxs) - 1:
@@ -120,12 +132,15 @@ def scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, c
 
             assert past_key_values.get_seq_length() == i + 1, 'cache seq len should be equal to number of sentences'
 
+        # End of loop
+        prev_sentence_i = sentence_i
+
     last_outputs = outputs
 
     return {
         "last_outputs": last_outputs,
         "past_key_values": past_key_values,
-        "hidden_states": hidden_states,
+        "hidden_states": hidden_states if output_hidden_states else None,
     }
 
 

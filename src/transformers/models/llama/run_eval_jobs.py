@@ -351,8 +351,8 @@ def eval_base_models(**kwargs):
     # ("openbookqa", evaluate_acc_openbookqa),
     # ("mmlu_0_shot", evaluate_acc_mmlu_0_shot),
 
-    tasks = ["custom|mmlu_cloze|5|1"]
-    # tasks = "custom|mmlu_cloze|5|1,custom|mmlu_cloze|0|1,custom|hellaswag|0|1,custom|winogrande|0|1,custom|piqa|0|1,custom|siqa|0|1,custom|openbookqa|0|1".split(",")
+    # tasks = ["custom|mmlu_cloze|5|1"]
+    tasks = "custom|mmlu_cloze|5|1,custom|mmlu_cloze|0|1,custom|hellaswag|0|1,custom|winogrande|0|1,custom|piqa|0|1,custom|siqa|0|1,custom|openbookqa|0|1".split(",")
 
     hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
 
