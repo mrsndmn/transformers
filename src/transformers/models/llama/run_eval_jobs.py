@@ -328,18 +328,23 @@ def slm2_mmlu_cloze_5_shot(**kwargs):
 def eval_base_models(**kwargs):
 
     checkpoints = [
-        'unsloth/Llama-3.2-1B',
-        "./sentence_Llama-3.2-1B_pretrain_with_end_of_sentence_full_BTLCR6IG/checkpoint-2698/",
 
-        'Qwen/Qwen2.5-1.5B',
-        "./sentence_Qwen2.5-1.5B_pretrain_with_end_of_sentence_full_271TTUXM/checkpoint-2698/",
+        # EOS Only Embedding
+        # "./sentence_Llama-3.2-1B_ft_only_eos_embedding_3DTAMXFX/checkpoint-674/",
 
-        'HuggingFaceTB/SmolLM2-1.7B',
-        "./sentence_SmolLM2-1.7B_pretrain_with_end_of_sentence_full_2V0V8WU1/checkpoint-2698/",
+        # 'unsloth/Llama-3.2-1B',
+        # "./sentence_Llama-3.2-1B_pretrain_with_end_of_sentence_full_BTLCR6IG/checkpoint-2698/",
 
-        # 3B models
-        'unsloth/Llama-3.2-3B',
-        "./sentence_Llama-3.2-3B_pretrain_with_end_of_sentence_full_KVSAH64V/checkpoint-2698/",
+
+        # 'Qwen/Qwen2.5-1.5B',
+        # "./sentence_Qwen2.5-1.5B_pretrain_with_end_of_sentence_full_271TTUXM/checkpoint-2698/",
+
+        # 'HuggingFaceTB/SmolLM2-1.7B',
+        # "./sentence_SmolLM2-1.7B_pretrain_with_end_of_sentence_full_2V0V8WU1/checkpoint-2698/",
+
+        # # 3B models
+        # 'unsloth/Llama-3.2-3B',
+        # "./sentence_Llama-3.2-3B_pretrain_with_end_of_sentence_full_KVSAH64V/checkpoint-2698/",
 
         # # 'Qwen/Qwen2.5-3B',
     ]
@@ -352,7 +357,8 @@ def eval_base_models(**kwargs):
     # ("mmlu_0_shot", evaluate_acc_mmlu_0_shot),
 
     # tasks = ["custom|mmlu_cloze|5|1"]
-    tasks = "custom|mmlu_cloze|5|1,custom|mmlu_cloze|0|1,custom|hellaswag|0|1,custom|winogrande|0|1,custom|piqa|0|1,custom|siqa|0|1,custom|openbookqa|0|1".split(",")
+    # tasks = "custom|mmlu_cloze|5|1,custom|mmlu_cloze|0|1,custom|hellaswag|0|1,custom|winogrande|0|1,custom|piqa|0|1,custom|siqa|0|1,custom|openbookqa|0|1".split(",")
+    tasks = "custom|mmlu_cloze|0|1,custom|hellaswag|0|1,custom|winogrande|0|1,custom|piqa|0|1,custom|siqa|0|1,custom|openbookqa|0|1".split(",")
 
     hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
 
