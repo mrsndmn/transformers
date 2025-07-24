@@ -11,7 +11,7 @@ from transformers import AutoTokenizer, DynamicCache
 LIPSUM = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
 
 
-def scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, clothest_end_of_sentence_token_idx, trim_kv_cache=True):
+def full_kv_scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, clothest_end_of_sentence_token_idx):
 
     prev_sentence_i = 0 # (attention_mask == 0).sum().item()
 
@@ -35,11 +35,11 @@ def scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, c
     for i, sentence_i in enumerate(eos_tokens_idxs):
         kv_length = past_key_values.get_seq_length()
         # print("kv_length", kv_length)
-        if trim_kv_cache:
-            assert past_key_values.get_seq_length() == i, 'cache seq len should be equal to number of sentences'
 
         # print("prev_sentence_i, sentence_i", prev_sentence_i, sentence_i)
         # current_attention_mask = full_ones_attention_mask[:, :(sentence_i-prev_sentence_i + past_key_values.get_seq_length())]
+
+        sentence_i = min(sentence_i + 1, input_ids.shape[1])
 
         outputs = model(
             input_ids=input_ids[:, prev_sentence_i:sentence_i],
@@ -47,8 +47,64 @@ def scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, c
             special_embeddings_mask=special_embeddings_mask[:, (prev_sentence_i-kv_length):sentence_i],
             clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx[:, (prev_sentence_i-kv_length):sentence_i],
             past_key_values=past_key_values,
+            output_hidden_states=True,
+        )
+        prev_sentence_i = sentence_i
+
+        hidden_states.append(outputs.hidden_states)
+
+    last_outputs = outputs
+
+    return {
+        "last_outputs": last_outputs,
+        "past_key_values": past_key_values,
+        "hidden_states": hidden_states,
+    }
+
+
+
+def scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, clothest_end_of_sentence_token_idx):
+
+    assert clothest_end_of_sentence_token_idx.shape[0] == 1, 'only single size batch is supported'
+
+    eos_tokens_idxs = set(clothest_end_of_sentence_token_idx.cpu().numpy().tolist()[0])
+    eos_tokens_idxs.remove(0)
+    eos_tokens_idxs = sorted(eos_tokens_idxs)
+    eos_tokens_idxs = eos_tokens_idxs + [input_ids.shape[1]]
+
+    # TODO Sentence Cache - saves only the last sentence embedding
+    past_key_values = DynamicCache()
+
+    # TODO Calculate Last Chunk with possibly no sentence id
+
+    # model.model.
+    # full_ones_attention_mask = torch.ones_like(input_ids)
+
+    hidden_states = []
+
+    prev_sentence_i = (attention_mask == 0).sum().item()
+
+    for i, sentence_i in enumerate(eos_tokens_idxs):
+
+        kv_length = past_key_values.get_seq_length()
+
+        sentence_i = min(sentence_i + 1, input_ids.shape[1])
+
+        attention_mask = torch.ones([ 1, sentence_i - prev_sentence_i + kv_length ], device=input_ids.device, dtype=torch.long)
+
+        special_embeddings_mask_prefix = torch.ones([1, kv_length], device=special_embeddings_mask.device, dtype=special_embeddings_mask.dtype)
+        special_embeddings_mask_current = torch.cat([special_embeddings_mask_prefix, special_embeddings_mask[:, prev_sentence_i:sentence_i]], dim=-1)
+
+        clothest_end_of_sentence_token_idx_current = torch.zeros([1, sentence_i - prev_sentence_i + kv_length], device=clothest_end_of_sentence_token_idx.device, dtype=clothest_end_of_sentence_token_idx.dtype)
+        # clothest_end_of_sentence_token_idx_current = torch.cat([clothest_end_of_sentence_token_idx_prefix, clothest_end_of_sentence_token_idx[:, prev_sentence_i:sentence_i]], dim=-1)
+
+        outputs = model(
+            input_ids=input_ids[:, prev_sentence_i:sentence_i],
+            attention_mask=attention_mask,
+            special_embeddings_mask=special_embeddings_mask_current,
+            clothest_end_of_sentence_token_idx=clothest_end_of_sentence_token_idx_current,
+            past_key_values=past_key_values,
             cache_position=torch.arange(prev_sentence_i, sentence_i, device=input_ids.device),
-            is_sentence_chunked_prefill=trim_kv_cache,
             output_hidden_states=True,
         )
         prev_sentence_i = sentence_i
@@ -56,7 +112,7 @@ def scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, c
         hidden_states.append(outputs.hidden_states)
 
         # Leave only sentence attention cache
-        if i != len(eos_tokens_idxs) - 1 and trim_kv_cache:
+        if i != len(eos_tokens_idxs) - 1:
             for idx in range(len(past_key_values.key_cache)):
                 if past_key_values.key_cache[idx] != []:
                     past_key_values.key_cache[idx]   = torch.cat([past_key_values.key_cache[idx][..., :i, :], past_key_values.key_cache[idx][..., -1:, :]], dim=-2)

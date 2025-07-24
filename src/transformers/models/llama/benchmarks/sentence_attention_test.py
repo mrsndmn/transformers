@@ -8,7 +8,7 @@ from transformers.models.llama.modeling_sentence_llama import SentenceLlamaForCa
 
 from transformers import AutoTokenizer, DynamicCache
 
-from transformers.models.llama.benchmarks.sentence_attention_bench import scrooge_prefill
+from transformers.models.llama.benchmarks.sentence_attention_bench import scrooge_prefill, full_kv_scrooge_prefill
 
 
 if __name__ == "__main__":
@@ -55,23 +55,22 @@ if __name__ == "__main__":
         rich_hs = rich_prefill_outputs.hidden_states
         rich_hs_last = rich_hs[-1]
 
-        scroodge_outputs = scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, clothest_end_of_sentence_token_idx, trim_kv_cache=False)
+        # Full KV Cache Scrooge Prefill
+        scroodge_outputs = full_kv_scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, clothest_end_of_sentence_token_idx)
+        scroodge_hs_last = torch.cat([ x[-1] for x in scroodge_outputs["hidden_states"]], dim=1)
+        # # print("input_ids", input_ids[:, -last_token_idx:])
+        # # print("input_ids", tokenizer.batch_decode( input_ids[:, -last_token_idx:] ))
+        # print("rich_hs_last, scroodge_hs", (rich_hs_last - scroodge_hs_last).max(dim=-1).values[:, -last_token_idx:])
+        assert torch.allclose(rich_hs_last[:, -last_token_idx:], scroodge_hs_last[:, -last_token_idx:], atol=1e-3), 'last hidden state should be the same'
+
+        # Trim KV Cache
+        scroodge_outputs = scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, clothest_end_of_sentence_token_idx)
 
         scroodge_hs_last = torch.cat([ x[-1] for x in scroodge_outputs["hidden_states"]], dim=1)
+
+        rich_hs_last_text_only = rich_hs_last[:, -last_token_idx:]
 
         torch.set_printoptions(linewidth = 30000, profile='full')
+        # print("rich_hs_last, scroodge_hs", (rich_hs_last_text_only - scroodge_hs_last).max(dim=-1).values[:, -last_token_idx:].round())
 
-        print("rich_hs_last, scroodge_hs", ((rich_hs_last - scroodge_hs_last)*100).mean(dim=-1)[:, -last_token_idx:].round())
-
-        breakpoint()
-
-        scroodge_outputs = scrooge_prefill(model, input_ids, attention_mask, special_embeddings_mask, clothest_end_of_sentence_token_idx, trim_kv_cache=True)
-
-        scroodge_hs_last = torch.cat([ x[-1] for x in scroodge_outputs["hidden_states"]], dim=1)
-
-        print("rich_hs_last, scroodge_hs", ((rich_hs_last - scroodge_hs_last)*100).mean(dim=-1)[:, -last_token_idx:].round())
-
-
-        assert torch.allclose(rich_hs_last, scroodge_hs_last, atol=1e-3), 'last hidden state should be the same'
-
-        breakpoint()
+        assert torch.allclose(rich_hs_last_text_only, scroodge_hs_last, atol=1e-3), 'last hidden state should be the same'
