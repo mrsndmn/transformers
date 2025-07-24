@@ -16,12 +16,13 @@ from tqdm import tqdm
 
 if __name__ == "__main__":
 
-    checkpoint_dir = "./sentence_Llama-3.2-1B_pretrain_with_end_of_sentence_full_BTLCR6IG/checkpoint-2000"
+    checkpoint_dir = "./sentence_Llama-3.2-1B_pretrain_with_end_of_sentence_full_BTLCR6IG/checkpoint-2698/"
 
     model_class = SentenceLlamaForCausalLM
     model = model_class.from_pretrained(checkpoint_dir, torch_dtype=torch.bfloat16)
     model.eval()
     model.to("cuda")
+    model.config._attn_implementation = 'sentence_attention'
     # model = torch.compile(model, mode="reduce-overhead", dynamic=True)
 
     tokenizer = AutoTokenizer.from_pretrained(checkpoint_dir)
@@ -41,8 +42,7 @@ if __name__ == "__main__":
 
             current_tokens_log_probas = []
 
-
-            input_ids = tokenizer.encode(item["text"], return_tensors="pt", max_length=128000, truncation=True)
+            input_ids = tokenizer.encode(item["text"], return_tensors="pt", max_length=60000, truncation=True)
             input_ids = input_ids.to("cuda")
             attention_mask = torch.ones_like(input_ids).to("cuda")
             special_embeddings_mask = input_ids == special_token_id

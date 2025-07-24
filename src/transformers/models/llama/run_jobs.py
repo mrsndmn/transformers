@@ -321,8 +321,8 @@ if __name__ == "__main__":
     save_steps = 500
 
     # models_checkpoints = [ 'unsloth/Llama-3.2-1B', 'Qwen/Qwen2.5-1.5B', 'HuggingFaceTB/SmolLM2-1.7B', 'unsloth/Llama-3.2-3B', 'Qwen/Qwen2.5-3B',  ]
-    models_checkpoints = [ 'unsloth/Llama-3.2-1B' ]
-    # models_checkpoints = [ 'Qwen/Qwen2.5-1.5B' ]
+    # models_checkpoints = [ 'unsloth/Llama-3.2-1B' ]
+    models_checkpoints = [ 'Qwen/Qwen2.5-1.5B' ]
     # model_checkpoint = 'unsloth/Llama-3.2-1B'
     # model_checkpoint = 'HuggingFaceTB/SmolLM2-1.7B'
     # model_checkpoint = 'Qwen/Qwen2.5-1.5B'
