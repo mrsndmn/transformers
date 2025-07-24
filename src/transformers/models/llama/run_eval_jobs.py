@@ -323,6 +323,43 @@ def slm2_mmlu_cloze_5_shot(**kwargs):
     return
 
 
+
+def eval_base_models(**kwargs):
+
+
+    checkpoints = [
+        # 'HuggingFaceTB/SmolLM2-1.7B',
+        'unsloth/Llama-3.2-1B',
+        'Qwen/Qwen2.5-1.5B',
+        'unsloth/Llama-3.2-3B',
+        'Qwen/Qwen2.5-3B',
+    ]
+
+    # ("hellaswag", evaluate_acc_hellaswag),
+    # ("winogrande", evaluate_acc_winogrande),
+    # ("piqa", evaluate_acc_piqa),
+    # ("siqa", evaluate_acc_siqa),
+    # ("openbookqa", evaluate_acc_openbookqa),
+    # ("mmlu_0_shot", evaluate_acc_mmlu_0_shot),
+
+
+    tasks = "custom|mmlu_cloze|0|1,custom|hellaswag|0|1,custom|winogrande|0|1,custom|piqa|0|1,custom|siqa|0|1,custom|openbookqa|0|1".split(",")
+
+    hcg_experiments = [ { "pretrained_model": x } for x in checkpoints ]
+
+    print('len hcg_experiments:', len(hcg_experiments))
+
+
+    if kwargs.pop('extract_metrics', False):
+        run_extract_metrics(checkpoints, tasks=tasks)
+    else:
+        for task in tasks:
+            run_eval_experiments(hcg_experiments, job_description_prefix="Eval: ", tasks=task, **kwargs)
+
+    return
+
+
+
 if __name__ == "__main__":
 
     import sys
@@ -333,4 +370,5 @@ if __name__ == "__main__":
     print("dry", dry, 'extract_metrics', extract_metrics)
 
     # eval_hcg_adaptive_pretrain_all_tasks_parallel(dry=dry, extract_metrics=extract_metrics)
-    slm2_mmlu_cloze_5_shot(dry=dry, extract_metrics=extract_metrics)
+    # slm2_mmlu_cloze_5_shot(dry=dry, extract_metrics=extract_metrics)
+    eval_base_models(dry=dry, extract_metrics=extract_metrics)
