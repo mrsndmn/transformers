@@ -97,6 +97,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
         adam_beta2 = exp.pop('adam_beta2', '0.95')
 
         limit_dataset_shards = exp.pop('limit_dataset_shards', 0)
+        offset_dataset_shards = exp.pop('offset_dataset_shards', 0)
 
         bf16 = exp.pop('bf16', 0)
 
@@ -127,7 +128,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
 
         seed = SEED
 
-        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --max_grad_norm {max_grad_norm} --num_train_epochs {num_train_epochs} --seed {seed} --model_type {model_type} --model_checkpoint {model_checkpoint} --adam_beta1 {adam_beta1} --adam_beta2 {adam_beta2} {adam_epsilon} --lr_scheduler_type {lr_scheduler_type} --optimized_params {optimized_params} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --select_train_dataset_items {select_train_dataset_items} --weight_decay {weight_decay} --bf16 {bf16} --torch_compile {torch_compile}  {gradient_accumulation_steps}  --eval_strategy {eval_strategy} --eval_steps {eval_steps} --gradient_checkpointing {gradient_checkpointing} {save_total_limit} {optim} {save_only_model} {logging_steps} {dataset} --add_end_of_sentence_token {add_end_of_sentence_token} --disable_tqdm 1 --limit_dataset_shards {limit_dataset_shards} "
+        script_str = f"/workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/python /workspace-SR004.nfs2/d.tarasov/envs/tokens_pruning/bin/accelerate launch --config_file {accelerate_config} {workdir_prefix}/src/transformers/models/llama/train_adaptive_llama.py --save_strategy steps --save_steps {save_steps} --per_device_train_batch_size {per_device_train_batch_size} --learning_rate {learning_rate} --max_grad_norm {max_grad_norm} --num_train_epochs {num_train_epochs} --seed {seed} --model_type {model_type} --model_checkpoint {model_checkpoint} --adam_beta1 {adam_beta1} --adam_beta2 {adam_beta2} {adam_epsilon} --lr_scheduler_type {lr_scheduler_type} --optimized_params {optimized_params} --warmup_steps {warmup_steps} --output_dir {output_dir_full_path} --select_train_dataset_items {select_train_dataset_items} --weight_decay {weight_decay} --bf16 {bf16} --torch_compile {torch_compile}  {gradient_accumulation_steps}  --eval_strategy {eval_strategy} --eval_steps {eval_steps} --gradient_checkpointing {gradient_checkpointing} {save_total_limit} {optim} {save_only_model} {logging_steps} {dataset} --add_end_of_sentence_token {add_end_of_sentence_token} --disable_tqdm 1 --limit_dataset_shards {limit_dataset_shards} --offset_dataset_shards {offset_dataset_shards} "
 
         print(f"\n\n{script_str}\n\n")
 
@@ -173,6 +174,7 @@ def run_training_experiments(
         learning_rate=0.08,
         model_type="pretrained",
         limit_dataset_shards=0,
+        offset_dataset_shards=0,
         model_checkpoint="unsloth/Meta-Llama-3.1-8B",
         select_train_dataset_items=500000,
         lr_scheduler_type="constant_with_warmup",
@@ -202,6 +204,7 @@ def run_training_experiments(
         "model_type": model_type,
         "model_checkpoint": model_checkpoint,
         "limit_dataset_shards": limit_dataset_shards,
+        "offset_dataset_shards": offset_dataset_shards,
 
         "optimized_params": optimized_params,
         "adam_epsilon": adam_epsilon,
@@ -323,6 +326,8 @@ if __name__ == "__main__":
     # models_checkpoints = [ 'unsloth/Llama-3.2-1B', 'Qwen/Qwen2.5-1.5B', 'HuggingFaceTB/SmolLM2-1.7B', 'unsloth/Llama-3.2-3B', 'Qwen/Qwen2.5-3B',  ]
     # models_checkpoints = [ 'unsloth/Llama-3.2-1B' ]
     models_checkpoints = [ 'Qwen/Qwen2.5-1.5B' ]
+    models_checkpoints = []
+
     # model_checkpoint = 'unsloth/Llama-3.2-1B'
     # model_checkpoint = 'HuggingFaceTB/SmolLM2-1.7B'
     # model_checkpoint = 'Qwen/Qwen2.5-1.5B'
@@ -364,4 +369,49 @@ if __name__ == "__main__":
             experiment_prefix_base_name=f"sentence_{model_checkpoint_slug}_ft_{optimized_params}",
         )
 
+
+    model_checkpoints_eos_tined = [f"{workdir_prefix}/sentence_Llama-3.2-1B_ft_only_eos_embedding_70ODXUT4/checkpoint-2698"]
+
+    NGPUS = 4
+    num_train_epochs = 1
+    per_device_train_batch_size = 16
+    gradient_accumulation_steps = math.ceil(4096 / NGPUS / per_device_train_batch_size)
+    save_steps = 250
+
+    for model_checkpoint in model_checkpoints_eos_tined:
+        model_checkpoint_slug = model_checkpoint.split('/')[-1]
+
+        optimized_params = 'full' # 'full' 'only_eos_embedding'
+
+        run_training_experiments(
+            learning_rate=0.00005,
+            model_type='sentence_pretrained_checkpoint',
+            limit_dataset_shards=8,
+            offset_dataset_shards=4,
+            optimized_params=optimized_params,
+            weight_decay='0.01',
+            per_device_train_batch_size=per_device_train_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            adam_beta1='0.9',
+            adam_beta2='0.95',
+            optim='adamw_torch_fused',
+            # select_train_dataset_items=1510000 * NGPUS,
+            num_train_epochs=num_train_epochs,
+            max_grad_norm='1.0',
+            save_total_limit=100,
+            save_steps=save_steps,
+            instance_type=f'a100.{NGPUS}gpu',
+            model_checkpoint=model_checkpoint,
+            # model_checkpoint=f"{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_one_embedding_no_wd_4IQFRDRG/checkpoint-500/",
+            # model_checkpoint=f"{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_VYE9JVA0/checkpoint-6500/",
+            dataset='smollm-corpus',
+            select_train_dataset_items=0,
+            adam_epsilon='1e-8',
+            warmup_steps=100,
+            dry=dry,
+            lr_scheduler_type='cosine',
+            bf16='0',
+            add_end_of_sentence_token=1,
+            experiment_prefix_base_name=f"sentence_{model_checkpoint_slug}_ft_{optimized_params}",
+        )
 

@@ -331,6 +331,7 @@ def eval_base_models(**kwargs):
 
         # EOS Only Embedding
         # "./sentence_Llama-3.2-1B_ft_only_eos_embedding_3DTAMXFX/checkpoint-674/",
+        "./sentence_Llama-3.2-1B_ft_only_eos_embedding_70ODXUT4/checkpoint-2698",
 
         # 'unsloth/Llama-3.2-1B',
         # "./sentence_Llama-3.2-1B_pretrain_with_end_of_sentence_full_BTLCR6IG/checkpoint-2698/",

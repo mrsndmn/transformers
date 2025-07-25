@@ -77,6 +77,7 @@ class AdaptiveTrainingArguments(TrainingArguments):
 
     dataset: str = field(default='smollm-corpus')
     limit_dataset_shards: int = field(default=0)
+    offset_dataset_shards: int = field(default=0)
 
     warmup_steps: int = field(default=500)
     per_device_train_batch_size: int = field(default=32)
@@ -587,11 +588,11 @@ def build_model(training_args: AdaptiveTrainingArguments):
 
         tokenizer_class = type(AutoTokenizer.from_pretrained(model_checkpoint)).__name__
 
-        if tokenizer_class == 'GPT2TokenizerFast':
+        if tokenizer_class in ['GPT2TokenizerFast', 'GPT2TokenizerFastEOS']:
             tokenizer_class = GPT2TokenizerFastEOS
-        elif tokenizer_class == 'PreTrainedTokenizerFast':
+        elif tokenizer_class in ['PreTrainedTokenizerFast', 'PreTrainedTokenizerFastEOS']:
             tokenizer_class = PreTrainedTokenizerFastEOS
-        elif tokenizer_class == 'Qwen2TokenizerFast':
+        elif tokenizer_class in ['Qwen2TokenizerFast', 'Qwen2TokenizerFastEOS']:
             tokenizer_class = Qwen2TokenizerFastEOS
         else:
             raise ValueError(f"Invalid tokenizer class: {tokenizer_class}")
@@ -713,7 +714,10 @@ if __name__ == "__main__":
 
                 output_dir = sorted(os.listdir(dataset_path))
                 if training_args.limit_dataset_shards > 0:
-                    output_dir = output_dir[:training_args.limit_dataset_shards]
+                    offset = training_args.offset_dataset_shards
+                    end_idx = offset + training_args.limit_dataset_shards
+                    print("Dataset offset end idx:", offset, ":", end_idx)
+                    output_dir = output_dir[offset:end_idx]
 
                 print("loading dataset", dataset_path, 'with', len(output_dir), 'dataset shards', output_dir)
 
