@@ -272,6 +272,31 @@ if __name__ == "__main__":
     dry = len(sys.argv) > 1 and sys.argv[1] == 'dry'
     print("dry", dry)
 
+    if len(sys.argv) > 1 and sys.argv[1] == 'wait':
+        from mls.manager.job.utils import training_job_api_from_profile
+
+        assert len(sys.argv) == 3, 'Usage: python run_jobs.py wait <job_id>'
+        job_id = sys.argv[2]
+        print("Waiting for jobs to finish", job_id)
+
+        while True:
+            job = None
+            try:
+                client, extra_options = training_job_api_from_profile('default')
+                job = client.get_job_status(job_id)
+                print("Job info", job)
+            except Exception as e:
+                print("Error", e)
+                time.sleep(60)
+
+            if job is None and job['status'].lower() == 'completed':
+                break
+
+            print("Waiting for jobs to finish", job_id)
+            time.sleep(10)
+
+        print("Job finished", job_id)
+
     # if not dry:
     #     tests_run = subprocess.run(["pytest", "src/transformers/models/llama/tests/"])
     #     if tests_run.returncode != 0:
@@ -326,6 +351,8 @@ if __name__ == "__main__":
     # models_checkpoints = [ 'unsloth/Llama-3.2-1B', 'Qwen/Qwen2.5-1.5B', 'HuggingFaceTB/SmolLM2-1.7B', 'unsloth/Llama-3.2-3B', 'Qwen/Qwen2.5-3B',  ]
     # models_checkpoints = [ 'unsloth/Llama-3.2-1B', 'Qwen/Qwen2.5-1.5B' ]
     models_checkpoints = [ 'unsloth/Llama-3.2-3B', 'Qwen/Qwen2.5-3B' ]
+    models_checkpoints = [ 'unsloth/Llama-3.2-3B' ]
+
     # models_checkpoints = []
 
     # model_checkpoint = 'unsloth/Llama-3.2-1B'
