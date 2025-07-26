@@ -1819,6 +1819,8 @@ class ClearMLCallback(TrainerCallback):
                     )
                     ClearMLCallback._task_created_in_callback = True
                     logger.info("ClearML Task has been initialized.")
+
+                print(f"CLEARML_LOG_MODEL: {self._log_model}")
                 self._initialized = True
 
             suffixed_hparams_section = ClearMLCallback._hparams_section + ClearMLCallback.log_suffix

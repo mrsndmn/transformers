@@ -9,37 +9,40 @@ import torch
 from transformers import LlamaForCausalLM
 from transformers.models.llama.modeling_adaptive_llama import AdaptiveLlamaForCausalLM
 from transformers.models.llama.modeling_sentence_llama import SentenceLlamaForCausalLM
+from transformers.models.qwen2.modeling_sentence_qwen2 import SentenceQwen2ForCausalLM
 
 from transformers.models.llama.interpretation.explore_eval_hard_concrete_percent import evaluate_acc_hellaswag, evaluate_acc_winogrande, evaluate_acc_piqa, evaluate_acc_siqa, evaluate_acc_openbookqa, evaluate_acc_mmlu_0_shot, evaluate_acc_mmlu_5_shot
 
 class ContinuousEvaluator:
     def __init__(self, max_checkpoint_steps=None):
-        sentence_slm2_checkpoints_dir = "./sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_IOVO1EQ9"
         sentence_llama32_checkpoints_dir = "./sentence_Llama-3.2-1B_pretrain_with_end_of_sentence_full_BTLCR6IG"
-        sentence_qwen25_checkpoints_dir = "./sentence_Qwen2.5-1.5B_pretrain_with_end_of_sentence_full_271TTUXM"
+        sentence_llama32_eoso_checkpoints_dir = "./sentence_Llama-3.2-1B_ft_only_eos_embedding_70ODXUT4"
+        sentence_llama32_eoso_full_checkpoints_dir = "./sentence_Llama-3.2-1B_ft_full_L1DB3Z21"
 
-        sentence_llama32_3b_checkpoints_dir = "./sentence_Llama-3.2-3B_pretrain_with_end_of_sentence_full_KVSAH64V"
-        sentence_slm2_1_7b_checkpoints_dir_new = "./sentence_SmolLM2-1.7B_pretrain_with_end_of_sentence_full_2V0V8WU1"
-        sentence_qwen25_3b_checkpoints_dir_new = "./sentence_Qwen2.5-3B_pretrain_with_end_of_sentence_full_I2ZYVLTN"
+
+        sentence_qwen25_eoso_checkpoints_dir = "./sentence_Qwen2.5-1.5B_ft_only_eos_embedding_25L1K5XT"
+        sentence_qwen25_eoso_full_checkpoints_dir = "./sentence_Qwen2.5-1.5B_ft_full_HV8ZC8TD"
+
 
         self.max_checkpoint_steps = max_checkpoint_steps
 
         self.model_to_checkpoints = [
-            ("sentence SLM2 1.7B", SentenceLlamaForCausalLM, sentence_slm2_checkpoints_dir),
             ("sentence Llama3.2 1B", SentenceLlamaForCausalLM, sentence_llama32_checkpoints_dir),
-            ("sentence Qwen2.5 1.5B", SentenceLlamaForCausalLM, sentence_qwen25_checkpoints_dir),
-            ("sentence Llama3.2 3B", SentenceLlamaForCausalLM, sentence_llama32_3b_checkpoints_dir),
-            ("sentence SLM2 1.7B", SentenceLlamaForCausalLM, sentence_slm2_1_7b_checkpoints_dir_new),
-            ("sentence Qwen2.5 3B", SentenceLlamaForCausalLM, sentence_qwen25_3b_checkpoints_dir_new),
+            ("sentence Llama3.2 1B EOSO", SentenceLlamaForCausalLM, sentence_llama32_eoso_checkpoints_dir),
+            ("sentence Llama3.2 1B EOSO Full", SentenceLlamaForCausalLM, sentence_llama32_eoso_full_checkpoints_dir),
+
+            # Qwen2.5 Models
+            ("sentence Qwen2.5 1.5B EOSO", SentenceQwen2ForCausalLM, sentence_qwen25_eoso_checkpoints_dir),
+            ("sentence Qwen2.5 1.5B EOSO Full", SentenceQwen2ForCausalLM, sentence_qwen25_eoso_full_checkpoints_dir),
         ]
 
         self.model_name_to_color = {
-            "sentence SLM2 1.7B": "blue",
             "sentence Llama3.2 1B": "red",
-            "sentence Qwen2.5 1.5B": "green",
-            "sentence Llama3.2 3B": "yellow",
-            "sentence SLM2 1.7B": "purple",
-            "sentence Qwen2.5 3B": "orange",
+            "sentence Llama3.2 1B EOSO": "green",
+            "sentence Llama3.2 1B EOSO Full": "blue",
+
+            "sentence Qwen2.5 1.5B EOSO": "purple",
+            "sentence Qwen2.5 1.5B EOSO Full": "orange",
         }
 
         for model_name, _, _ in self.model_to_checkpoints:

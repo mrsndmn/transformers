@@ -546,6 +546,7 @@ MODEL_FOR_CAUSAL_LM_MAPPING_NAMES = OrderedDict(
         ("llama", "LlamaForCausalLM"),
         ("adaptive_llama", "AdaptiveLlamaForCausalLM"),
         ("sentence_llama", "SentenceLlamaForCausalLM"),
+        ("sentence_qwen2", "SentenceQwen2ForCausalLM"),
         ("adaptive_llama_each_layer", "AdaptiveLlamaForCausalLMWithEachLayerPruning"),
         ("adaptive_qwen2", "AdaptiveQwen2ForCausalLM"),
         ("mamba", "MambaForCausalLM"),

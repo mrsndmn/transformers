@@ -151,6 +151,7 @@ def run_experiments(experiments, job_description_prefix="", dry=False):
                 "WANDB_PROJECT": "adaptive_attention",
                 "CLEARML_CONFIG_FILE": "/workspace-SR004.nfs2/d.tarasov/transformers_adaptive_fan_in_fan_out/clearml.conf",
                 'CLEARML_PROJECT': 'sentence_attention',
+                'CLEARML_LOG_MODEL': 'FALSE',
                 # 'CLEARML_TASK': f'{job_description_prefix}{output_dir}',
                 "PYTHONPATH": f"{workdir_prefix}/src:/workspace-SR004.nfs2/d.tarasov/lighteval/src",
                 "HF_HOME": "/workspace-SR004.nfs2/.cache/huggingface"
@@ -319,14 +320,13 @@ if __name__ == "__main__":
     # Train full params
     NGPUS = 4
     num_train_epochs = 1
-    per_device_train_batch_size = 8
-    gradient_accumulation_steps = math.ceil(128 / NGPUS)
-    save_steps = 500
+    per_device_train_batch_size = 4
+    save_steps = 250
 
     # models_checkpoints = [ 'unsloth/Llama-3.2-1B', 'Qwen/Qwen2.5-1.5B', 'HuggingFaceTB/SmolLM2-1.7B', 'unsloth/Llama-3.2-3B', 'Qwen/Qwen2.5-3B',  ]
-    # models_checkpoints = [ 'unsloth/Llama-3.2-1B' ]
-    models_checkpoints = [ 'Qwen/Qwen2.5-1.5B' ]
-    models_checkpoints = []
+    # models_checkpoints = [ 'unsloth/Llama-3.2-1B', 'Qwen/Qwen2.5-1.5B' ]
+    models_checkpoints = [ 'unsloth/Llama-3.2-3B', 'Qwen/Qwen2.5-3B' ]
+    # models_checkpoints = []
 
     # model_checkpoint = 'unsloth/Llama-3.2-1B'
     # model_checkpoint = 'HuggingFaceTB/SmolLM2-1.7B'
@@ -335,6 +335,7 @@ if __name__ == "__main__":
     # Train full params
     for model_checkpoint in models_checkpoints:
         model_checkpoint_slug = model_checkpoint.split('/')[-1]
+        gradient_accumulation_steps = math.ceil(4096 / NGPUS / per_device_train_batch_size)
 
         optimized_params = 'only_eos_embedding' # 'full' 'only_eos_embedding'
 
@@ -370,17 +371,17 @@ if __name__ == "__main__":
         )
 
 
-    model_checkpoints_eos_tined = [f"{workdir_prefix}/sentence_Llama-3.2-1B_ft_only_eos_embedding_70ODXUT4/checkpoint-2698"]
+    model_checkpoints_eos_tined = [
+        # (f"{workdir_prefix}/sentence_Llama-3.2-1B_ft_only_eos_embedding_70ODXUT4/checkpoint-2698", "Llama-3.2-1B", 16),
+        (f"{workdir_prefix}/sentence_Qwen2.5-1.5B_ft_only_eos_embedding_25L1K5XT/checkpoint-2698/", "Qwen2.5-1.5B", 4),
+    ]
+    model_checkpoints_eos_tined = []
 
     NGPUS = 4
     num_train_epochs = 1
-    per_device_train_batch_size = 16
-    gradient_accumulation_steps = math.ceil(4096 / NGPUS / per_device_train_batch_size)
-    save_steps = 250
 
-    for model_checkpoint in model_checkpoints_eos_tined:
-        model_checkpoint_slug = model_checkpoint.split('/')[-1]
-
+    for model_checkpoint, model_checkpoint_slug, per_device_train_batch_size in model_checkpoints_eos_tined:
+        gradient_accumulation_steps = math.ceil(4096 / NGPUS / per_device_train_batch_size)
         optimized_params = 'full' # 'full' 'only_eos_embedding'
 
         run_training_experiments(

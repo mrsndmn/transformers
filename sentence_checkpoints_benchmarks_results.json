@@ -1324,5 +1324,797 @@
         "checkpoint-2698",
         "openbookqa",
         0.29
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2698",
+        "hellaswag",
+        0.47470623381796456
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2698",
+        "winogrande",
+        0.5572217837411207
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2698",
+        "piqa",
+        0.6898803046789989
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2698",
+        "siqa",
+        0.4002047082906858
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2698",
+        "openbookqa",
+        0.372
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2698",
+        "mmlu_0_shot",
+        0.31268882162635653
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2500",
+        "hellaswag",
+        0.4736108344951205
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2500",
+        "winogrande",
+        0.5595895816890292
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2500",
+        "piqa",
+        0.6877040261153428
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2500",
+        "siqa",
+        0.4022517911975435
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2500",
+        "openbookqa",
+        0.372
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2500",
+        "mmlu_0_shot",
+        0.3118355807483902
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2000",
+        "hellaswag",
+        0.47390957976498704
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2000",
+        "winogrande",
+        0.5595895816890292
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2000",
+        "piqa",
+        0.6893362350380848
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2000",
+        "siqa",
+        0.40122824974411464
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2000",
+        "openbookqa",
+        0.374
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-2000",
+        "mmlu_0_shot",
+        0.3111498996026444
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-1500",
+        "hellaswag",
+        0.4738099980083649
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-1500",
+        "winogrande",
+        0.5595895816890292
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-1500",
+        "piqa",
+        0.6920565832426551
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-1500",
+        "siqa",
+        0.3986693961105425
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-1500",
+        "openbookqa",
+        0.372
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-1500",
+        "mmlu_0_shot",
+        0.31176653627057616
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-1000",
+        "hellaswag",
+        0.47480581557458673
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-1000",
+        "winogrande",
+        0.5595895816890292
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-1000",
+        "piqa",
+        0.6893362350380848
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-1000",
+        "siqa",
+        0.4083930399181167
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-1000",
+        "openbookqa",
+        0.368
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-1000",
+        "mmlu_0_shot",
+        0.31176297937785696
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-500",
+        "hellaswag",
+        0.4609639514041028
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-500",
+        "winogrande",
+        0.5422257300710339
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-500",
+        "piqa",
+        0.6849836779107725
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-500",
+        "siqa",
+        0.3889457523029683
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-500",
+        "openbookqa",
+        0.374
+    ],
+    [
+        "sentence Llama3.2 1B EOSO",
+        "checkpoint-500",
+        "mmlu_0_shot",
+        0.3125196827990427
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2698",
+        "hellaswag",
+        0.4797849034056961
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2698",
+        "winogrande",
+        0.5516969218626677
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2698",
+        "piqa",
+        0.7018498367791077
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2698",
+        "siqa",
+        0.38229273285568066
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2698",
+        "openbookqa",
+        0.392
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2698",
+        "mmlu_0_shot",
+        0.3183366972669703
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2500",
+        "hellaswag",
+        0.4803823939454292
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2500",
+        "winogrande",
+        0.5501183898973955
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2500",
+        "piqa",
+        0.6964091403699674
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2500",
+        "siqa",
+        0.387410440122825
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2500",
+        "openbookqa",
+        0.394
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2500",
+        "mmlu_0_shot",
+        0.3187662431618017
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2000",
+        "hellaswag",
+        0.4781915952997411
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2000",
+        "winogrande",
+        0.5509076558800315
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2000",
+        "piqa",
+        0.6980413492927094
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2000",
+        "siqa",
+        0.38792221084953943
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2000",
+        "openbookqa",
+        0.39
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-2000",
+        "mmlu_0_shot",
+        0.3188025062957424
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-1500",
+        "hellaswag",
+        0.4790878311093408
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-1500",
+        "winogrande",
+        0.5540647198105761
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-1500",
+        "piqa",
+        0.6991294885745375
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-1500",
+        "siqa",
+        0.38638689866939613
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-1500",
+        "openbookqa",
+        0.396
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-1500",
+        "mmlu_0_shot",
+        0.32053056705427824
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-1000",
+        "hellaswag",
+        0.47629954192391954
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-1000",
+        "winogrande",
+        0.5524861878453039
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-1000",
+        "piqa",
+        0.7007616974972797
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-1000",
+        "siqa",
+        0.38638689866939613
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-1000",
+        "openbookqa",
+        0.402
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-1000",
+        "mmlu_0_shot",
+        0.3197293365152113
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-500",
+        "hellaswag",
+        0.4620593507269468
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-500",
+        "winogrande",
+        0.5445935280189423
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-500",
+        "piqa",
+        0.6844396082698585
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-500",
+        "siqa",
+        0.38382804503582396
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-500",
+        "openbookqa",
+        0.392
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO",
+        "checkpoint-500",
+        "mmlu_0_shot",
+        0.32011578067046675
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-250",
+        "hellaswag",
+        0.5401314479187412
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-250",
+        "winogrande",
+        0.5588003157063931
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-250",
+        "piqa",
+        0.7105549510337323
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-250",
+        "siqa",
+        0.390992835209826
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-250",
+        "openbookqa",
+        0.4
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-250",
+        "mmlu_0_shot",
+        0.3418924417904267
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-250",
+        "hellaswag",
+        0.5946026687910775
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-250",
+        "winogrande",
+        0.5753749013417522
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-250",
+        "piqa",
+        0.7410228509249184
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-250",
+        "siqa",
+        0.4094165813715456
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-250",
+        "openbookqa",
+        0.41
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-250",
+        "mmlu_0_shot",
+        0.3799382665130477
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-500",
+        "hellaswag",
+        0.5449113722366062
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-500",
+        "winogrande",
+        0.5572217837411207
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-500",
+        "piqa",
+        0.7121871599564744
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-500",
+        "siqa",
+        0.40276356192425794
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-500",
+        "openbookqa",
+        0.378
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-500",
+        "mmlu_0_shot",
+        0.349308056576545
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-500",
+        "hellaswag",
+        0.5954989046006771
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-500",
+        "winogrande",
+        0.5769534333070244
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-500",
+        "piqa",
+        0.7459194776931447
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-500",
+        "siqa",
+        0.4119754350051177
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-500",
+        "openbookqa",
+        0.404
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-500",
+        "mmlu_0_shot",
+        0.38170885350520556
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-750",
+        "hellaswag",
+        0.5471021708822944
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-750",
+        "winogrande",
+        0.5477505919494869
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-750",
+        "piqa",
+        0.7116430903155604
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-750",
+        "siqa",
+        0.4007164790174002
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-750",
+        "openbookqa",
+        0.376
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-750",
+        "mmlu_0_shot",
+        0.34651238255480155
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1000",
+        "hellaswag",
+        0.5487950607448715
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1000",
+        "winogrande",
+        0.5556432517758485
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1000",
+        "piqa",
+        0.7127312295973884
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1000",
+        "siqa",
+        0.4002047082906858
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1000",
+        "openbookqa",
+        0.382
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1000",
+        "mmlu_0_shot",
+        0.3462647141673248
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-750",
+        "hellaswag",
+        0.5962955586536547
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-750",
+        "winogrande",
+        0.5737963693764798
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-750",
+        "piqa",
+        0.7475516866158868
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-750",
+        "siqa",
+        0.41606960081883315
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-750",
+        "openbookqa",
+        0.41
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-750",
+        "mmlu_0_shot",
+        0.38181147636692725
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1250",
+        "hellaswag",
+        0.5482971519617607
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1250",
+        "winogrande",
+        0.5572217837411207
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1250",
+        "piqa",
+        0.7149075081610446
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1250",
+        "siqa",
+        0.39969293756397134
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1250",
+        "openbookqa",
+        0.38
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1250",
+        "mmlu_0_shot",
+        0.34697334797455864
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1349",
+        "hellaswag",
+        0.5481975702051384
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1349",
+        "winogrande",
+        0.5556432517758485
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1349",
+        "piqa",
+        0.7149075081610446
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1349",
+        "siqa",
+        0.40122824974411464
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1349",
+        "openbookqa",
+        0.378
+    ],
+    [
+        "sentence Llama3.2 1B EOSO Full",
+        "checkpoint-1349",
+        "mmlu_0_shot",
+        0.34607548814463895
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1000",
+        "hellaswag",
+        0.5963951404102769
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1000",
+        "winogrande",
+        0.569060773480663
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1000",
+        "piqa",
+        0.7448313384113167
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1000",
+        "siqa",
+        0.4155578300921187
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1000",
+        "openbookqa",
+        0.416
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1000",
+        "mmlu_0_shot",
+        0.3815099795704766
     ]
 ]
