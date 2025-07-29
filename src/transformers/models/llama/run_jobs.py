@@ -289,7 +289,8 @@ if __name__ == "__main__":
                 print("Error", e)
                 time.sleep(60)
 
-            if job is None and job['status'].lower() == 'completed':
+            print("Job status", job['status'])
+            if job is not None and job['status'].lower() == 'completed':
                 break
 
             print("Waiting for jobs to finish", job_id)
@@ -353,7 +354,7 @@ if __name__ == "__main__":
     models_checkpoints = [ 'unsloth/Llama-3.2-3B', 'Qwen/Qwen2.5-3B' ]
     models_checkpoints = [ 'unsloth/Llama-3.2-3B' ]
 
-    # models_checkpoints = []
+    models_checkpoints = []
 
     # model_checkpoint = 'unsloth/Llama-3.2-1B'
     # model_checkpoint = 'HuggingFaceTB/SmolLM2-1.7B'
@@ -400,9 +401,11 @@ if __name__ == "__main__":
 
     model_checkpoints_eos_tined = [
         # (f"{workdir_prefix}/sentence_Llama-3.2-1B_ft_only_eos_embedding_70ODXUT4/checkpoint-2698", "Llama-3.2-1B", 16),
-        (f"{workdir_prefix}/sentence_Qwen2.5-1.5B_ft_only_eos_embedding_25L1K5XT/checkpoint-2698/", "Qwen2.5-1.5B", 4),
+        # (f"{workdir_prefix}/sentence_Qwen2.5-1.5B_ft_only_eos_embedding_25L1K5XT/checkpoint-2698/", "Qwen2.5-1.5B", 4),
+        # (f"{workdir_prefix}/sentence_Qwen2.5-3B_ft_only_eos_embedding_UAJKCWG0/checkpoint-674/", "Qwen2.5-3B", 4),
+        (f"{workdir_prefix}/sentence_Llama-3.2-3B_ft_only_eos_embedding_U4IS2OTK/checkpoint-674/", "Llama-3.2-3B", 4),
     ]
-    model_checkpoints_eos_tined = []
+    # model_checkpoints_eos_tined = []
 
     NGPUS = 4
     num_train_epochs = 1

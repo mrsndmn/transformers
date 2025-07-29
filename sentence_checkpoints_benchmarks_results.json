@@ -2045,8 +2045,6 @@
         "mmlu_0_shot",
         0.34697334797455864
     ],
-
-
     [
         "sentence Llama3.2 1B EOSO Full",
         "checkpoint-1349",
@@ -2118,5 +2116,293 @@
         "checkpoint-1000",
         "mmlu_0_shot",
         0.3815099795704766
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1250",
+        "hellaswag",
+        0.5974905397331209
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1250",
+        "winogrande",
+        0.5666929755327546
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1250",
+        "piqa",
+        0.7464635473340587
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1250",
+        "siqa",
+        0.4186284544524053
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1250",
+        "openbookqa",
+        0.414
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1250",
+        "mmlu_0_shot",
+        0.38323091505679807
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1349",
+        "hellaswag",
+        0.5968930491933878
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1349",
+        "winogrande",
+        0.5666929755327546
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1349",
+        "piqa",
+        0.7431991294885746
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1349",
+        "siqa",
+        0.4186284544524053
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1349",
+        "openbookqa",
+        0.416
+    ],
+    [
+        "sentence Qwen2.5 1.5B EOSO Full",
+        "checkpoint-1349",
+        "mmlu_0_shot",
+        0.38242852168664354
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-250",
+        "hellaswag",
+        0.6329416450906195
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-250",
+        "winogrande",
+        0.6156274664561957
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-250",
+        "piqa",
+        0.7464635473340587
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-250",
+        "siqa",
+        0.3930399181166837
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-250",
+        "openbookqa",
+        0.434
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-250",
+        "mmlu_0_shot",
+        0.40308430200915074
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-500",
+        "hellaswag",
+        0.6366261700856403
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-500",
+        "winogrande",
+        0.6179952644041041
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-500",
+        "piqa",
+        0.7551686615886833
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-500",
+        "siqa",
+        0.3930399181166837
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-500",
+        "openbookqa",
+        0.438
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-500",
+        "mmlu_0_shot",
+        0.4063941486724835
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-750",
+        "hellaswag",
+        0.6367257518422625
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-750",
+        "winogrande",
+        0.6227308602999211
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-750",
+        "piqa",
+        0.7551686615886833
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-750",
+        "siqa",
+        0.39355168884339814
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-750",
+        "openbookqa",
+        0.442
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-750",
+        "mmlu_0_shot",
+        0.4073916505997818
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1000",
+        "hellaswag",
+        0.635929097789285
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1000",
+        "winogrande",
+        0.6250986582478295
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1000",
+        "piqa",
+        0.7562568008705114
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1000",
+        "siqa",
+        0.3955987717502559
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1000",
+        "openbookqa",
+        0.442
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1000",
+        "mmlu_0_shot",
+        0.409042046370661
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1250",
+        "hellaswag",
+        0.6369249153555069
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1250",
+        "winogrande",
+        0.6235201262825573
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1250",
+        "piqa",
+        0.7568008705114254
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1250",
+        "siqa",
+        0.3940634595701126
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1250",
+        "openbookqa",
+        0.444
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1250",
+        "mmlu_0_shot",
+        0.40846941431272504
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1349",
+        "hellaswag",
+        0.6369249153555069
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1349",
+        "winogrande",
+        0.6243093922651933
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1349",
+        "piqa",
+        0.7562568008705114
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1349",
+        "siqa",
+        0.3940634595701126
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1349",
+        "openbookqa",
+        0.448
+    ],
+    [
+        "sentence Qwen2.5 3B EOSO Full",
+        "checkpoint-1349",
+        "mmlu_0_shot",
+        0.4075453251684722
     ]
 ]

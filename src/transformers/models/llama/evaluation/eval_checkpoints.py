@@ -23,6 +23,7 @@ class ContinuousEvaluator:
         sentence_qwen25_eoso_checkpoints_dir = "./sentence_Qwen2.5-1.5B_ft_only_eos_embedding_25L1K5XT"
         sentence_qwen25_eoso_full_checkpoints_dir = "./sentence_Qwen2.5-1.5B_ft_full_HV8ZC8TD"
 
+        sentence_qwen25_3b_eoso_full_checkpoints_dir = "./sentence_Qwen2.5-3B_ft_full_PVYYMBGR"
 
         self.max_checkpoint_steps = max_checkpoint_steps
 
@@ -34,6 +35,9 @@ class ContinuousEvaluator:
             # Qwen2.5 Models
             ("sentence Qwen2.5 1.5B EOSO", SentenceQwen2ForCausalLM, sentence_qwen25_eoso_checkpoints_dir),
             ("sentence Qwen2.5 1.5B EOSO Full", SentenceQwen2ForCausalLM, sentence_qwen25_eoso_full_checkpoints_dir),
+
+            # 3B Models
+            ("sentence Qwen2.5 3B EOSO Full", SentenceQwen2ForCausalLM, sentence_qwen25_3b_eoso_full_checkpoints_dir),
         ]
 
         self.model_name_to_color = {
@@ -43,6 +47,8 @@ class ContinuousEvaluator:
 
             "sentence Qwen2.5 1.5B EOSO": "purple",
             "sentence Qwen2.5 1.5B EOSO Full": "orange",
+
+            "sentence Qwen2.5 3B EOSO Full": "brown",
         }
 
         for model_name, _, _ in self.model_to_checkpoints:
