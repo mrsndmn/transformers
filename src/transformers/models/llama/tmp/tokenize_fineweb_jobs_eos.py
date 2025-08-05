@@ -5,7 +5,7 @@ from mls.manager.job.utils import training_job_api_from_profile
 
 if __name__ == "__main__":
 
-    dry = sys.argv[1] == 'dry'
+    dry = len(sys.argv) > 1 and sys.argv[1] == 'dry'
 
     client, extra_options = training_job_api_from_profile('default')
 
