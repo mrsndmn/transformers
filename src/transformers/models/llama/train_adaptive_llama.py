@@ -645,23 +645,35 @@ def build_model(training_args: AdaptiveTrainingArguments):
         print("model.config.end_of_sentence_token_id", model.config.end_of_sentence_token_id)
 
     if training_args.model_type == "sentence_pretrained_checkpoint":
-        optimized_params = training_args.optimized_params.split(',')
+        optimized_params = training_args.optimized_params
         print("optimized_params", optimized_params)
 
-        if 'full' in optimized_params:
+        assert optimized_params in AVAILABLE_OPTIMIZED_PARAMS, f'unknown optimized_params value: {optimized_params}. available ones: {AVAILABLE_OPTIMIZED_PARAMS}'
+
+        if 'full' == optimized_params:
             assert len(optimized_params) == 1
-
-        if 'full' not in optimized_params:
+        elif 'only_eos_embedding' == optimized_params:
             freeze_model(model)
-
-        print("num trainable model parameters before:", sum(p.numel() for p in model.parameters() if p.requires_grad))
-
-        if 'only_eos_embedding' in optimized_params:
             for p in model.model.embed_tokens.parameters():
                 p.requires_grad = True
 
             for p in model.lm_head.parameters():
                 p.requires_grad = True
+        elif 'lora' == optimized_params:
+            from peft import LoraConfig, TaskType, get_peft_model
+
+            # create LoRA configuration object
+            lora_config = LoraConfig(
+                task_type=TaskType.CAUSAL_LM, # type of task to train on
+                inference_mode=False, # set to False for training
+                r=8, # dimension of the smaller matrices
+                lora_alpha=32, # scaling factor
+                lora_dropout=0.1 # dropout of LoRA layers
+            )
+            model.add_adapter(lora_config, adapter_name="lora_1")
+
+        else:
+            raise ValueError()
 
     # print("force full fp32 training!")
     # model = model.to(torch.float32)

@@ -399,7 +399,7 @@ if __name__ == "__main__":
         )
 
 
-    model_checkpoints_eos_tined = [
+    model_checkpoints_eos_tuned = [
         # (f"{workdir_prefix}/sentence_Llama-3.2-1B_ft_only_eos_embedding_70ODXUT4/checkpoint-2698", "Llama-3.2-1B", 16),
         # (f"{workdir_prefix}/sentence_Qwen2.5-1.5B_ft_only_eos_embedding_25L1K5XT/checkpoint-2698/", "Qwen2.5-1.5B", 4),
         # (f"{workdir_prefix}/sentence_Qwen2.5-3B_ft_only_eos_embedding_UAJKCWG0/checkpoint-674/", "Qwen2.5-3B", 4),
@@ -410,12 +410,59 @@ if __name__ == "__main__":
     NGPUS = 4
     num_train_epochs = 1
 
-    for model_checkpoint, model_checkpoint_slug, per_device_train_batch_size in model_checkpoints_eos_tined:
+    model_checkpoints_eos_tined_full = model_checkpoints_eos_tuned
+    model_checkpoints_eos_tined_full = []
+
+    for model_checkpoint, model_checkpoint_slug, per_device_train_batch_size in model_checkpoints_eos_tined_full:
         gradient_accumulation_steps = math.ceil(4096 / NGPUS / per_device_train_batch_size)
         optimized_params = 'full' # 'full' 'only_eos_embedding'
 
         run_training_experiments(
             learning_rate=0.00005,
+            model_type='sentence_pretrained_checkpoint',
+            limit_dataset_shards=8,
+            offset_dataset_shards=4,
+            optimized_params=optimized_params,
+            weight_decay='0.01',
+            per_device_train_batch_size=per_device_train_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            adam_beta1='0.9',
+            adam_beta2='0.95',
+            optim='adamw_torch_fused',
+            # select_train_dataset_items=1510000 * NGPUS,
+            num_train_epochs=num_train_epochs,
+            max_grad_norm='1.0',
+            save_total_limit=100,
+            save_steps=save_steps,
+            instance_type=f'a100.{NGPUS}gpu',
+            model_checkpoint=model_checkpoint,
+            # model_checkpoint=f"{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_one_embedding_no_wd_4IQFRDRG/checkpoint-500/",
+            # model_checkpoint=f"{workdir_prefix}/sentence_slm2_1.7B_pretrain_with_end_of_sentence_full_VYE9JVA0/checkpoint-6500/",
+            dataset='smollm-corpus',
+            select_train_dataset_items=0,
+            adam_epsilon='1e-8',
+            warmup_steps=100,
+            dry=dry,
+            lr_scheduler_type='cosine',
+            bf16='0',
+            add_end_of_sentence_token=1,
+            experiment_prefix_base_name=f"sentence_{model_checkpoint_slug}_ft_{optimized_params}",
+        )
+
+
+    # LoRa training
+    NGPUS = 4
+    num_train_epochs = 1
+
+    model_checkpoints_eos_tined_lora = model_checkpoints_eos_tuned
+    for model_checkpoint, model_checkpoint_slug, per_device_train_batch_size in model_checkpoints_eos_tined_lora:
+
+        per_device_train_batch_size = 16
+        gradient_accumulation_steps = math.ceil(4096 / NGPUS / per_device_train_batch_size)
+        optimized_params = 'lora' # 'full' 'only_eos_embedding'
+
+        run_training_experiments(
+            learning_rate=0.0001,
             model_type='sentence_pretrained_checkpoint',
             limit_dataset_shards=8,
             offset_dataset_shards=4,
