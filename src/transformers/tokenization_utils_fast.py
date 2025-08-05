@@ -926,12 +926,20 @@ class PreTrainedTokenizerFastEOS(PreTrainedTokenizerFast):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.end_of_sentence_token = '<end_of_sentence>'
-        if self.end_of_sentence_token not in self.get_vocab():
-            self.add_special_tokens({"additional_special_tokens": [self.end_of_sentence_token]})
-            print(f"Added <end_of_sentence> token with ID: {self.convert_tokens_to_ids(self.end_of_sentence_token)}")
+        self.num_eos_tokens = kwargs.get('num_eos_tokens', 1)
 
-        self.end_of_sentence_token_id = self.convert_tokens_to_ids(self.end_of_sentence_token)
+        if self.num_eos_tokens >= 1:
+            self.end_of_sentence_tokens_list = [ f'<end_of_sentence_{i}>' for i in range(self.num_eos_tokens) ]
+        else:
+            raise ValueError("num_eos_tokens cant be negative")
+
+        self.end_of_sentence_token_ids = []
+        for end_of_sentence_token in self.end_of_sentence_tokens_list:
+            if end_of_sentence_token not in self.get_vocab():
+                self.add_special_tokens({"additional_special_tokens": [end_of_sentence_token]})
+                print(f"Added <end_of_sentence> token with ID: {self.convert_tokens_to_ids(end_of_sentence_token)}")
+
+            self.end_of_sentence_token_ids.append(self.convert_tokens_to_ids(end_of_sentence_token))
 
         return
 
@@ -955,7 +963,8 @@ class PreTrainedTokenizerFastEOS(PreTrainedTokenizerFast):
         self, text: str
     ) -> tuple[str, dict[str, Any]]:
 
-        end_of_sentence_token = self.end_of_sentence_token
+        end_of_sentence_token = "".join(self.end_of_sentence_tokens_list)
+
         patterns = [
             (r'\. ', f'. {end_of_sentence_token}'),
             (r'\? ', f'? {end_of_sentence_token}'),

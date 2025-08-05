@@ -1,3 +1,4 @@
+import torch
 from datasets import load_dataset
 import sys
 from transformers.models.llama.modeling_sentence_llama import special_token_mask_to_clothest_token_idx_slow
@@ -16,6 +17,7 @@ if __name__ == "__main__":
     parser.add_argument('--total_shards', type=int, required=True)
     parser.add_argument('--pretrained_model_name', type=str, required=True)
     parser.add_argument('--with_eos_token', action='store_true')
+    parser.add_argument('--num_eos_tokens', type=int, default=1)
     args = parser.parse_args()
 
     shard_num = args.shard_num
@@ -26,7 +28,10 @@ if __name__ == "__main__":
 
     print(f'pretrained_model_name_short: {pretrained_model_name_short}')
 
-    suffix = '_with_eos_token' if args.with_eos_token else ''
+    if args.with_eos_token:
+        suffix = f'_with_eos_token_num_{args.num_eos_tokens}'
+    else:
+        suffix = ''
 
     targer_dir = f'./fineweb_edu_tokenized_{pretrained_model_name_short}{suffix}'
 
@@ -53,12 +58,13 @@ if __name__ == "__main__":
         else:
             raise ValueError(f"Invalid tokenizer class: {tokenizer_class}")
 
-    tokenizer = tokenizer_class.from_pretrained(pretrained_model_name)
+    tokenizer = tokenizer_class.from_pretrained(pretrained_model_name, num_eos_tokens=args.num_eos_tokens)
+    assert tokenizer.num_eos_tokens == args.num_eos_tokens, 'tokenizer num eos tokens set correctly'
 
     tokenizer.padding_side = 'left'
     tokenizer.pad_token = tokenizer.eos_token
 
-    special_token_id = tokenizer.end_of_sentence_token_id
+    special_token_ids = tokenizer.end_of_sentence_token_ids
 
     def process_dataset_item(dataset_item):
         text = dataset_item['text']
@@ -66,7 +72,12 @@ if __name__ == "__main__":
         tokenized_inputs = tokenizer(text, truncation=True, padding='max_length', max_length=1024, return_tensors='pt')
 
         input_ids = tokenized_inputs['input_ids']
-        special_embeddings_mask = input_ids == special_token_id
+
+        special_embeddings_mask = torch.zeros(input_ids.shape, dtype=torch.bool, device=input_ids.device)
+
+        for special_token_id in special_token_ids:
+            special_embeddings_mask = special_embeddings_mask | (input_ids == special_token_id)
+
         clothest_end_of_sentence_token_idx = special_token_mask_to_clothest_token_idx_slow(special_embeddings_mask)
 
         return {
@@ -75,7 +86,6 @@ if __name__ == "__main__":
             'special_embeddings_mask': special_embeddings_mask[0].numpy().tolist(),
             'clothest_end_of_sentence_token_idx': clothest_end_of_sentence_token_idx[0].numpy().tolist(),
         }
-
 
     dataset = dataset.map(process_dataset_item, num_proc=16, remove_columns=columns_to_keep)
 
